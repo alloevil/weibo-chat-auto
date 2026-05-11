@@ -45,6 +45,15 @@ const server = http.createServer((req, res) => {
                     return fidMatch ? `/api/image?fid=${fidMatch[1]}` : u;
                 });
             }
+            // 代理分享卡片中的 sinaimg 图片
+            if (m.share && m.share.pics) {
+                m.share.pics = m.share.pics.map(u => {
+                    if (u.includes('sinaimg.cn')) {
+                        return `/api/sinaimg?url=${encodeURIComponent(u)}`;
+                    }
+                    return u;
+                });
+            }
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ messages }));
@@ -63,6 +72,33 @@ const server = http.createServer((req, res) => {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 'Referer': 'https://api.weibo.com/chat',
                 'X-Requested-With': 'XMLHttpRequest',
+            },
+        }, (proxyRes) => {
+            if (proxyRes.statusCode !== 200) {
+                res.writeHead(proxyRes.statusCode);
+                res.end('Image fetch failed');
+                return;
+            }
+            const ct = proxyRes.headers['content-type'] || 'image/jpeg';
+            res.writeHead(200, {
+                'Content-Type': ct,
+                'Cache-Control': 'public, max-age=86400',
+            });
+            proxyRes.pipe(res);
+        });
+        req.on('error', () => { res.writeHead(500); res.end('Proxy error'); });
+        req.setTimeout(15000, () => { req.destroy(); res.writeHead(504); res.end('Timeout'); });
+        return;
+    }
+
+    // sinaimg CDN 图片代理
+    if (url.pathname === '/api/sinaimg') {
+        const imgUrl = url.searchParams.get('url');
+        if (!imgUrl || !imgUrl.includes('sinaimg.cn')) { res.writeHead(400); res.end('Invalid url'); return; }
+        const req = https.get(imgUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                'Referer': 'https://weibo.com/',
             },
         }, (proxyRes) => {
             if (proxyRes.statusCode !== 200) {

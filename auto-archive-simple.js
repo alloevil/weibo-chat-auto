@@ -155,6 +155,20 @@ const USER_SCRIPT = `
             };
         }
 
+        // 提取视频/额外 URL
+        let link = '';
+        if (msg.url) link = String(msg.url).replace(/^http:/, 'https:');
+        if (!link && msg.short_url) link = String(msg.short_url).replace(/^http:/, 'https:');
+
+        // 从 url_objects 提取流媒体 URL（视频消息）
+        let videoUrl = '';
+        if (msg.url_objects && msg.url_objects.length > 0) {
+            const uo = msg.url_objects[0];
+            const info = uo.info || {};
+            videoUrl = info.video_url || info.url_short || info.url_long || uo.url_ori || '';
+            videoUrl = videoUrl.replace(/^http:/, 'https:');
+        }
+
         const result = {
             id, from_uid: msg.from_uid || fromUser.id || fromUser.idstr || null,
             user: fromUser.screen_name || fromUser.name || msg.from_uid || '未知用户',
@@ -164,6 +178,8 @@ const USER_SCRIPT = `
         };
         if (pics.length > 0) result.pics = pics;
         if (shareInfo) result.share = shareInfo;
+        if (link) result.link = link;
+        if (videoUrl) result.videoUrl = videoUrl;
         return result;
     }
 
@@ -554,6 +570,16 @@ async function main() {
         // 提取附加 URL
         let extraUrl = '';
         if (m.url) extraUrl = String(m.url).replace(/^http:/, 'https:');
+        if (!extraUrl && m.short_url) extraUrl = String(m.short_url).replace(/^http:/, 'https:');
+
+        // 从 url_objects 提取流媒体 URL（视频消息）
+        let videoUrl = '';
+        if (m.url_objects && m.url_objects.length > 0) {
+            const uo = m.url_objects[0];
+            const info = uo.info || {};
+            videoUrl = info.video_url || info.url_short || info.url_long || uo.url_ori || '';
+            videoUrl = videoUrl.replace(/^http:/, 'https:');
+        }
 
         const result = {
             id,
@@ -570,7 +596,8 @@ async function main() {
         // 只在有值时添加额外字段
         if (pics.length > 0) result.pics = pics;
         if (shareInfo) result.share = shareInfo;
-        if (extraUrl && !result.content.includes(extraUrl)) result.url = extraUrl;
+        if (extraUrl && !result.content.includes(extraUrl)) result.link = extraUrl;
+        if (videoUrl) result.videoUrl = videoUrl;
 
         return result;
     }

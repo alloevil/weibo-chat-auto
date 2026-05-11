@@ -73,6 +73,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .hours-clear { padding: 0 4px; border: none; background: none; color: #536471; cursor: pointer; font-size: 12px; }
 .hours-clear:hover { color: #1d9bf0; }
 
+/* 媒体筛选 */
+.media-bar { padding: 4px 16px 8px; display: flex; gap: 6px; }
+.media-btn { padding: 3px 10px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; cursor: pointer; font-size: 12px; color: #536471; transition: all .15s; }
+.media-btn:hover { background: #f7f9f9; }
+.media-btn.active { background: #1d9bf0; color: #fff; border-color: #1d9bf0; }
+
 /* 筛选状态 */
 .filter-bar { padding: 0 16px; height: 0; overflow: hidden; transition: height .2s; font-size: 13px; color: #536471; display: flex; align-items: center; }
 .filter-bar.show { height: 36px; border-bottom: 1px solid #eff3f4; }
@@ -102,6 +108,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .msg-pics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .msg-pics img { max-width: 200px; max-height: 160px; border-radius: 12px; object-fit: cover; cursor: pointer; }
 .msg-pics img:hover { filter: brightness(0.92); }
+.msg-video { margin-top: 6px; padding: 6px 10px; background: #f7f9f9; border-radius: 8px; display: inline-block; }
+.msg-link-attach { margin-top: 4px; font-size: 13px; }
 .lightbox { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.85); cursor: zoom-out; justify-content: center; align-items: center; }
 .lightbox.active { display: flex; }
 .lightbox img { max-width: 92vw; max-height: 92vh; object-fit: contain; border-radius: 4px; box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
@@ -167,6 +175,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
     </div>
     <div class="content">
         <div class="hours-bar" id="hoursBar"></div>
+        <div class="media-bar" id="mediaBar"></div>
         <div class="filter-bar" id="filterBar"></div>
         <div class="messages" id="messages"></div>
     </div>
@@ -189,6 +198,7 @@ let selectedMonth = '';
 let selectedDate = '';
 let selectedHours = new Set();
 let selectedUsers = new Set();
+let mediaFilter = 'all';
 let userColorMap = {};
 let calendarOpen = false;
 
@@ -420,6 +430,7 @@ function changeMonth(delta) {
     selectedDate = dates[dates.length - 1];
     selectedHours.clear();
     selectedUsers.clear();
+    mediaFilter = 'all';
     renderCalendar();
     renderHours();
     renderAll();
@@ -429,6 +440,7 @@ function selectDate(d) {
     selectedDate = d;
     selectedHours.clear();
     selectedUsers.clear();
+    mediaFilter = 'all';
     renderCalendar();
     renderHours();
     renderAll();
@@ -491,6 +503,24 @@ function clearHours() {
     renderAll();
 }
 
+// 媒体筛选
+function renderMediaBar() {
+    const types = [
+        { key: 'all', label: '全部' },
+        { key: 'pics', label: '图片' },
+        { key: 'video', label: '视频' },
+        { key: 'link', label: '链接' },
+    ];
+    document.getElementById('mediaBar').innerHTML = types.map(t =>
+        `<div class="media-btn ${mediaFilter === t.key ? 'active' : ''}" onclick="setMediaFilter('${t.key}')">${t.label}</div>`
+    ).join('');
+}
+
+function setMediaFilter(type) {
+    mediaFilter = type;
+    renderAll();
+}
+
 // 用户筛选
 function toggleUser(user) {
     if (selectedUsers.has(user)) selectedUsers.delete(user);
@@ -513,6 +543,9 @@ function getFiltered() {
             if (!selectedHours.has(new Date(m.timestamp).getHours())) return false;
         }
         if (selectedUsers.size > 0 && !selectedUsers.has(m.user)) return false;
+        if (mediaFilter === 'pics' && (!m.pics || m.pics.length === 0)) return false;
+        if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频') return false;
+        if (mediaFilter === 'link' && !m.link && !m.share && !m.videoUrl) return false;
         return true;
     });
 }
@@ -577,6 +610,14 @@ function renderMessages(msgs) {
             const link = s.url ? `<a class="share-link" href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>` : '';
             attach += `<div class="share-card">${author}${title ? '<div class="share-title">' + title + '</div>' : ''}${text}${desc}${picsHtml}${stats}${link}</div>`;
         }
+        // 附件：视频链接
+        if (m.videoUrl) {
+            attach += `<div class="msg-video"><a href="${m.videoUrl}" target="_blank" rel="noopener" class="msg-link">▶ 观看视频</a></div>`;
+        }
+        // 附件：普通链接
+        if (m.link && !m.share) {
+            attach += `<div class="msg-link-attach"><a href="${m.link}" target="_blank" rel="noopener" class="msg-link">${escapeHtml(m.link)}</a></div>`;
+        }
         const userInitial = escapeHtml(m.user.charAt(0));
         const avatarHtml = m.avatar ? `<img class="msg-av" src="${m.avatar}" loading="lazy" onerror="this.remove()">` : '';
         const userAttr = m.avatar ? `data-hasavatar data-initial="${userInitial}"` : `data-initial="${userInitial}"`;
@@ -605,6 +646,7 @@ function renderAll() {
     const filtered = getFiltered();
     renderUserList();
     renderMessages(filtered);
+    renderMediaBar();
 
     const users = new Set(filtered.map(m => m.user));
     document.getElementById('stats').textContent = `${filtered.length} 条消息 · ${users.size} 人`;
@@ -617,6 +659,10 @@ function renderAll() {
     }
     if (selectedUsers.size > 0) {
         parts.push('用户: ' + [...selectedUsers].join(', '));
+    }
+    const mediaLabels = { pics: '图片', video: '视频', link: '链接' };
+    if (mediaFilter !== 'all') {
+        parts.push('类型: ' + (mediaLabels[mediaFilter] || mediaFilter));
     }
     bar.innerHTML = parts.map(p => `<span>${p}</span>`).join(' · ');
     bar.className = 'filter-bar' + (parts.length ? ' show' : '');
