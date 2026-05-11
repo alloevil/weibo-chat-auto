@@ -1,0 +1,21 @@
+{
+  "name": "weibo-chat-auto",
+  "version": "1.0.0",
+  "description": "微博聊天自动归档工具",
+  "main": "auto-archive-simple.js",
+  "scripts": {
+    "save-cookies": "node save-cookies.js",
+    "archive": "node auto-archive-simple.js",
+    "archive:old": "node auto-archive.js",
+    "archive:connect": "node auto-archive-connect.js",
+    "start-chrome": "./start-chrome.sh",
+    "view": "node viewer-server.js"
+  },
+  "keywords": ["weibo", "chat", "archive"],
+  "author": "allo",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "puppeteer": "^24.43.0"
+  }
+}

@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>微博聊天查看器</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif; background: #fff; color: #0f1419; height: 100vh; display: flex; flex-direction: column; }
+
+/* 顶部导航 */
+.nav { border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
+.nav-top { display: flex; align-items: center; padding: 0 16px; height: 53px; gap: 16px; }
+.nav-title { font-size: 20px; font-weight: 700; }
+.nav-date { margin-left: auto; height: 32px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #0f1419; cursor: pointer; font-size: 14px; font-weight: 700; }
+.nav-date:hover { background: #f7f9f9; }
+.nav-stats { font-size: 13px; color: #536471; }
+
+/* 日历 */
+.calendar { display: none; flex-direction: column; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eff3f4; }
+.calendar.show { display: flex; }
+.calendar-header { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
+.calendar-header span { font-size: 15px; font-weight: 700; min-width: 100px; text-align: center; }
+.cal-arrow { width: 32px; height: 32px; border-radius: 50%; border: none; background: none; cursor: pointer; font-size: 16px; color: #536471; display: flex; align-items: center; justify-content: center; }
+.cal-arrow:hover { background: #f7f9f9; color: #0f1419; }
+.cal-arrow:disabled { opacity: 0.3; cursor: default; }
+.cal-arrow:disabled:hover { background: none; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 36px); gap: 2px; text-align: center; }
+.cal-weekday { font-size: 12px; color: #536471; height: 28px; display: flex; align-items: center; justify-content: center; }
+.cal-day { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #536471; cursor: default; }
+.cal-day.has-data { cursor: pointer; color: #0f1419; font-weight: 500; }
+.cal-day.has-data:hover { background: #e8f5fd; }
+.cal-day.selected { background: #1d9bf0; color: #fff; font-weight: 700; }
+.cal-day.today { border: 1px solid #1d9bf0; }
+.cal-day.empty { visibility: hidden; }
+
+/* 主体 */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* 左侧用户列表 */
+.sidebar { width: 290px; border-right: 1px solid #eff3f4; display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-header { padding: 12px 16px; font-size: 20px; font-weight: 700; }
+.user-list { flex: 1; overflow-y: auto; }
+.user-item { display: flex; align-items: center; padding: 12px 16px; cursor: pointer; transition: background .15s; gap: 12px; }
+.user-item:hover { background: #f7f9f9; }
+.user-item.active { background: #e8f5fd; }
+.user-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; overflow: hidden; }
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-count { font-size: 13px; color: #536471; }
+.user-clear { padding: 12px 16px; border-top: 1px solid #eff3f4; }
+.user-clear button { width: 100%; padding: 8px 0; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; cursor: pointer; font-size: 14px; font-weight: 700; color: #0f1419; transition: background .15s; }
+.user-clear button:hover { background: #f7f9f9; }
+
+/* 内容区 */
+.content { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #eff3f4; }
+
+/* 小时筛选 */
+.hours-bar { display: flex; gap: 6px; padding: 12px 16px; border-bottom: 1px solid #eff3f4; flex-wrap: wrap; flex-shrink: 0; align-items: center; }
+.hour-btn { min-width: 42px; height: 32px; padding: 0 8px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; cursor: pointer; font-size: 13px; color: #0f1419; transition: all .15s; display: flex; align-items: center; justify-content: center; }
+.hour-btn:hover { background: #f7f9f9; }
+.hour-btn.active { background: #1d9bf0; color: #fff; border-color: #1d9bf0; }
+.hours-clear { padding: 0 4px; border: none; background: none; color: #536471; cursor: pointer; font-size: 13px; }
+.hours-clear:hover { color: #1d9bf0; }
+
+/* 筛选状态 */
+.filter-bar { padding: 0 16px; height: 0; overflow: hidden; transition: height .2s; font-size: 13px; color: #536471; display: flex; align-items: center; }
+.filter-bar.show { height: 36px; border-bottom: 1px solid #eff3f4; }
+.filter-bar span { color: #1d9bf0; }
+
+/* 消息列表 */
+.messages { flex: 1; overflow-y: auto; }
+.msg-item { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); padding: 12px 16px 12px 12px; border-bottom: 1px solid #eff3f4; border-left: 4px solid var(--user-accent, #cfd9de); gap: 16px; transition: background .1s; }
+.msg-item:hover { background: #f7f9f9; }
+.msg-item-continuation { padding-top: 6px; padding-bottom: 6px; border-bottom-color: #f2f5f7; }
+.msg-meta { min-width: 0; padding-top: 1px; }
+.msg-user { display: flex; align-items: baseline; gap: 7px; font-size: 14px; font-weight: 700; color: #0f1419; line-height: 1.35; white-space: normal; word-break: break-word; }
+.msg-user::before { content: attr(data-initial); width: 22px; height: 22px; border-radius: 50%; background: var(--user-accent, #536471); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; transform: translateY(-1px); overflow: hidden; }
+.msg-user .msg-av { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; transform: translateY(-1px); }
+.msg-user .msg-av + .msg-av-name::before { display: none; }
+.msg-user[data-hasavatar]::before { display: none; }
+.msg-item-continuation .msg-user { display: none; }
+.msg-time { margin-top: 3px; padding-left: 15px; font-size: 13px; color: #536471; font-variant-numeric: tabular-nums; }
+.msg-item-continuation .msg-time { margin-top: 0; color: #7b8894; }
+.msg-body { min-width: 0; }
+.msg-content { display: inline-block; max-width: 100%; padding: 8px 11px; border: 1px solid #e5edf2; border-radius: 8px; background: #fff; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, #cfd9de) 55%, transparent); font-size: 15px; line-height: 1.5; color: #0f1419; word-break: break-word; overflow-wrap: anywhere; }
+.msg-content img { max-width: 300px; max-height: 200px; border-radius: 16px; margin-top: 8px; vertical-align: middle; }
+.msg-link { color: #1d9bf0; text-decoration: none; word-break: break-all; }
+.msg-link:hover { text-decoration: underline; }
+.msg-img { max-width: 300px; max-height: 200px; border-radius: 12px; margin-top: 6px; display: block; }
+.msg-attach { margin-top: 8px; }
+.msg-pics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.msg-pics img { max-width: 200px; max-height: 160px; border-radius: 12px; object-fit: cover; cursor: pointer; }
+.msg-pics img:hover { filter: brightness(0.92); }
+.msg-page { display: flex; gap: 10px; padding: 8px 10px; margin-top: 6px; border: 1px solid #eff3f4; border-radius: 12px; background: #f7f9f9; cursor: pointer; text-decoration: none; color: inherit; }
+.msg-page:hover { background: #eef1f3; }
+.msg-page-img { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.msg-page-info { min-width: 0; }
+.msg-page-title { font-size: 14px; font-weight: 600; color: #0f1419; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-page-desc { font-size: 12px; color: #536471; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-card { border: 1px solid #eff3f4; border-radius: 12px; padding: 10px 12px; margin-top: 6px; background: #f7f9f9; }
+.share-author { font-size: 13px; font-weight: 700; color: #0f1419; margin-bottom: 4px; }
+.share-title { font-size: 14px; font-weight: 600; color: #0f1419; margin-bottom: 4px; }
+.share-text { font-size: 14px; color: #0f1419; line-height: 1.45; margin-bottom: 4px; }
+.share-desc { font-size: 13px; color: #536471; margin-bottom: 4px; }
+.share-stats { font-size: 12px; color: #536471; margin-top: 4px; }
+.share-link { display: block; font-size: 12px; color: #1d9bf0; margin-top: 4px; text-decoration: none; word-break: break-all; }
+.share-link:hover { text-decoration: underline; }
+.emoji { font-size: 1.2em; vertical-align: middle; }
+.emoji-unknown { display: inline-block; padding: 1px 5px; margin: 0 1px; border-radius: 4px; background: #f0f2f5; color: #536471; font-size: 12px; vertical-align: middle; }
+.forward-quote { border-left: 3px solid #cfd9de; margin: 4px 0 6px; padding: 6px 10px; background: #f7f9f9; border-radius: 0 6px 6px 0; font-size: 14px; color: #536471; line-height: 1.45; }
+.forward-reply { margin-top: 2px; }
+
+@media (max-width: 760px) {
+    .msg-item { grid-template-columns: 1fr; gap: 6px; }
+    .msg-time { display: inline; margin-left: 6px; }
+    .msg-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; }
+}
+
+/* 空状态 */
+.empty { display: flex; align-items: center; justify-content: center; flex: 1; color: #536471; font-size: 15px; padding: 40px; }
+
+/* 头像颜色 */
+.av-0 { background: #1d9bf0; color: #fff; }
+.av-1 { background: #f4212e; color: #fff; }
+.av-2 { background: #ffd400; color: #0f1419; }
+.av-3 { background: #00ba7c; color: #fff; }
+.av-4 { background: #7856ff; color: #fff; }
+.av-5 { background: #ff7a00; color: #fff; }
+.av-6 { background: #f91981; color: #fff; }
+.av-7 { background: #00d5fa; color: #0f1419; }
+.av-8 { background: #7c3aed; color: #fff; }
+.av-9 { background: #059669; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+    <div class="nav-top">
+        <div class="nav-title">微博聊天查看器</div>
+        <button class="nav-date" id="dateToggle" onclick="toggleCalendar()">选择日期</button>
+        <div class="nav-stats" id="stats"></div>
+    </div>
+    <div class="calendar" id="calendar"></div>
+</div>
+
+<div class="main">
+    <div class="sidebar">
+        <div class="sidebar-header">群成员</div>
+        <div class="user-list" id="userList"></div>
+        <div class="user-clear"><button onclick="clearUserFilter()">清除筛选</button></div>
+    </div>
+    <div class="content">
+        <div class="hours-bar" id="hoursBar"></div>
+        <div class="filter-bar" id="filterBar"></div>
+        <div class="messages" id="messages"></div>
+    </div>
+</div>
+
+<script>
+let allMessages = [];
+let months = [];        // ['2026-04', '2026-05']
+let monthDates = {};    // { '2026-05': ['2026-05-01', ...] }
+let selectedMonth = '';
+let selectedDate = '';
+let selectedHours = new Set();
+let selectedUsers = new Set();
+let userColorMap = {};
+let calendarOpen = false;
+
+const AVATARS = 10;
+const USER_ACCENTS = ['#1d9bf0', '#f4212e', '#b8860b', '#00a36c', '#7856ff', '#ff7a00', '#d91a6d', '#008fb3', '#7c3aed', '#059669'];
+function getUserColor(user) {
+    if (!(user in userColorMap)) userColorMap[user] = Object.keys(userColorMap).length % AVATARS;
+    return userColorMap[user];
+}
+
+function getUserAccent(user) {
+    return USER_ACCENTS[getUserColor(user)];
+}
+
+// 微博表情 → Unicode 映射
+const EMOJI_MAP = {
+    '[笑cry]': '😂', '[允悲]': '😅', '[doge]': '🐶', '[流鼻血]': '😳',
+    '[哈哈]': '😆', '[二哈]': '🐕', '[苦涩]': '😩', '[泪]': '😢',
+    '[嘻嘻]': '😊', '[太开心]': '😆', '[捂嘴哭]': '🥹', '[怒]': '😡',
+    '[流汗]': '😅', '[赞]': '👍', '[并不简单]': '🧐', '[泪奔]': '😭',
+    '[努力]': '😤', '[awsl]': '😍', '[哇]': '🤩', '[good]': '👍',
+    '[思考]': '🤔', '[打call]': '📣', '[疑问]': '❓', '[单身狗]': '🐕‍🦺',
+    '[抱一抱]': '🤗', '[喵喵]': '🐱', '[傻眼]': '😳', '[挖鼻]': '🫣',
+    '[爱你]': '💕', '[鼓掌]': '👏', '[加油]': '💪', '[黑线]': '😑',
+    '[害羞]': '😳', '[无聊]': '😴', '[打脸]': '😬', '[偷笑]': '🤭',
+    '[裂开]': '💔', '[挤眼]': '😜', '[送花花]': '💐', '[亲亲]': '😘',
+    '[握手]': '🤝', '[衰]': '😞', '[揣手]': '😳', '[坏笑]': '😏',
+    '[酷]': '😎', '[点赞]': '👍', '[可爱]': '🥰', '[皱眉]': '😟',
+    '[祈祷]': '🙏', '[伤心]': '😭', '[心]': '❤️', '[憧憬]': '🤩',
+    '[摊手]': '🤷', '[费解]': '🫤', '[可怜]': '🥺', '[吃惊]': '😱',
+    '[哼]': '😤', '[晕]': '😵', '[开心]': '😊', '[抓狂]': '🤯',
+    '[委屈]': '😞', '[嘘]': '🤫', '[阴险]': '😈', '[困]': '😴',
+    '[馋嘴]': '🤤', '[睡觉]': '😴', '[失望]': '😔', '[鄙视]': '😒',
+    '[生病]': '🤒', '[感冒]': '🤧', '[拜拜]': '👋',
+    '[左哼哼]': '😤', '[右哼哼]': '😤', '[怒骂]': '🤬',
+    '[哆啦A梦吃惊]': '😱', '[哆啦A梦害怕]': '😨', '[哆啦A梦微笑]': '😊',
+    '[柯基]': '🐶', '[吹风车]': '🎐', '[开学季]': '📚',
+    '[吃馕]': '🫓', '[春游家族]': '🌸', '[好运连连]': '🍀',
+    '[不愧是你]': '👏', '[手指比心]': '🤌', '[老师爱你]': '💗',
+    '[11]': '⚡', '[动画表情]': '🎭',
+};
+
+function processEmoji(text) {
+    return text.replace(/\[[^\]]+\]/g, (match) => {
+        if (EMOJI_MAP[match]) return `<span class="emoji">${EMOJI_MAP[match]}</span>`;
+        return `<span class="emoji-unknown">${match}</span>`;
+    });
+}
+
+// 把 URL 变成可点击链接，图片URL额外渲染为缩略图
+function processUrls(text) {
+    return text.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+        const display = url.length > 60 ? url.substring(0, 57) + '...' : url;
+        const link = `<a href="${url}" target="_blank" rel="noopener" class="msg-link">${display}</a>`;
+        // 图片URL额外显示缩略图
+        if (/\.(jpg|jpeg|png|gif|webp)$/i.test(url)) {
+            return link + `<br><img src="${url}" loading="lazy" class="msg-img">`;
+        }
+        return link;
+    });
+}
+
+// 处理转发消息：「引用内容」 - - - - - - - - 回复内容
+function processForward(text) {
+    const SEP = ' - - - - - - - - - - - - - - - ';
+    // 统一处理流程：escape → urls → emoji
+    const pipe = (s) => processEmoji(processUrls(escapeHtml(s)));
+
+    if (!text.includes(SEP) && !text.startsWith('「')) return pipe(text);
+
+    // 递归解析嵌套转发
+    function parseQuote(s) {
+        if (!s.includes(SEP)) return { quote: null, reply: s };
+
+        // 找最外层的「」配对
+        const firstOpen = s.indexOf('「');
+        if (firstOpen !== 0) {
+            // 不以「开头，直接按 separator 分割
+            const idx = s.indexOf(SEP);
+            return { quote: s.substring(0, idx), reply: s.substring(idx + SEP.length) };
+        }
+
+        // 找配对的 」
+        let depth = 0;
+        let closeIdx = -1;
+        for (let i = 0; i < s.length; i++) {
+            if (s[i] === '「') depth++;
+            else if (s[i] === '」') {
+                depth--;
+                if (depth === 0) { closeIdx = i; break; }
+            }
+        }
+
+        if (closeIdx === -1) {
+            const idx = s.indexOf(SEP);
+            if (idx === -1) return { quote: null, reply: s };
+            return { quote: s.substring(0, idx), reply: s.substring(idx + SEP.length) };
+        }
+
+        const quote = s.substring(1, closeIdx); // 去掉「」
+        const rest = s.substring(closeIdx + 1).trim();
+        if (rest.startsWith(SEP)) {
+            return { quote: quote, reply: rest.substring(SEP.length) };
+        }
+        return { quote: quote, reply: rest };
+    }
+
+    const { quote, reply } = parseQuote(text);
+    if (!quote) return pipe(text);
+
+    // 递归处理嵌套引用
+    const quoteHtml = parseQuote(quote).quote
+        ? processForward(quote)  // 嵌套转发
+        : pipe(quote);
+
+    const replyHtml = pipe(reply || '');
+
+    return `<div class="forward-quote">${quoteHtml}</div><div class="forward-reply">${replyHtml}</div>`;
+}
+
+// 星期
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+function getWeekday(dateStr) {
+    return '周' + WEEKDAYS[new Date(dateStr + 'T00:00:00').getDay()];
+}
+
+async function loadData() {
+    const resp = await fetch('/api/messages');
+    const data = await resp.json();
+    allMessages = data.messages;
+
+    // 按月分组
+    const dateSet = new Set(allMessages.map(m => m.date));
+    const allDates = [...dateSet].sort();
+    monthDates = {};
+    allDates.forEach(d => {
+        const m = d.slice(0, 7);
+        if (!monthDates[m]) monthDates[m] = new Set();
+        monthDates[m].add(d);
+    });
+    // 转为数组
+    for (const m in monthDates) monthDates[m] = [...monthDates[m]].sort();
+    months = Object.keys(monthDates).sort();
+
+    // 默认选最新月、最新日
+    selectedMonth = months[months.length - 1];
+    const datesInMonth = monthDates[selectedMonth];
+    selectedDate = datesInMonth[datesInMonth.length - 1];
+
+    renderCalendar();
+    renderHours();
+    renderAll();
+}
+
+function updateDateToggle() {
+    const el = document.getElementById('dateToggle');
+    if (!selectedDate) {
+        el.textContent = '选择日期';
+        return;
+    }
+    el.textContent = `${selectedDate} ${getWeekday(selectedDate)} ${calendarOpen ? '收起' : '展开'}`;
+}
+
+function toggleCalendar() {
+    calendarOpen = !calendarOpen;
+    renderCalendar();
+    updateDateToggle();
+}
+
+// 渲染日历
+function renderCalendar() {
+    const el = document.getElementById('calendar');
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const datesWithData = new Set(monthDates[selectedMonth] || []);
+    const today = new Date().toISOString().slice(0, 10);
+
+    const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    const monthLabel = `${year}年${month}月`;
+
+    const prevMonth = months.indexOf(selectedMonth) > 0;
+    const nextMonth = months.indexOf(selectedMonth) < months.length - 1;
+
+    let html = `<div class="calendar-header">
+        <button class="cal-arrow" ${prevMonth ? '' : 'disabled'} onclick="changeMonth(-1)">‹</button>
+        <span>${monthLabel}</span>
+        <button class="cal-arrow" ${nextMonth ? '' : 'disabled'} onclick="changeMonth(1)">›</button>
+    </div>`;
+
+    // 星期头
+    html += '<div class="cal-grid">';
+    for (const w of ['日', '一', '二', '三', '四', '五', '六']) {
+        html += `<div class="cal-weekday">${w}</div>`;
+    }
+
+    // 空白天数
+    for (let i = 0; i < firstDay; i++) {
+        html += '<div class="cal-day empty"></div>';
+    }
+
+    // 日期
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const hasData = datesWithData.has(dateStr);
+        const isSelected = dateStr === selectedDate;
+        const isToday = dateStr === today;
+
+        let cls = 'cal-day';
+        if (hasData) cls += ' has-data';
+        if (isSelected) cls += ' selected';
+        if (isToday && !isSelected) cls += ' today';
+
+        const onclick = hasData ? `onclick="selectDate('${dateStr}')"` : '';
+        html += `<div class="${cls}" ${onclick}>${d}</div>`;
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+    el.className = 'calendar' + (calendarOpen ? ' show' : '');
+}
+
+function changeMonth(delta) {
+    const idx = months.indexOf(selectedMonth) + delta;
+    if (idx < 0 || idx >= months.length) return;
+    selectedMonth = months[idx];
+    const dates = monthDates[selectedMonth] || [];
+    selectedDate = dates[dates.length - 1];
+    selectedHours.clear();
+    selectedUsers.clear();
+    renderCalendar();
+    renderHours();
+    renderAll();
+}
+
+function selectDate(d) {
+    selectedDate = d;
+    selectedHours.clear();
+    selectedUsers.clear();
+    renderCalendar();
+    renderHours();
+    renderAll();
+}
+
+// 小时按钮
+function renderHours() {
+    const el = document.getElementById('hoursBar');
+    const dayMsgs = allMessages.filter(m => m.date === selectedDate);
+    const hourCounts = {};
+    dayMsgs.forEach(m => {
+        const h = new Date(m.timestamp).getHours();
+        hourCounts[h] = (hourCounts[h] || 0) + 1;
+    });
+
+    let html = '';
+    for (let h = 0; h < 24; h++) {
+        const label = String(h).padStart(2, '0');
+        const active = selectedHours.has(h) ? 'active' : '';
+        const count = hourCounts[h] || 0;
+        const opacity = count > 0 ? '' : 'style="opacity:0.35"';
+        html += `<div class="hour-btn ${active}" ${opacity} onclick="toggleHour(${h})">${label}</div>`;
+    }
+    html += `<button class="hours-clear" onclick="clearHours()">清除</button>`;
+    el.innerHTML = html;
+}
+
+function toggleHour(h) {
+    if (selectedHours.has(h)) selectedHours.delete(h);
+    else selectedHours.add(h);
+    renderHours();
+    renderAll();
+}
+
+function clearHours() {
+    selectedHours.clear();
+    renderHours();
+    renderAll();
+}
+
+// 用户筛选
+function toggleUser(user) {
+    if (selectedUsers.has(user)) selectedUsers.delete(user);
+    else selectedUsers.add(user);
+    renderUserList();
+    renderAll();
+}
+
+function clearUserFilter() {
+    selectedUsers.clear();
+    renderUserList();
+    renderAll();
+}
+
+// 获取筛选后的消息
+function getFiltered() {
+    return allMessages.filter(m => {
+        if (m.date !== selectedDate) return false;
+        if (selectedHours.size > 0) {
+            if (!selectedHours.has(new Date(m.timestamp).getHours())) return false;
+        }
+        if (selectedUsers.size > 0 && !selectedUsers.has(m.user)) return false;
+        return true;
+    });
+}
+
+// 渲染用户列表
+function renderUserList() {
+    const dayMsgs = allMessages.filter(m => m.date === selectedDate);
+    const userCounts = {};
+    const userAvatars = {};
+    dayMsgs.forEach(m => {
+        userCounts[m.user] = (userCounts[m.user] || 0) + 1;
+        if (m.avatar && !userAvatars[m.user]) userAvatars[m.user] = m.avatar;
+    });
+
+    const sorted = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
+    const el = document.getElementById('userList');
+    el.innerHTML = sorted.map(([user, count]) => {
+        const active = selectedUsers.has(user) ? 'active' : '';
+        const av = 'av-' + getUserColor(user);
+        const initial = user.charAt(0);
+        const avatarImg = userAvatars[user] ? `<img src="${userAvatars[user]}" onerror="this.parentElement.innerHTML='${initial}'">` : initial;
+        return `<div class="user-item ${active}" onclick="toggleUser(this.dataset.user)" data-user="${escapeAttr(user)}">
+            <div class="user-avatar ${av}">${avatarImg}</div>
+            <div class="user-info">
+                <div class="user-name">${escapeHtml(user)}</div>
+                <div class="user-count">${count} 条消息</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// 渲染消息
+function renderMessages(msgs) {
+    const el = document.getElementById('messages');
+    if (msgs.length === 0) {
+        el.innerHTML = '<div class="empty">暂无消息</div>';
+        return;
+    }
+    el.innerHTML = msgs.map((m, index) => {
+        const prev = msgs[index - 1];
+        const prevTime = prev ? Number(prev.timestamp) : 0;
+        const currentTime = Number(m.timestamp);
+        const sameUser = prev && prev.user === m.user && currentTime - prevTime <= 5 * 60 * 1000;
+        const time = m.time.split(' ')[1] || '';
+        const accent = getUserAccent(m.user);
+        const continuation = sameUser ? ' msg-item-continuation' : '';
+        let content = processForward(m.content);
+        // 附件：图片
+        let attach = '';
+        if (m.pics && m.pics.length > 0) {
+            attach += '<div class="msg-pics">' + m.pics.map(u => `<img src="${u}" loading="lazy" onclick="window.open('${u}','_blank')">`).join('') + '</div>';
+        }
+        // 附件：分享的帖子
+        if (m.share) {
+            const s = m.share;
+            const title = escapeHtml(s.title || s.url || '');
+            const author = s.author ? `<div class="share-author">${escapeHtml(s.author)}</div>` : '';
+            const text = s.text ? `<div class="share-text">${processEmoji(escapeHtml(s.text))}</div>` : '';
+            const desc = s.description ? `<div class="share-desc">${escapeHtml(s.description)}</div>` : '';
+            const picsHtml = s.pics && s.pics.length > 0 ? '<div class="msg-pics">' + s.pics.map(u => `<img src="${u}" loading="lazy" onclick="window.open('${u}','_blank')">`).join('') + '</div>' : '';
+            const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? '转发 ' + s.reposts : ''} ${s.comments ? '评论 ' + s.comments : ''} ${s.likes ? '赞 ' + s.likes : ''}</div>` : '';
+            const link = s.url ? `<a class="share-link" href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>` : '';
+            attach += `<div class="share-card">${author}${title ? '<div class="share-title">' + title + '</div>' : ''}${text}${desc}${picsHtml}${stats}${link}</div>`;
+        }
+        const userInitial = escapeHtml(m.user.charAt(0));
+        const avatarHtml = m.avatar ? `<img class="msg-av" src="${m.avatar}" loading="lazy" onerror="this.remove()">` : '';
+        const userAttr = m.avatar ? `data-hasavatar data-initial="${userInitial}"` : `data-initial="${userInitial}"`;
+        return `<div class="msg-item${continuation}" style="--user-accent:${accent}">
+            <div class="msg-meta">
+                <div class="msg-user" ${userAttr}>${avatarHtml}${escapeHtml(m.user)}</div>
+                <div class="msg-time">${time}</div>
+            </div>
+            <div class="msg-body">
+                <div class="msg-content">${content}</div>
+                ${attach ? '<div class="msg-attach">' + attach + '</div>' : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escapeAttr(s) {
+    return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderAll() {
+    const filtered = getFiltered();
+    renderUserList();
+    renderMessages(filtered);
+
+    const users = new Set(filtered.map(m => m.user));
+    document.getElementById('stats').textContent = `${filtered.length} 条消息 · ${users.size} 人`;
+    updateDateToggle();
+
+    const bar = document.getElementById('filterBar');
+    const parts = [];
+    if (selectedHours.size > 0) {
+        parts.push('时段: ' + [...selectedHours].sort((a,b)=>a-b).map(h => String(h).padStart(2,'0')+':00').join(', '));
+    }
+    if (selectedUsers.size > 0) {
+        parts.push('用户: ' + [...selectedUsers].join(', '));
+    }
+    bar.innerHTML = parts.map(p => `<span>${p}</span>`).join(' · ');
+    bar.className = 'filter-bar' + (parts.length ? ' show' : '');
+}
+
+loadData();
+</script>
+</body>
+</html>

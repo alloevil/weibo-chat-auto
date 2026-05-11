@@ -1,0 +1,50 @@
+[
+  {
+    "name": "_s_tentry",
+    "value": "YOUR__S_TENTRY_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  },
+  {
+    "name": "Apache",
+    "value": "YOUR_APACHE_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  },
+  {
+    "name": "SUBP",
+    "value": "YOUR_SUBP_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  },
+  {
+    "name": "SUB",
+    "value": "YOUR_SUB_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  },
+  {
+    "name": "ALF",
+    "value": "YOUR_ALF_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  },
+  {
+    "name": "ULV",
+    "value": "YOUR_ULV_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  },
+  {
+    "name": "SSOLoginState",
+    "value": "YOUR_SSOLOGINSTATE_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  },
+  {
+    "name": "SINAGLOBAL",
+    "value": "YOUR_SINAGLOBAL_VALUE",
+    "domain": ".weibo.com",
+    "path": "/"
+  }
+]

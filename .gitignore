@@ -1,0 +1,11 @@
+node_modules/
+output/
+cookies.json
+last-archive-state.json
+debug.png
+debug-dom.png
+*.log
+logs/
+temp-chrome/
+.DS_Store
+dom-diagnosis.json
