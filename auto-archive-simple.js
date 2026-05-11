@@ -8,7 +8,7 @@ const { exec } = require('child_process');
 const CONFIG = {
     chatUrl: 'https://api.weibo.com/chat#/chat',
     outputDir: path.join(__dirname, 'output'),
-    chromePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    chromePath: require('./config.json').chromePath,
     cookieFile: path.join(__dirname, 'cookies.json'),
     stateFile: path.join(__dirname, 'last-archive-state.json'),
     groupName: '茧房建筑师协会',

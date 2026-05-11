@@ -14,9 +14,24 @@ function loadCookies() {
     } catch { return ''; }
 }
 
+// Message cache
+let messageCache = null;
+let messageCacheMtimes = {};
+
 function loadMessages() {
     const files = fs.readdirSync(OUTPUT_DIR)
         .filter(f => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
+
+    // Check if any file changed
+    const currentMtimes = {};
+    let changed = files.length !== Object.keys(messageCacheMtimes).length;
+    for (const f of files) {
+        const mt = fs.statSync(path.join(OUTPUT_DIR, f)).mtimeMs;
+        currentMtimes[f] = mt;
+        if (messageCacheMtimes[f] !== mt) changed = true;
+    }
+
+    if (!changed && messageCache) return messageCache;
 
     const allMessages = [];
     for (const file of files) {
@@ -27,8 +42,9 @@ function loadMessages() {
         } catch {}
     }
 
-    // 按时间排序
     allMessages.sort((a, b) => a.timestamp - b.timestamp);
+    messageCache = allMessages;
+    messageCacheMtimes = currentMtimes;
     return allMessages;
 }
 
@@ -94,7 +110,7 @@ const server = http.createServer((req, res) => {
     // sinaimg CDN 图片代理
     if (url.pathname === '/api/sinaimg') {
         const imgUrl = url.searchParams.get('url');
-        if (!imgUrl || !imgUrl.includes('sinaimg.cn')) { res.writeHead(400); res.end('Invalid url'); return; }
+        if (!imgUrl || !/^https:\/\/wx[0-9]*\.sinaimg\.cn\//.test(imgUrl)) { res.writeHead(403); res.end('Forbidden'); return; }
         const req = https.get(imgUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',

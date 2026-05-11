@@ -4,7 +4,7 @@ const path = require('path');
 (async () => {
     const browser = await puppeteer.launch({
         headless: 'new',
-        executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        executablePath: require('./config.json').chromePath,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,900'],
     });
     const page = await browser.newPage();

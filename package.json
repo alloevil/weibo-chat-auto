@@ -6,8 +6,7 @@
   "scripts": {
     "save-cookies": "node save-cookies.js",
     "archive": "node auto-archive-simple.js",
-    "archive:old": "node auto-archive.js",
-    "archive:connect": "node auto-archive-connect.js",
+    "clean": "node -e \"const fs=require('fs'),p=require('path');const d='output';fs.readdirSync(d).filter(f=>/T\\d{2}-/.test(f)).forEach(f=>{console.log('Remove:',f);fs.unlinkSync(p.join(d,f))})\"",
     "start-chrome": "./start-chrome.sh",
     "view": "node viewer-server.js"
   },

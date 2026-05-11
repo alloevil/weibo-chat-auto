@@ -4,7 +4,7 @@ const path = require('path');
 
 const cookieFile = path.join(__dirname, 'cookies.json');
 const chatUrl = 'https://api.weibo.com/chat#/chat';
-const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const chromePath = require('./config.json').chromePath;
 
 async function saveCookies() {
     console.log('=== 保存微博 Cookie ===');
