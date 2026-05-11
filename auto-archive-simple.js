@@ -188,6 +188,15 @@ const USER_SCRIPT = `
         const msgList = Array.isArray(msgs) ? msgs : (Array.isArray(data.list) ? data.list : []);
         let added = 0;
         for (const m of msgList) {
+            // DEBUG: 打印包含"微博"的原始消息结构
+            const debugContent = (m.content ?? m.text ?? '').replace(/[\r\n]+/g, ' ');
+            if (debugContent.includes('微博')) {
+                console.log('[DEBUG] raw msg keys:', Object.keys(m).join(', '));
+                console.log('[DEBUG] content:', debugContent.substring(0, 200));
+                console.log('[DEBUG] url_objects:', JSON.stringify(m.url_objects).substring(0, 300));
+                console.log('[DEBUG] object:', JSON.stringify(m.object).substring(0, 200));
+                console.log('[DEBUG] page_id:', m.page_id, '| url:', m.url, '| short_url:', m.short_url);
+            }
             const n = normalizeMessage(m);
             if (n) { messages.push(n); window.__ARCHIVER_STATE__.messages.push(n); added++; }
         }
@@ -632,6 +641,16 @@ async function main() {
 
             let added = 0;
             for (const m of msgList) {
+                // DEBUG: 打印包含"微博"的原始消息结构
+                const debugContent = (m.content ?? m.text ?? '').replace(/[\r\n]+/g, ' ');
+                if (debugContent.includes('微博')) {
+                    console.log('[DEBUG] raw msg keys:', Object.keys(m).join(', '));
+                    console.log('[DEBUG] content:', debugContent.substring(0, 200));
+                    console.log('[DEBUG] url_objects:', JSON.stringify(m.url_objects).substring(0, 500));
+                    console.log('[DEBUG] object:', JSON.stringify(m.object).substring(0, 300));
+                    console.log('[DEBUG] page_id:', m.page_id, '| url:', m.url, '| short_url:', m.short_url);
+                    console.log('[DEBUG] type:', m.type, '| msg_type:', m.msg_type, '| media_type:', m.media_type);
+                }
                 const n = normalizeMessage(m);
                 if (n && !messageIds.has(String(n.id))) {
                     messageIds.add(String(n.id));

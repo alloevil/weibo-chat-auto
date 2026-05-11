@@ -59,7 +59,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 /* 小时热力条 */
 .hours-bar { padding: 8px 16px 4px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
 .heatmap { display: flex; gap: 2px; align-items: flex-end; }
-.heatmap-cell { flex: 1; min-width: 0; height: 24px; border-radius: 3px; cursor: pointer; transition: all .15s; }
+.heatmap-cell { flex: 1; min-width: 0; height: 24px; border-radius: 3px; cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; }
 .heatmap-cell:hover { transform: scale(1.08); z-index: 1; }
 .heatmap-cell.active { box-shadow: 0 0 0 2px #1d9bf0; }
 .heatmap-cell.empty { height: 4px; cursor: default; opacity: 0.5; padding: 0; }
@@ -68,6 +68,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .heatmap-label { flex: 1; min-width: 0; text-align: center; font-size: 10px; color: #536471; line-height: 1; }
 .heatmap-label.show { visibility: visible; }
 .heatmap-label.hide { visibility: hidden; }
+.heatmap-count { font-size: 9px; color: #0f1419; font-weight: 700; line-height: 1; pointer-events: none; text-shadow: 0 0 2px rgba(255,255,255,0.8); }
 .heatmap-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .heatmap-title { font-size: 12px; color: #536471; }
 .hours-clear { padding: 0 4px; border: none; background: none; color: #536471; cursor: pointer; font-size: 12px; }
@@ -129,7 +130,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .share-link:hover { text-decoration: underline; }
 .emoji { font-size: 1.2em; vertical-align: middle; }
 .emoji-unknown { display: inline-block; padding: 1px 5px; margin: 0 1px; border-radius: 4px; background: #f0f2f5; color: #536471; font-size: 12px; vertical-align: middle; }
-.forward-quote { border-left: 3px solid #cfd9de; margin: 4px 0 6px; padding: 6px 10px; background: #f7f9f9; border-radius: 0 6px 6px 0; font-size: 14px; color: #536471; line-height: 1.45; }
+.forward-quote { border-left: 3px solid #1d9bf0; margin: 4px 0 6px; padding: 8px 12px; background: #e8f4fd; border-radius: 0 6px 6px 0; font-size: 14px; color: #536471; line-height: 1.45; }
+.forward-source { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #d9e8f3; font-size: 12px; color: #1d6fa8; }
 .forward-reply { margin-top: 2px; }
 
 @media (max-width: 760px) {
@@ -199,6 +201,7 @@ let selectedDate = '';
 let selectedHours = new Set();
 let selectedUsers = new Set();
 let mediaFilter = 'all';
+let hideNoise = true;   // 过滤「早」问候和「领红包」消息
 let userColorMap = {};
 let calendarOpen = false;
 
@@ -309,10 +312,15 @@ function processForward(text) {
     const { quote, reply } = parseQuote(text);
     if (!quote) return pipe(text);
 
+    // 引用内容为 "微博" 时渲染为来源标签
+    const quoteLabel = quote.trim() === '微博'
+        ? '<span class="forward-source">微博</span>'
+        : null;
+
     // 递归处理嵌套引用
-    const quoteHtml = parseQuote(quote).quote
+    const quoteHtml = quoteLabel || (parseQuote(quote).quote
         ? processForward(quote)  // 嵌套转发
-        : pipe(quote);
+        : pipe(quote));
 
     const replyHtml = pipe(reply || '');
 
@@ -471,7 +479,7 @@ function renderHours() {
         const color = levels[level];
         const active = selectedHours.has(h) ? 'active' : '';
         const empty = count === 0 ? 'empty' : '';
-        bars += `<div class="heatmap-cell ${active} ${empty}" onclick="toggleHour(${h})" style="background:${color}" title="${h}时 · ${count}条"></div>`;
+        bars += `<div class="heatmap-cell ${active} ${empty}" onclick="toggleHour(${h})" style="background:${color}" title="${h}时 · ${count}条">${count > 0 ? '<span class="heatmap-count">' + count + '</span>' : ''}</div>`;
     }
 
     let labels = '';
@@ -511,13 +519,19 @@ function renderMediaBar() {
         { key: 'video', label: '视频' },
         { key: 'link', label: '链接' },
     ];
+    const noiseBtn = `<div class="media-btn ${hideNoise ? 'active' : ''}" onclick="toggleNoise()">隐藏水消息</div>`;
     document.getElementById('mediaBar').innerHTML = types.map(t =>
         `<div class="media-btn ${mediaFilter === t.key ? 'active' : ''}" onclick="setMediaFilter('${t.key}')">${t.label}</div>`
-    ).join('');
+    ).join('') + noiseBtn;
 }
 
 function setMediaFilter(type) {
     mediaFilter = type;
+    renderAll();
+}
+
+function toggleNoise() {
+    hideNoise = !hideNoise;
     renderAll();
 }
 
@@ -535,6 +549,17 @@ function clearUserFilter() {
     renderAll();
 }
 
+// 判断是否为噪音消息（早安问候、纯标点、领红包）
+const NOISE_RE = /^[早\s~～！!。.·:：?？,，…💗❤️💕🥰😘✨🌟⭐💫🌞☀️🌅👍🤝💪🫶]+$/;
+const DOTS_RE = /^[。.·…,，·\s]+$/;
+function isNoise(m) {
+    const c = (m.content || '').trim();
+    if (NOISE_RE.test(c)) return true;
+    if (DOTS_RE.test(c)) return true;
+    if (c.includes('领红包')) return true;
+    return false;
+}
+
 // 获取筛选后的消息
 function getFiltered() {
     return allMessages.filter(m => {
@@ -546,6 +571,7 @@ function getFiltered() {
         if (mediaFilter === 'pics' && (!m.pics || m.pics.length === 0)) return false;
         if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频') return false;
         if (mediaFilter === 'link' && !m.link && !m.share && !m.videoUrl) return false;
+        if (hideNoise && isNoise(m)) return false;
         return true;
     });
 }
@@ -663,6 +689,16 @@ function renderAll() {
     const mediaLabels = { pics: '图片', video: '视频', link: '链接' };
     if (mediaFilter !== 'all') {
         parts.push('类型: ' + (mediaLabels[mediaFilter] || mediaFilter));
+    }
+    if (hideNoise) {
+        const noiseCount = allMessages.filter(m => {
+            if (m.date !== selectedDate) return false;
+            if (selectedHours.size > 0 && !selectedHours.has(new Date(m.timestamp).getHours())) return false;
+            if (selectedUsers.size > 0 && !selectedUsers.has(m.user)) return false;
+            if (!isNoise(m)) return false;
+            return true;
+        }).length;
+        parts.push(`已隐藏水消息 ${noiseCount} 条`);
     }
     bar.innerHTML = parts.map(p => `<span>${p}</span>`).join(' · ');
     bar.className = 'filter-bar' + (parts.length ? ' show' : '');
