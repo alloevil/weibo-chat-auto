@@ -56,12 +56,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 /* 内容区 */
 .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #eff3f4; }
 
-/* 小时筛选 */
-.hours-bar { display: flex; gap: 6px; padding: 12px 16px; border-bottom: 1px solid #eff3f4; flex-wrap: wrap; flex-shrink: 0; align-items: center; }
-.hour-btn { min-width: 42px; height: 32px; padding: 0 8px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; cursor: pointer; font-size: 13px; color: #0f1419; transition: all .15s; display: flex; align-items: center; justify-content: center; }
-.hour-btn:hover { background: #f7f9f9; }
-.hour-btn.active { background: #1d9bf0; color: #fff; border-color: #1d9bf0; }
-.hours-clear { padding: 0 4px; border: none; background: none; color: #536471; cursor: pointer; font-size: 13px; }
+/* 小时热力条 */
+.hours-bar { padding: 8px 16px 4px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
+.heatmap { display: flex; gap: 2px; align-items: flex-end; }
+.heatmap-cell { flex: 1; min-width: 0; height: 24px; border-radius: 3px; cursor: pointer; transition: all .15s; }
+.heatmap-cell:hover { transform: scale(1.08); z-index: 1; }
+.heatmap-cell.active { box-shadow: 0 0 0 2px #1d9bf0; }
+.heatmap-cell.empty { height: 4px; cursor: default; opacity: 0.5; padding: 0; }
+.heatmap-cell.empty:hover { transform: none; }
+.heatmap-labels { display: flex; gap: 2px; margin-top: 3px; }
+.heatmap-label { flex: 1; min-width: 0; text-align: center; font-size: 10px; color: #536471; line-height: 1; }
+.heatmap-label.show { visibility: visible; }
+.heatmap-label.hide { visibility: hidden; }
+.heatmap-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.heatmap-title { font-size: 12px; color: #536471; }
+.hours-clear { padding: 0 4px; border: none; background: none; color: #536471; cursor: pointer; font-size: 12px; }
 .hours-clear:hover { color: #1d9bf0; }
 
 /* 筛选状态 */
@@ -425,7 +434,7 @@ function selectDate(d) {
     renderAll();
 }
 
-// 小时按钮
+// 小时热力条
 function renderHours() {
     const el = document.getElementById('hoursBar');
     const dayMsgs = allMessages.filter(m => m.date === selectedDate);
@@ -435,16 +444,38 @@ function renderHours() {
         hourCounts[h] = (hourCounts[h] || 0) + 1;
     });
 
-    let html = '';
+    const maxCount = Math.max(...Object.values(hourCounts), 1);
+
+    const levels = ['#eef1f3', '#c8dae8', '#7eb3d4', '#3d8ec4', '#1d6fa8'];
+
+    let bars = '';
     for (let h = 0; h < 24; h++) {
-        const label = String(h).padStart(2, '0');
-        const active = selectedHours.has(h) ? 'active' : '';
         const count = hourCounts[h] || 0;
-        const opacity = count > 0 ? '' : 'style="opacity:0.35"';
-        html += `<div class="hour-btn ${active}" ${opacity} onclick="toggleHour(${h})">${label}</div>`;
+        let level = 0;
+        if (count > 0) {
+            const ratio = Math.sqrt(count) / Math.sqrt(maxCount);
+            level = Math.max(1, Math.min(4, Math.ceil(ratio * 4)));
+        }
+        const color = levels[level];
+        const active = selectedHours.has(h) ? 'active' : '';
+        const empty = count === 0 ? 'empty' : '';
+        bars += `<div class="heatmap-cell ${active} ${empty}" onclick="toggleHour(${h})" style="background:${color}" title="${h}时 · ${count}条"></div>`;
     }
-    html += `<button class="hours-clear" onclick="clearHours()">清除</button>`;
-    el.innerHTML = html;
+
+    let labels = '';
+    for (let h = 0; h < 24; h++) {
+        const show = h % 3 === 0;
+        labels += `<div class="heatmap-label ${show ? 'show' : 'hide'}">${show ? String(h).padStart(2, '0') : '&nbsp;'}</div>`;
+    }
+
+    el.innerHTML = `
+        <div class="heatmap-header">
+            <span class="heatmap-title">时段</span>
+            <button class="hours-clear" onclick="clearHours()">清除</button>
+        </div>
+        <div class="heatmap">${bars}</div>
+        <div class="heatmap-labels">${labels}</div>
+    `;
 }
 
 function toggleHour(h) {
