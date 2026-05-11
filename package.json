@@ -1,7 +1,7 @@
 {
-  "name": "weibo-chat-auto",
+  "name": "weibo-group-chat-archiver",
   "version": "1.0.0",
-  "description": "微博聊天自动归档工具",
+  "description": "Weibo Group Chat Archiver - 微博群聊消息自动归档工具",
   "main": "auto-archive-simple.js",
   "scripts": {
     "save-cookies": "node save-cookies.js",

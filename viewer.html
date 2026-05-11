@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>微博聊天查看器</title>
+<title>Weibo Group Chat Viewer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif; background: #fff; color: #0f1419; height: 100vh; display: flex; flex-direction: column; }
 
-/* 顶部导航 */
+/* Top nav */
 .nav { border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
 .nav-top { display: flex; align-items: center; padding: 0 16px; height: 53px; gap: 16px; }
 .nav-title { font-size: 20px; font-weight: 700; }
@@ -16,7 +17,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .nav-date:hover { background: #f7f9f9; }
 .nav-stats { font-size: 13px; color: #536471; }
 
-/* 日历 */
+/* Calendar */
 .calendar { display: none; flex-direction: column; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eff3f4; }
 .calendar.show { display: flex; }
 .calendar-header { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
@@ -34,10 +35,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .cal-day.today { border: 1px solid #1d9bf0; }
 .cal-day.empty { visibility: hidden; }
 
-/* 主体 */
+/* Main layout */
 .main { display: flex; flex: 1; overflow: hidden; }
 
-/* 左侧用户列表 */
+/* Sidebar user list */
 .sidebar { width: 290px; border-right: 1px solid #eff3f4; display: flex; flex-direction: column; flex-shrink: 0; }
 .sidebar-header { padding: 12px 16px; font-size: 20px; font-weight: 700; }
 .user-list { flex: 1; overflow-y: auto; }
@@ -53,10 +54,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .user-clear button { width: 100%; padding: 8px 0; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; cursor: pointer; font-size: 14px; font-weight: 700; color: #0f1419; transition: background .15s; }
 .user-clear button:hover { background: #f7f9f9; }
 
-/* 内容区 */
+/* Content area */
 .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #eff3f4; }
 
-/* 小时热力条 */
+/* Hour heatmap */
 .hours-bar { padding: 8px 16px 4px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
 .heatmap { display: flex; gap: 2px; align-items: flex-end; }
 .heatmap-cell { flex: 1; min-width: 0; height: 24px; border-radius: 3px; cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; }
@@ -74,18 +75,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .hours-clear { padding: 0 4px; border: none; background: none; color: #536471; cursor: pointer; font-size: 12px; }
 .hours-clear:hover { color: #1d9bf0; }
 
-/* 媒体筛选 */
+/* Media filter */
 .media-bar { padding: 4px 16px 8px; display: flex; gap: 6px; }
 .media-btn { padding: 3px 10px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; cursor: pointer; font-size: 12px; color: #536471; transition: all .15s; }
 .media-btn:hover { background: #f7f9f9; }
 .media-btn.active { background: #1d9bf0; color: #fff; border-color: #1d9bf0; }
 
-/* 筛选状态 */
+/* Tooltip */
+[data-tooltip] { position: relative; }
+[data-tooltip]::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 6px; background: #0f1419; color: #fff; font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 100; }
+[data-tooltip]:hover::after { opacity: 1; }
+.heatmap-title[data-tooltip]::after { left: 0; transform: none; }
+
+/* Filter status */
 .filter-bar { padding: 0 16px; height: 0; overflow: hidden; transition: height .2s; font-size: 13px; color: #536471; display: flex; align-items: center; }
 .filter-bar.show { height: 36px; border-bottom: 1px solid #eff3f4; }
 .filter-bar span { color: #1d9bf0; }
 
-/* 消息列表 */
+/* Message list */
 .messages { flex: 1; overflow-y: auto; }
 .msg-item { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); padding: 12px 16px 12px 12px; border-bottom: 1px solid #eff3f4; border-left: 4px solid var(--user-accent, #cfd9de); gap: 16px; transition: background .1s; }
 .msg-item:hover { background: #f7f9f9; }
@@ -140,10 +147,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
     .msg-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; }
 }
 
-/* 空状态 */
+/* Empty state */
 .empty { display: flex; align-items: center; justify-content: center; flex: 1; color: #536471; font-size: 15px; padding: 40px; }
 
-/* 头像颜色 */
+/* Avatar colors */
 .av-0 { background: #1d9bf0; color: #fff; }
 .av-1 { background: #f4212e; color: #fff; }
 .av-2 { background: #ffd400; color: #0f1419; }
@@ -162,8 +169,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 
 <div class="nav">
     <div class="nav-top">
-        <div class="nav-title">微博聊天查看器</div>
-        <button class="nav-date" id="dateToggle" onclick="toggleCalendar()">选择日期</button>
+        <div class="nav-title">Weibo Group Chat Viewer</div>
+        <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="Select a date to view">Select Date</button>
         <div class="nav-stats" id="stats"></div>
     </div>
     <div class="calendar" id="calendar"></div>
@@ -171,9 +178,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 
 <div class="main">
     <div class="sidebar">
-        <div class="sidebar-header">群成员</div>
+        <div class="sidebar-header" data-tooltip="Click a user to filter their messages">Members</div>
         <div class="user-list" id="userList"></div>
-        <div class="user-clear"><button onclick="clearUserFilter()">清除筛选</button></div>
+        <div class="user-clear"><button onclick="clearUserFilter()">Clear Filter</button></div>
     </div>
     <div class="content">
         <div class="hours-bar" id="hoursBar"></div>
@@ -201,7 +208,7 @@ let selectedDate = '';
 let selectedHours = new Set();
 let selectedUsers = new Set();
 let mediaFilter = 'all';
-let hideNoise = true;   // 过滤「早」问候和「领红包」消息
+let hideNoise = true;   // filter noise: "早" greetings, "领红包" red packets
 let userColorMap = {};
 let calendarOpen = false;
 
@@ -216,7 +223,7 @@ function getUserAccent(user) {
     return USER_ACCENTS[getUserColor(user)];
 }
 
-// 微博表情 → Unicode 映射
+// Weibo emoji → Unicode mapping
 const EMOJI_MAP = {
     '[笑cry]': '😂', '[允悲]': '😅', '[doge]': '🐶', '[流鼻血]': '😳',
     '[哈哈]': '😆', '[二哈]': '🐕', '[苦涩]': '😩', '[泪]': '😢',
@@ -251,7 +258,7 @@ function processEmoji(text) {
     });
 }
 
-// 把 URL 变成可点击链接，图片URL额外渲染为缩略图
+// Convert URLs to clickable links, render image URLs as thumbnails
 function processUrls(text) {
     return text.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
         const display = url.length > 60 ? url.substring(0, 57) + '...' : url;
@@ -264,7 +271,7 @@ function processUrls(text) {
     });
 }
 
-// 处理转发消息：「引用内容」 - - - - - - - - 回复内容
+// Process forwarded messages: "quoted content" - - - - - - reply
 function processForward(text) {
     const SEP = ' - - - - - - - - - - - - - - - ';
     // 统一处理流程：escape → urls → emoji
@@ -327,11 +334,11 @@ function processForward(text) {
     return `<div class="forward-quote">${quoteHtml}</div><div class="forward-reply">${replyHtml}</div>`;
 }
 
-// 星期
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+// Weekday
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function getWeekday(dateStr) {
-    return '周' + WEEKDAYS[new Date(dateStr + 'T00:00:00').getDay()];
+    return WEEKDAYS[new Date(dateStr + 'T00:00:00').getDay()];
 }
 
 async function loadData() {
@@ -339,7 +346,7 @@ async function loadData() {
     const data = await resp.json();
     allMessages = data.messages;
 
-    // 按月分组
+    // Group by month
     const dateSet = new Set(allMessages.map(m => m.date));
     const allDates = [...dateSet].sort();
     monthDates = {};
@@ -352,7 +359,7 @@ async function loadData() {
     for (const m in monthDates) monthDates[m] = [...monthDates[m]].sort();
     months = Object.keys(monthDates).sort();
 
-    // 默认选最新月、最新日
+    // Default to latest month and latest date
     selectedMonth = months[months.length - 1];
     const datesInMonth = monthDates[selectedMonth];
     selectedDate = datesInMonth[datesInMonth.length - 1];
@@ -365,10 +372,10 @@ async function loadData() {
 function updateDateToggle() {
     const el = document.getElementById('dateToggle');
     if (!selectedDate) {
-        el.textContent = '选择日期';
+        el.textContent = 'Select Date';
         return;
     }
-    el.textContent = `${selectedDate} ${getWeekday(selectedDate)} ${calendarOpen ? '收起' : '展开'}`;
+    el.textContent = `${selectedDate} ${getWeekday(selectedDate)} ${calendarOpen ? '▲' : '▼'}`;
 }
 
 function toggleCalendar() {
@@ -387,7 +394,7 @@ function renderCalendar() {
     const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    const monthLabel = `${year}年${month}月`;
+    const monthLabel = `${year}-${String(month).padStart(2, '0')}`;
 
     const prevMonth = months.indexOf(selectedMonth) > 0;
     const nextMonth = months.indexOf(selectedMonth) < months.length - 1;
@@ -400,7 +407,7 @@ function renderCalendar() {
 
     // 星期头
     html += '<div class="cal-grid">';
-    for (const w of ['日', '一', '二', '三', '四', '五', '六']) {
+    for (const w of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
         html += `<div class="cal-weekday">${w}</div>`;
     }
 
@@ -479,7 +486,7 @@ function renderHours() {
         const color = levels[level];
         const active = selectedHours.has(h) ? 'active' : '';
         const empty = count === 0 ? 'empty' : '';
-        bars += `<div class="heatmap-cell ${active} ${empty}" onclick="toggleHour(${h})" style="background:${color}" title="${h}时 · ${count}条">${count > 0 ? '<span class="heatmap-count">' + count + '</span>' : ''}</div>`;
+        bars += `<div class="heatmap-cell ${active} ${empty}" onclick="toggleHour(${h})" style="background:${color}" title="${h}:00 · ${count} msgs">${count > 0 ? '<span class="heatmap-count">' + count + '</span>' : ''}</div>`;
     }
 
     let labels = '';
@@ -490,8 +497,8 @@ function renderHours() {
 
     el.innerHTML = `
         <div class="heatmap-header">
-            <span class="heatmap-title">时段</span>
-            <button class="hours-clear" onclick="clearHours()">清除</button>
+            <span class="heatmap-title" data-tooltip="Click an hour to filter messages by time">Hours</span>
+            <button class="hours-clear" onclick="clearHours()">Clear</button>
         </div>
         <div class="heatmap">${bars}</div>
         <div class="heatmap-labels">${labels}</div>
@@ -514,14 +521,14 @@ function clearHours() {
 // 媒体筛选
 function renderMediaBar() {
     const types = [
-        { key: 'all', label: '全部' },
-        { key: 'pics', label: '图片' },
-        { key: 'video', label: '视频' },
-        { key: 'link', label: '链接' },
+        { key: 'all', label: 'All', tip: 'Show all messages' },
+        { key: 'pics', label: 'Photos', tip: 'Show messages with photos' },
+        { key: 'video', label: 'Video', tip: 'Show messages with videos' },
+        { key: 'link', label: 'Links', tip: 'Show messages with links or shares' },
     ];
-    const noiseBtn = `<div class="media-btn ${hideNoise ? 'active' : ''}" onclick="toggleNoise()">隐藏水消息</div>`;
+    const noiseBtn = `<div class="media-btn ${hideNoise ? 'active' : ''}" onclick="toggleNoise()" data-tooltip="Hide greetings, red packets, and noise">Hide Noise</div>`;
     document.getElementById('mediaBar').innerHTML = types.map(t =>
-        `<div class="media-btn ${mediaFilter === t.key ? 'active' : ''}" onclick="setMediaFilter('${t.key}')">${t.label}</div>`
+        `<div class="media-btn ${mediaFilter === t.key ? 'active' : ''}" onclick="setMediaFilter('${t.key}')" data-tooltip="${t.tip}">${t.label}</div>`
     ).join('') + noiseBtn;
 }
 
@@ -549,7 +556,7 @@ function clearUserFilter() {
     renderAll();
 }
 
-// 判断是否为噪音消息（早安问候、纯标点、领红包）
+// Noise filter: morning greetings, pure punctuation, red packets
 const NOISE_RE = /^[早\s~～！!。.·:：?？,，…💗❤️💕🥰😘✨🌟⭐💫🌞☀️🌅👍🤝💪🫶]+$/;
 const DOTS_RE = /^[。.·…,，·\s]+$/;
 function isNoise(m) {
@@ -569,7 +576,7 @@ function getFiltered() {
         }
         if (selectedUsers.size > 0 && !selectedUsers.has(m.user)) return false;
         if (mediaFilter === 'pics' && (!m.pics || m.pics.length === 0)) return false;
-        if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频') return false;
+        if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频' && m.content !== 'Video') return false;
         if (mediaFilter === 'link' && !m.link && !m.share && !m.videoUrl) return false;
         if (hideNoise && isNoise(m)) return false;
         return true;
@@ -597,7 +604,7 @@ function renderUserList() {
             <div class="user-avatar ${av}">${avatarImg}</div>
             <div class="user-info">
                 <div class="user-name">${escapeHtml(user)}</div>
-                <div class="user-count">${count} 条消息</div>
+                <div class="user-count">${count} msgs</div>
             </div>
         </div>`;
     }).join('');
@@ -607,7 +614,7 @@ function renderUserList() {
 function renderMessages(msgs) {
     const el = document.getElementById('messages');
     if (msgs.length === 0) {
-        el.innerHTML = '<div class="empty">暂无消息</div>';
+        el.innerHTML = '<div class="empty">No messages</div>';
         return;
     }
     el.innerHTML = msgs.map((m, index) => {
@@ -632,13 +639,13 @@ function renderMessages(msgs) {
             const text = s.text ? `<div class="share-text">${processEmoji(escapeHtml(s.text))}</div>` : '';
             const desc = s.description ? `<div class="share-desc">${escapeHtml(s.description)}</div>` : '';
             const picsHtml = s.pics && s.pics.length > 0 ? '<div class="msg-pics">' + s.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>' : '';
-            const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? '转发 ' + s.reposts : ''} ${s.comments ? '评论 ' + s.comments : ''} ${s.likes ? '赞 ' + s.likes : ''}</div>` : '';
+            const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? 'Reposts ' + s.reposts : ''} ${s.comments ? 'Comments ' + s.comments : ''} ${s.likes ? 'Likes ' + s.likes : ''}</div>` : '';
             const link = s.url ? `<a class="share-link" href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>` : '';
             attach += `<div class="share-card">${author}${title ? '<div class="share-title">' + title + '</div>' : ''}${text}${desc}${picsHtml}${stats}${link}</div>`;
         }
         // 附件：视频链接
         if (m.videoUrl) {
-            attach += `<div class="msg-video"><a href="${m.videoUrl}" target="_blank" rel="noopener" class="msg-link">▶ 观看视频</a></div>`;
+            attach += `<div class="msg-video"><a href="${m.videoUrl}" target="_blank" rel="noopener" class="msg-link">▶ Watch Video</a></div>`;
         }
         // 附件：普通链接
         if (m.link && !m.share) {
@@ -675,20 +682,20 @@ function renderAll() {
     renderMediaBar();
 
     const users = new Set(filtered.map(m => m.user));
-    document.getElementById('stats').textContent = `${filtered.length} 条消息 · ${users.size} 人`;
+    document.getElementById('stats').textContent = `${filtered.length} msgs · ${users.size} members`;
     updateDateToggle();
 
     const bar = document.getElementById('filterBar');
     const parts = [];
     if (selectedHours.size > 0) {
-        parts.push('时段: ' + [...selectedHours].sort((a,b)=>a-b).map(h => String(h).padStart(2,'0')+':00').join(', '));
+        parts.push('Hours: ' + [...selectedHours].sort((a,b)=>a-b).map(h => String(h).padStart(2,'0')+':00').join(', '));
     }
     if (selectedUsers.size > 0) {
-        parts.push('用户: ' + [...selectedUsers].join(', '));
+        parts.push('User: ' + [...selectedUsers].join(', '));
     }
-    const mediaLabels = { pics: '图片', video: '视频', link: '链接' };
+    const mediaLabels = { pics: 'Photos', video: 'Video', link: 'Links' };
     if (mediaFilter !== 'all') {
-        parts.push('类型: ' + (mediaLabels[mediaFilter] || mediaFilter));
+        parts.push('Type: ' + (mediaLabels[mediaFilter] || mediaFilter));
     }
     if (hideNoise) {
         const noiseCount = allMessages.filter(m => {
@@ -698,7 +705,7 @@ function renderAll() {
             if (!isNoise(m)) return false;
             return true;
         }).length;
-        parts.push(`已隐藏水消息 ${noiseCount} 条`);
+        parts.push(`Hidden noise: ${noiseCount}`);
     }
     bar.innerHTML = parts.map(p => `<span>${p}</span>`).join(' · ');
     bar.className = 'filter-bar' + (parts.length ? ' show' : '');
