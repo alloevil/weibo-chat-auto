@@ -33,7 +33,17 @@ npm run save-cookies
 
 浏览器会打开微博登录页面，登录后 Cookie 自动保存到 `cookies.json`。
 
-### 2. 运行归档
+### 2. 配置目标群聊
+
+编辑 `auto-archive-simple.js`，将 `groupName` 改为你要归档的群名称（必须与微博聊天中的群名完全一致）：
+
+```javascript
+const CONFIG = {
+    groupName: '你的群名称',  // 例如 '家人群'、'公司群'
+};
+```
+
+### 3. 运行归档
 
 ```bash
 npm run archive
@@ -41,7 +51,7 @@ npm run archive
 
 首次运行会拉取最近 7 天的消息，之后每次从上次截止时间继续。
 
-### 3. 查看归档数据
+### 4. 查看归档数据
 
 ```bash
 npm run view
@@ -49,7 +59,7 @@ npm run view
 
 打开 http://localhost:3456 查看消息。
 
-### 4. 定时自动运行（可选）
+### 5. 定时自动运行（可选）
 
 ```bash
 # 编辑 plist 中的路径，然后：
