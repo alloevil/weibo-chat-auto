@@ -274,7 +274,33 @@ function closeLightbox() {
     document.getElementById('lightbox').classList.remove('active');
     document.getElementById('lightbox-img').src = '';
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+document.addEventListener('keydown', e => {
+    // Escape: close lightbox or clear search
+    if (e.key === 'Escape') {
+        if (document.getElementById('lightbox').classList.contains('active')) {
+            closeLightbox();
+        } else if (searchQuery) {
+            clearSearch();
+        }
+        return;
+    }
+    // Don't trigger shortcuts when typing in input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    // / : focus search
+    if (e.key === '/') {
+        e.preventDefault();
+        document.getElementById('searchInput').focus();
+        return;
+    }
+    // j/k : scroll messages
+    const messages = document.getElementById('messages');
+    if (e.key === 'j') { messages.scrollBy({ top: 200, behavior: 'smooth' }); return; }
+    if (e.key === 'k') { messages.scrollBy({ top: -200, behavior: 'smooth' }); return; }
+    // n/p : next/prev search result
+    if (searchQuery && e.key === 'n' && !e.shiftKey) { navigateSearch(1); return; }
+    if (searchQuery && (e.key === 'N' || (e.key === 'n' && e.shiftKey))) { navigateSearch(-1); return; }
+});
 let allMessages = [];
 let dateCounts = {};      // { '2026-05-05': 361, '2026-05-06': 872, ... }
 let months = [];        // ['2026-04', '2026-05']
