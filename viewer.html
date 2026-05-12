@@ -383,11 +383,11 @@ function processEmoji(text) {
 // Convert URLs to clickable links, render image URLs as thumbnails
 function processUrls(text) {
     return text.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+        const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const display = url.length > 60 ? url.substring(0, 57) + '...' : url;
-        const link = `<a href="${url}" target="_blank" rel="noopener" class="msg-link">${display}</a>`;
-        // 图片URL额外显示缩略图
+        const link = `<a href="${safeUrl}" target="_blank" rel="noopener" class="msg-link">${display}</a>`;
         if (/\.(jpg|jpeg|png|gif|webp)$/i.test(url)) {
-            return link + `<br><img src="${url}" loading="lazy" class="msg-img">`;
+            return link + `<br><img src="${safeUrl}" loading="lazy" class="msg-img">`;
         }
         return link;
     });
