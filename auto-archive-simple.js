@@ -850,7 +850,24 @@ async function main() {
     console.log('完成！');
 }
 
-main().catch(err => {
+async function runWithRetry(maxRetries = 1) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            await main();
+            return;
+        } catch (err) {
+            if (attempt < maxRetries) {
+                console.error(`尝试 ${attempt + 1} 失败:`, err.message);
+                console.log('30秒后重试...');
+                await new Promise(r => setTimeout(r, 30000));
+            } else {
+                throw err;
+            }
+        }
+    }
+}
+
+runWithRetry().catch(err => {
     console.error('错误:', err);
     process.exit(1);
 });
