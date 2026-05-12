@@ -1009,7 +1009,7 @@ function renderMediaBreakdown(msgs) {
         const hasPics = m.pics && m.pics.length > 0;
         const hasVideo = !!m.videoUrl;
         const hasShare = !!m.share;
-        const hasLink = !!m.link;
+        const hasLink = !hasShare && /https?:\/\//.test(m.content || '');
         if (hasPics) pics++;
         if (hasVideo) videos++;
         if (hasShare) shares++;
