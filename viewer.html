@@ -13,9 +13,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .nav { border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
 .nav-top { display: flex; align-items: center; padding: 0 16px; height: 53px; gap: 16px; }
 .nav-title { font-size: 20px; font-weight: 700; }
-.nav-date { margin-left: auto; height: 32px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #0f1419; cursor: pointer; font-size: 14px; font-weight: 700; }
+.nav-date { height: 32px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #0f1419; cursor: pointer; font-size: 14px; font-weight: 700; }
 .nav-date:hover { background: #f7f9f9; }
+.nav-group-select { height: 32px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #0f1419; cursor: pointer; font-size: 14px; font-weight: 700; }
+.nav-group-select:hover { background: #f7f9f9; }
 .nav-stats { font-size: 13px; color: #536471; }
+.nav-last-archived { margin-left: auto; font-size: 12px; color: #536471; white-space: nowrap; }
 
 /* Calendar */
 .calendar { display: none; flex-direction: column; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eff3f4; }
@@ -92,6 +95,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .filter-bar.show { height: 36px; border-bottom: 1px solid #eff3f4; }
 .filter-bar span { color: #1d9bf0; }
 
+/* Search */
+.search-bar { display: flex; align-items: center; padding: 6px 16px; gap: 8px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
+.search-input-wrap { position: relative; flex: 1; max-width: 400px; }
+.search-input { width: 100%; height: 36px; padding: 0 36px 0 36px; border: 1px solid #cfd9de; border-radius: 9999px; background: #f7f9f9; font-size: 14px; color: #0f1419; outline: none; transition: border-color .15s; }
+.search-input:focus { border-color: #1d9bf0; background: #fff; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none; }
+.search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border: none; border-radius: 50%; background: #1d9bf0; color: #fff; font-size: 13px; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1; }
+.search-clear.show { display: flex; }
+.search-count { font-size: 13px; color: #536471; white-space: nowrap; }
+.search-highlight { background: #fff3bf; border-radius: 2px; padding: 0 1px; }
+
+/* New message badge */
+.msg-new { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #1d9bf0; color: #fff; font-size: 10px; font-weight: 700; margin-left: 8px; vertical-align: middle; }
+
 /* Message list */
 .messages { flex: 1; overflow-y: auto; }
 .msg-item { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); padding: 12px 16px 12px 12px; border-bottom: 1px solid #eff3f4; border-left: 4px solid var(--user-accent, #cfd9de); gap: 16px; transition: background .1s; }
@@ -116,6 +133,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .msg-pics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .msg-pics img { max-width: 200px; max-height: 160px; border-radius: 12px; object-fit: cover; cursor: pointer; }
 .msg-pics img:hover { filter: brightness(0.92); }
+.msg-file { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 10px 12px; background: #f7f9f9; border-radius: 12px; border: 1px solid #eff3f4; }
+.msg-file-icon { font-size: 24px; }
+.msg-file-info { flex: 1; min-width: 0; }
+.msg-file-name { font-size: 14px; font-weight: 500; color: #0f1419; word-break: break-all; }
+.msg-file-download { display: inline-block; margin-top: 4px; font-size: 12px; color: #1d9bf0; text-decoration: none; }
+.msg-file-download:hover { text-decoration: underline; }
 .msg-video { margin-top: 6px; padding: 6px 10px; background: #f7f9f9; border-radius: 8px; display: inline-block; }
 .msg-link-attach { margin-top: 4px; font-size: 13px; }
 .lightbox { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.85); cursor: zoom-out; justify-content: center; align-items: center; }
@@ -161,6 +184,35 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .av-7 { background: #00d5fa; color: #0f1419; }
 .av-8 { background: #7c3aed; color: #fff; }
 .av-9 { background: #059669; color: #fff; }
+
+/* Stats Panel */
+.stats-toggle { height: 32px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #0f1419; cursor: pointer; font-size: 14px; font-weight: 700; transition: all .15s; }
+.stats-toggle:hover { background: #f7f9f9; }
+.stats-toggle.active { background: #1d9bf0; color: #fff; border-color: #1d9bf0; }
+.stats-panel { display: none; flex: 1; overflow-y: auto; padding: 20px 24px; }
+.stats-panel.show { display: block; }
+.stats-section { margin-bottom: 28px; }
+.stats-section-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; color: #0f1419; }
+.stats-chart { display: flex; align-items: flex-end; gap: 3px; height: 180px; padding-bottom: 24px; border-bottom: 1px solid #eff3f4; position: relative; }
+.stats-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+.stats-bar { width: 100%; max-width: 40px; border-radius: 4px 4px 0 0; background: #1d9bf0; transition: height .3s; min-height: 2px; position: relative; }
+.stats-bar:hover { background: #1a8cd8; }
+.stats-bar-val { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #536471; white-space: nowrap; }
+.stats-bar-label { font-size: 11px; color: #536471; margin-top: 4px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.stats-table { width: 100%; border-collapse: collapse; }
+.stats-table th, .stats-table td { padding: 8px 12px; text-align: left; font-size: 14px; border-bottom: 1px solid #eff3f4; }
+.stats-table th { color: #536471; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+.stats-table tr:hover { background: #f7f9f9; }
+.stats-table .rank { color: #536471; width: 30px; }
+.stats-table .bar-cell { width: 200px; }
+.stats-table .mini-bar { height: 8px; border-radius: 4px; background: #1d9bf0; opacity: 0.7; }
+.stats-media-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.stats-media-card { padding: 16px 20px; border: 1px solid #eff3f4; border-radius: 12px; min-width: 120px; text-align: center; }
+.stats-media-card .num { font-size: 28px; font-weight: 700; color: #0f1419; }
+.stats-media-card .label { font-size: 13px; color: #536471; margin-top: 4px; }
+.stats-word-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.stats-word { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; background: #f7f9f9; border-radius: 9999px; font-size: 14px; color: #0f1419; }
+.stats-word .count { font-size: 12px; color: #536471; }
 </style>
 </head>
 <body>
@@ -170,8 +222,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 <div class="nav">
     <div class="nav-top">
         <div class="nav-title">Weibo Group Chat Viewer</div>
+        <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
         <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="Select a date to view">Select Date</button>
+        <button class="stats-toggle" id="statsToggle" onclick="toggleStats()">📊 Stats</button>
         <div class="nav-stats" id="stats"></div>
+        <div class="nav-last-archived" id="lastArchived"></div>
     </div>
     <div class="calendar" id="calendar"></div>
 </div>
@@ -185,8 +240,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
     <div class="content">
         <div class="hours-bar" id="hoursBar"></div>
         <div class="media-bar" id="mediaBar"></div>
+        <div class="search-bar" id="searchBar">
+            <div class="search-input-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="search-input" id="searchInput" placeholder="Search messages and users..." oninput="onSearchInput(this.value)">
+                <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+            </div>
+            <span class="search-count" id="searchCount"></span>
+        </div>
         <div class="filter-bar" id="filterBar"></div>
         <div class="messages" id="messages"></div>
+        <div class="stats-panel" id="statsPanel"></div>
     </div>
 </div>
 
@@ -209,8 +273,14 @@ let selectedHours = new Set();
 let selectedUsers = new Set();
 let mediaFilter = 'all';
 let hideNoise = true;   // filter noise: "早" greetings, "领红包" red packets
+let searchQuery = '';
+let searchDebounceTimer = null;
+let currentGroup = '';
+let availableGroups = [];
 let userColorMap = {};
 let calendarOpen = false;
+let statsView = false;
+let lastVisitTimestamp = parseInt(localStorage.getItem('lastVisitTimestamp') || '0');
 
 const AVATARS = 10;
 const USER_ACCENTS = ['#1d9bf0', '#f4212e', '#b8860b', '#00a36c', '#7856ff', '#ff7a00', '#d91a6d', '#008fb3', '#7c3aed', '#059669'];
@@ -250,6 +320,16 @@ const EMOJI_MAP = {
     '[不愧是你]': '👏', '[手指比心]': '🤌', '[老师爱你]': '💗',
     '[11]': '⚡', '[动画表情]': '🎭',
 };
+
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const icons = {
+        pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
+        ppt: '📽️', pptx: '📽️', zip: '📦', rar: '📦', txt: '📃',
+        csv: '📊', rtf: '📝', odt: '📝', ods: '📊', odp: '📽️',
+    };
+    return icons[ext] || '📎';
+}
 
 function processEmoji(text) {
     return text.replace(/\[[^\]]+\]/g, (match) => {
@@ -341,8 +421,51 @@ function getWeekday(dateStr) {
     return WEEKDAYS[new Date(dateStr + 'T00:00:00').getDay()];
 }
 
+async function loadGroups() {
+    const resp = await fetch('/api/groups');
+    const data = await resp.json();
+    availableGroups = data.groups;
+
+    // Show last archived time
+    if (data.lastArchived) {
+        const dt = new Date(data.lastArchived);
+        const pad = n => String(n).padStart(2, '0');
+        const timeStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        document.getElementById('lastArchived').textContent = `Last archived: ${timeStr}`;
+    }
+
+    const sel = document.getElementById('groupSelect');
+    if (availableGroups.length <= 1) {
+        sel.style.display = 'none';
+        currentGroup = availableGroups[0]?.id || '';
+    } else {
+        sel.innerHTML = availableGroups.map(g =>
+            `<option value="${g.id}"${g.id === currentGroup ? ' selected' : ''}>${escapeHtml(g.name)}</option>`
+        ).join('');
+        sel.style.display = '';
+        // Default to the last named group (has latest data)
+        if (!currentGroup) {
+            const namedGroup = availableGroups.find(g => g.id !== '');
+            currentGroup = namedGroup ? namedGroup.id : availableGroups[0].id;
+        }
+    }
+}
+
+function switchGroup(groupId) {
+    currentGroup = groupId;
+    selectedHours.clear();
+    selectedUsers.clear();
+    mediaFilter = 'all';
+    searchQuery = '';
+    const si = document.getElementById('searchInput'); if (si) si.value = '';
+    const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
+    loadData();
+}
+
 async function loadData() {
-    const resp = await fetch('/api/messages');
+    await loadGroups();
+    const groupParam = currentGroup ? '?group=' + encodeURIComponent(currentGroup) : '';
+    const resp = await fetch('/api/messages' + groupParam);
     const data = await resp.json();
     allMessages = data.messages;
 
@@ -446,6 +569,9 @@ function changeMonth(delta) {
     selectedHours.clear();
     selectedUsers.clear();
     mediaFilter = 'all';
+    searchQuery = '';
+    const si = document.getElementById('searchInput'); if (si) si.value = '';
+    const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     renderCalendar();
     renderHours();
     renderAll();
@@ -456,6 +582,9 @@ function selectDate(d) {
     selectedHours.clear();
     selectedUsers.clear();
     mediaFilter = 'all';
+    searchQuery = '';
+    const si = document.getElementById('searchInput'); if (si) si.value = '';
+    const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     renderCalendar();
     renderHours();
     renderAll();
@@ -556,6 +685,31 @@ function clearUserFilter() {
     renderAll();
 }
 
+// Search
+function onSearchInput(value) {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+        searchQuery = value.trim().toLowerCase();
+        document.getElementById('searchClear').className = 'search-clear' + (searchQuery ? ' show' : '');
+        renderAll();
+    }, 150);
+}
+
+function clearSearch() {
+    searchQuery = '';
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchClear').className = 'search-clear';
+    document.getElementById('searchCount').textContent = '';
+    renderAll();
+}
+
+function highlightText(text, query) {
+    if (!query) return text;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    return text.replace(regex, '<span class="search-highlight">$1</span>');
+}
+
 // Noise filter: morning greetings, pure punctuation, red packets
 const NOISE_RE = /^[早\s~～！!。.·:：?？,，…💗❤️💕🥰😘✨🌟⭐💫🌞☀️🌅👍🤝💪🫶]+$/;
 const DOTS_RE = /^[。.·…,，·\s]+$/;
@@ -579,6 +733,11 @@ function getFiltered() {
         if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频' && m.content !== 'Video') return false;
         if (mediaFilter === 'link' && !m.link && !m.share && !m.videoUrl) return false;
         if (hideNoise && isNoise(m)) return false;
+        if (searchQuery) {
+            const content = (m.content || '').toLowerCase();
+            const user = (m.user || '').toLowerCase();
+            if (!content.includes(searchQuery) && !user.includes(searchQuery)) return false;
+        }
         return true;
     });
 }
@@ -626,10 +785,30 @@ function renderMessages(msgs) {
         const accent = getUserAccent(m.user);
         const continuation = sameUser ? ' msg-item-continuation' : '';
         let content = processForward(m.content);
-        // 附件：图片
+        if (searchQuery) {
+            content = highlightText(content, escapeHtml(searchQuery));
+        }
+        // 附件：图片和文件
         let attach = '';
         if (m.pics && m.pics.length > 0) {
-            attach += '<div class="msg-pics">' + m.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>';
+            // 检查是否是文件消息（内容是文件名）
+            const fileExt = m.content && /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|csv|rtf|odt|ods|odp)$/i.test(m.content);
+            if (fileExt && m.pics.length === 1) {
+                // 文件消息：显示文件卡片
+                const fileUrl = m.pics[0];
+                const fileName = escapeHtml(m.content);
+                const icon = getFileIcon(m.content);
+                attach += `<div class="msg-file">
+                    <span class="msg-file-icon">${icon}</span>
+                    <div class="msg-file-info">
+                        <div class="msg-file-name">${fileName}</div>
+                        <a class="msg-file-download" href="${fileUrl}" download="${fileName}">Download</a>
+                    </div>
+                </div>`;
+            } else {
+                // 普通图片消息
+                attach += '<div class="msg-pics">' + m.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>';
+            }
         }
         // 附件：分享的帖子
         if (m.share) {
@@ -654,9 +833,12 @@ function renderMessages(msgs) {
         const userInitial = escapeHtml(m.user.charAt(0));
         const avatarHtml = m.avatar ? `<img class="msg-av" src="${m.avatar}" loading="lazy" onerror="this.remove()">` : '';
         const userAttr = m.avatar ? `data-hasavatar data-initial="${userInitial}"` : `data-initial="${userInitial}"`;
+        const userName = searchQuery ? highlightText(escapeHtml(m.user), escapeHtml(searchQuery)) : escapeHtml(m.user);
+        const isNew = m.timestamp > lastVisitTimestamp;
+        const newBadge = isNew ? '<span class="msg-new">NEW</span>' : '';
         return `<div class="msg-item${continuation}" style="--user-accent:${accent}">
             <div class="msg-meta">
-                <div class="msg-user" ${userAttr}>${avatarHtml}${escapeHtml(m.user)}</div>
+                <div class="msg-user" ${userAttr}>${avatarHtml}${userName}${newBadge}</div>
                 <div class="msg-time">${time}</div>
             </div>
             <div class="msg-body">
@@ -682,11 +864,23 @@ function renderAll() {
     renderMediaBar();
 
     const users = new Set(filtered.map(m => m.user));
-    document.getElementById('stats').textContent = `${filtered.length} msgs · ${users.size} members`;
+    const newCount = filtered.filter(m => m.timestamp > lastVisitTimestamp).length;
+    const newInfo = newCount > 0 ? ` · <span style="color:#1d9bf0">${newCount} new</span>` : '';
+    document.getElementById('stats').innerHTML = `${filtered.length} msgs · ${users.size} members${newInfo}`;
     updateDateToggle();
+
+    // Search count
+    if (searchQuery) {
+        document.getElementById('searchCount').textContent = `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`;
+    } else {
+        document.getElementById('searchCount').textContent = '';
+    }
 
     const bar = document.getElementById('filterBar');
     const parts = [];
+    if (searchQuery) {
+        parts.push('Search: "' + searchQuery + '"');
+    }
     if (selectedHours.size > 0) {
         parts.push('Hours: ' + [...selectedHours].sort((a,b)=>a-b).map(h => String(h).padStart(2,'0')+':00').join(', '));
     }
@@ -709,7 +903,163 @@ function renderAll() {
     }
     bar.innerHTML = parts.map(p => `<span>${p}</span>`).join(' · ');
     bar.className = 'filter-bar' + (parts.length ? ' show' : '');
+
+    if (statsView) renderStats();
 }
+
+// Statistics Panel
+function toggleStats() {
+    statsView = !statsView;
+    document.getElementById('statsToggle').classList.toggle('active', statsView);
+    const msgEl = document.getElementById('messages');
+    const statsEl = document.getElementById('statsPanel');
+    const hoursEl = document.getElementById('hoursBar');
+    const mediaEl = document.getElementById('mediaBar');
+    const searchEl = document.getElementById('searchBar');
+    const filterEl = document.getElementById('filterBar');
+
+    if (statsView) {
+        msgEl.style.display = 'none';
+        hoursEl.style.display = 'none';
+        mediaEl.style.display = 'none';
+        searchEl.style.display = 'none';
+        filterEl.style.display = 'none';
+        statsEl.classList.add('show');
+        renderStats();
+    } else {
+        msgEl.style.display = '';
+        hoursEl.style.display = '';
+        mediaEl.style.display = '';
+        searchEl.style.display = '';
+        filterEl.style.display = '';
+        statsEl.classList.remove('show');
+    }
+}
+
+function renderStats() {
+    const filtered = getFiltered();
+    const allFiltered = allMessages.filter(m => {
+        if (selectedHours.size > 0 && !selectedHours.has(new Date(m.timestamp).getHours())) return false;
+        if (selectedUsers.size > 0 && !selectedUsers.has(m.user)) return false;
+        if (mediaFilter === 'pics' && (!m.pics || m.pics.length === 0)) return false;
+        if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频' && m.content !== 'Video') return false;
+        if (mediaFilter === 'link' && !m.link && !m.share && !m.videoUrl) return false;
+        if (hideNoise && isNoise(m)) return false;
+        if (searchQuery) {
+            const c = (m.content || '').toLowerCase();
+            const u = (m.user || '').toLowerCase();
+            if (!c.includes(searchQuery) && !u.includes(searchQuery)) return false;
+        }
+        return true;
+    });
+
+    const panel = document.getElementById('statsPanel');
+    let html = '';
+    html += renderDayChart(allFiltered);
+    html += renderUserRanking(filtered);
+    html += renderHourChart(filtered);
+    html += renderMediaBreakdown(allFiltered);
+    html += renderWordFrequency(filtered);
+    panel.innerHTML = html;
+}
+
+function renderDayChart(msgs) {
+    const dayCounts = {};
+    msgs.forEach(m => { dayCounts[m.date] = (dayCounts[m.date] || 0) + 1; });
+    const days = Object.keys(dayCounts).sort();
+    if (days.length === 0) return '';
+    const maxCount = Math.max(...Object.values(dayCounts));
+    const bars = days.map(d => {
+        const count = dayCounts[d];
+        const height = maxCount > 0 ? Math.max(2, (count / maxCount) * 150) : 2;
+        return `<div class="stats-bar-wrap"><div class="stats-bar" style="height:${height}px"><span class="stats-bar-val">${count}</span></div><div class="stats-bar-label">${d.slice(5)}</div></div>`;
+    }).join('');
+    return `<div class="stats-section"><div class="stats-section-title">Messages Per Day (total: ${msgs.length})</div><div class="stats-chart">${bars}</div></div>`;
+}
+
+function renderUserRanking(msgs) {
+    const counts = {};
+    msgs.forEach(m => { counts[m.user] = (counts[m.user] || 0) + 1; });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 20);
+    if (sorted.length === 0) return '';
+    const maxCount = sorted[0][1];
+    const rows = sorted.map(([user, count], i) => {
+        const barWidth = maxCount > 0 ? (count / maxCount) * 100 : 0;
+        return `<tr><td class="rank">${i + 1}</td><td>${escapeHtml(user)}</td><td>${count}</td><td class="bar-cell"><div class="mini-bar" style="width:${barWidth}%"></div></td></tr>`;
+    }).join('');
+    return `<div class="stats-section"><div class="stats-section-title">Top Active Users</div><table class="stats-table"><tr><th>#</th><th>User</th><th>Messages</th><th></th></tr>${rows}</table></div>`;
+}
+
+function renderHourChart(msgs) {
+    const hourCounts = {};
+    msgs.forEach(m => { const h = new Date(m.timestamp).getHours(); hourCounts[h] = (hourCounts[h] || 0) + 1; });
+    const maxCount = Math.max(...Object.values(hourCounts), 1);
+    const bars = [];
+    for (let h = 0; h < 24; h++) {
+        const count = hourCounts[h] || 0;
+        const height = maxCount > 0 ? Math.max(2, (count / maxCount) * 150) : 2;
+        bars.push(`<div class="stats-bar-wrap"><div class="stats-bar" style="height:${height}px"><span class="stats-bar-val">${count}</span></div><div class="stats-bar-label">${String(h).padStart(2, '0')}</div></div>`);
+    }
+    return `<div class="stats-section"><div class="stats-section-title">Hourly Distribution</div><div class="stats-chart">${bars.join('')}</div></div>`;
+}
+
+function renderMediaBreakdown(msgs) {
+    let pics = 0, videos = 0, links = 0, shares = 0, plain = 0;
+    msgs.forEach(m => {
+        const hasPics = m.pics && m.pics.length > 0;
+        const hasVideo = !!m.videoUrl;
+        const hasShare = !!m.share;
+        const hasLink = !!m.link;
+        if (hasPics) pics++;
+        if (hasVideo) videos++;
+        if (hasShare) shares++;
+        else if (hasLink) links++;
+        if (!hasPics && !hasVideo && !hasShare && !hasLink) plain++;
+    });
+    const cards = [
+        { num: msgs.length, label: 'Total' },
+        { num: plain, label: 'Text Only' },
+        { num: pics, label: 'Photos' },
+        { num: videos, label: 'Videos' },
+        { num: shares, label: 'Shares' },
+        { num: links, label: 'Links' },
+    ].map(c => `<div class="stats-media-card"><div class="num">${c.num}</div><div class="label">${c.label}</div></div>`).join('');
+    return `<div class="stats-section"><div class="stats-section-title">Media Breakdown</div><div class="stats-media-grid">${cards}</div></div>`;
+}
+
+function renderWordFrequency(msgs) {
+    const wordCounts = {};
+    const STOP_WORDS = new Set(['的','了','是','在','我','有','和','就','不','人','都','一','一个','上','也','很','到','说','要','去','你','会','着','没有','看','好','自己','这','他','她','它','们','那','被','从','把','让','给','对','但','还','而','或','因为','所以','如果','虽然','可以','这个','那个','什么','怎么','吗','吧','呢','啊','哦','嗯','哈','the','a','an','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','can','to','of','in','for','on','with','at','by','from','as','into','through','during','before','after','and','but','or','not','no','so','if','than','too','very','it','its','this','that','i','you','he','she','we','they']);
+    msgs.forEach(m => {
+        const text = (m.content || '').replace(/https?:\/\/[^\s]+/g, '').replace(/\[[^\]]+\]/g, '').trim();
+        const tokens = text.match(/[一-鿿]{2,}|[a-zA-Z]{3,}/g) || [];
+        tokens.forEach(w => {
+            const lower = w.toLowerCase();
+            if (!STOP_WORDS.has(lower) && lower.length >= 2) wordCounts[lower] = (wordCounts[lower] || 0) + 1;
+        });
+    });
+    const sorted = Object.entries(wordCounts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 50);
+    if (sorted.length === 0) return '';
+    const words = sorted.map(([word, count]) => `<span class="stats-word">${escapeHtml(word)} <span class="count">×${count}</span></span>`).join('');
+    return `<div class="stats-section"><div class="stats-section-title">Frequent Words</div><div class="stats-word-list">${words}</div></div>`;
+}
+
+// Update last visit timestamp
+function updateLastVisit() {
+    const now = Date.now();
+    localStorage.setItem('lastVisitTimestamp', String(now));
+    lastVisitTimestamp = now;
+}
+
+// Update on page unload
+window.addEventListener('beforeunload', updateLastVisit);
+
+// Update when switching date
+const origSelectDate = selectDate;
+selectDate = function(d) {
+    updateLastVisit();
+    origSelectDate(d);
+};
 
 loadData();
 </script>

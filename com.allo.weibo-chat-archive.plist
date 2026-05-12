@@ -6,18 +6,13 @@
     <string>com.allo.weibo-chat-archive</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/node</string>
-        <string>/Users/allo/weibo-chat-auto/auto-archive.js</string>
+        <string>/opt/homebrew/bin/node</string>
+        <string>/Users/allo/weibo-chat-auto/auto-archive-simple.js</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/allo/weibo-chat-auto</string>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>9</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <key>StartInterval</key>
+    <integer>3600</integer>
     <key>StandardOutPath</key>
     <string>/Users/allo/weibo-chat-auto/logs/archive.log</string>
     <key>StandardErrorPath</key>

@@ -10,10 +10,21 @@ const CONFIG = {
     outputDir: path.join(__dirname, 'output'),
     chromePath: require('./config.json').chromePath,
     cookieFile: path.join(__dirname, 'cookies.json'),
-    stateFile: path.join(__dirname, 'last-archive-state.json'),
-    groupName: '茧房建筑师协会',
     launchDelay: 3000,
 };
+
+const configData = require('./config.json');
+const GROUPS = configData.groups || [configData.groupName || '茧房建筑师协会'];
+
+function getGroupOutputDir(groupName) {
+    const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
+    return path.join(CONFIG.outputDir, safe);
+}
+
+function getGroupStateFile(groupName) {
+    const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
+    return path.join(__dirname, `last-archive-state_${safe}.json`);
+}
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -314,15 +325,29 @@ async function main() {
 
     await delay(CONFIG.launchDelay);
 
-    const title = await page.title();
+    let title = '';
+    try {
+        title = await page.title();
+    } catch (e) {
+        console.log('获取页面标题失败，继续执行...');
+    }
     console.log('页面标题:', title);
 
     // 截图
-    await page.screenshot({ path: path.join(__dirname, 'debug.png'), fullPage: false });
-    console.log('截图已保存: debug.png');
+    try {
+        await page.screenshot({ path: path.join(__dirname, 'debug.png'), fullPage: false });
+        console.log('截图已保存: debug.png');
+    } catch (e) {
+        console.log('截图失败，继续执行...');
+    }
 
     // 检查是否需要登录
-    const needLogin = await checkLoginRequired(page);
+    let needLogin = false;
+    try {
+        needLogin = await checkLoginRequired(page);
+    } catch (e) {
+        console.log('检查登录状态失败，假设已登录...');
+    }
 
     if (needLogin) {
         const loginOk = await waitForLogin(page);
@@ -374,8 +399,16 @@ async function main() {
     });
     await delay(500);
 
+    console.log('目标群聊:', GROUPS.join(', '));
+
+    for (const currentGroupName of GROUPS) {
+    const groupDir = getGroupOutputDir(currentGroupName);
+    const stateFile = getGroupStateFile(currentGroupName);
+    if (!fs.existsSync(groupDir)) fs.mkdirSync(groupDir, { recursive: true });
+
     // 自动点击群聊
-    console.log(`查找群聊: ${CONFIG.groupName}...`);
+    console.log(`\n--- 归档群聊: ${currentGroupName} ---`);
+    console.log(`查找群聊: ${currentGroupName}...`);
     await delay(1000);
 
     const groupClicked = await page.evaluate((groupName) => {
@@ -413,7 +446,7 @@ async function main() {
         }
 
         return { found: false, method: 'none' };
-    }, CONFIG.groupName);
+    }, currentGroupName);
 
     if (groupClicked.found) {
         console.log(`✓ 已点击群聊 (方式: ${groupClicked.method})`);
@@ -483,9 +516,9 @@ async function main() {
     // 加载上次归档状态，确定截止时间
     let stopTimestamp = 0;
     let lastState = null;
-    if (fs.existsSync(CONFIG.stateFile)) {
+    if (fs.existsSync(stateFile)) {
         try {
-            lastState = JSON.parse(fs.readFileSync(CONFIG.stateFile, 'utf-8'));
+            lastState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
             stopTimestamp = lastState.lastTimestamp || 0;
             console.log(`上次归档截止: ${new Date(stopTimestamp).toLocaleString('zh-CN')}`);
         } catch {}
@@ -760,7 +793,7 @@ async function main() {
         }
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const filepath = path.join(CONFIG.outputDir, `weibo_chat_${timestamp}.json`);
+        const filepath = path.join(groupDir, `weibo_chat_${timestamp}.json`);
 
         fs.writeFileSync(filepath, JSON.stringify({
             exportTime: new Date().toISOString(),
@@ -772,7 +805,7 @@ async function main() {
         console.log(`已保存到: ${filepath}`);
 
         for (const [date, msgs] of Object.entries(groups)) {
-            fs.writeFileSync(path.join(CONFIG.outputDir, `weibo_chat_${date}.json`), JSON.stringify(msgs, null, 2));
+            fs.writeFileSync(path.join(groupDir, `weibo_chat_${date}.json`), JSON.stringify(msgs, null, 2));
         }
         console.log(`已按天拆分保存 ${Object.keys(groups).length} 个文件`);
 
@@ -783,9 +816,11 @@ async function main() {
             lastRun: new Date().toISOString(),
             lastMessageCount: messages.length,
         };
-        fs.writeFileSync(CONFIG.stateFile, JSON.stringify(newState, null, 2));
+        fs.writeFileSync(stateFile, JSON.stringify(newState, null, 2));
         console.log(`归档状态已保存 (截止: ${new Date(newestMsg.timestamp).toLocaleString('zh-CN')})`);
     }
+
+    } // end for each group
 
     // 保存 Cookie
     const finalCookies = await page.cookies();
