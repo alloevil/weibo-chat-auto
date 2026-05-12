@@ -103,8 +103,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none; }
 .search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border: none; border-radius: 50%; background: #1d9bf0; color: #fff; font-size: 13px; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1; }
 .search-clear.show { display: flex; }
-.search-count { font-size: 13px; color: #536471; white-space: nowrap; }
+.search-count { font-size: 13px; color: #536471; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
 .search-highlight { background: #fff3bf; border-radius: 2px; padding: 0 1px; }
+.search-highlight.active { background: #ffc078; }
+.search-nav { display: none; gap: 2px; }
+.search-nav.show { display: flex; }
+.search-nav-btn { width: 22px; height: 22px; border: 1px solid #cfd9de; border-radius: 4px; background: #fff; color: #536471; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.search-nav-btn:hover { background: #f7f9f9; color: #0f1419; }
 
 /* New message badge */
 .msg-new { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #1d9bf0; color: #fff; font-size: 10px; font-weight: 700; margin-left: 8px; vertical-align: middle; }
@@ -246,7 +251,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
                 <input type="text" class="search-input" id="searchInput" placeholder="Search messages and users..." oninput="onSearchInput(this.value)">
                 <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
             </div>
-            <span class="search-count" id="searchCount"></span>
+            <div class="search-count" id="searchCount">
+                <span id="searchCountText"></span>
+                <div class="search-nav" id="searchNav">
+                    <button class="search-nav-btn" onclick="navigateSearch(-1)" title="Previous">▲</button>
+                    <button class="search-nav-btn" onclick="navigateSearch(1)" title="Next">▼</button>
+                </div>
+            </div>
         </div>
         <div class="filter-bar" id="filterBar"></div>
         <div class="messages" id="messages"></div>
@@ -276,6 +287,8 @@ let mediaFilter = 'all';
 let hideNoise = true;   // filter noise: "早" greetings, "领红包" red packets
 let searchQuery = '';
 let searchDebounceTimer = null;
+let searchNavIndex = -1;
+let searchHighlights = [];
 let currentGroup = '';
 let availableGroups = [];
 let userColorMap = {};
@@ -709,10 +722,34 @@ function onSearchInput(value) {
 
 function clearSearch() {
     searchQuery = '';
+    searchHighlights = [];
+    searchNavIndex = -1;
     document.getElementById('searchInput').value = '';
     document.getElementById('searchClear').className = 'search-clear';
-    document.getElementById('searchCount').textContent = '';
+    document.getElementById('searchCountText').textContent = '';
+    document.getElementById('searchNav').className = 'search-nav';
     renderAll();
+}
+
+function navigateSearch(direction) {
+    searchHighlights = document.querySelectorAll('.search-highlight');
+    if (searchHighlights.length === 0) return;
+
+    // Remove current active highlight
+    searchHighlights.forEach(el => el.classList.remove('active'));
+
+    // Calculate new index
+    searchNavIndex += direction;
+    if (searchNavIndex < 0) searchNavIndex = searchHighlights.length - 1;
+    if (searchNavIndex >= searchHighlights.length) searchNavIndex = 0;
+
+    // Highlight and scroll to current result
+    const current = searchHighlights[searchNavIndex];
+    current.classList.add('active');
+    current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Update count text
+    document.getElementById('searchCountText').textContent = `${searchNavIndex + 1}/${searchHighlights.length}`;
 }
 
 function highlightText(text, query) {
@@ -883,9 +920,11 @@ function renderAll() {
 
     // Search count
     if (searchQuery) {
-        document.getElementById('searchCount').textContent = `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`;
+        document.getElementById('searchCountText').textContent = `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`;
+        document.getElementById('searchNav').className = 'search-nav show';
     } else {
-        document.getElementById('searchCount').textContent = '';
+        document.getElementById('searchCountText').textContent = '';
+        document.getElementById('searchNav').className = 'search-nav';
     }
 
     const bar = document.getElementById('filterBar');
