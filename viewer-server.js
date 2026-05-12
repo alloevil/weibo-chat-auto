@@ -58,6 +58,24 @@ function loadMessages(groupName = '') {
     return allMessages;
 }
 
+function loadMessagesByDate(groupName = '', date = '') {
+    const dir = getGroupDir(groupName);
+    if (!fs.existsSync(dir)) return [];
+
+    const file = path.join(dir, `weibo_chat_${date}.json`);
+    if (!fs.existsSync(file)) return [];
+
+    try {
+        const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+        const msgs = data.messages || data;
+        if (!Array.isArray(msgs)) return [];
+        msgs.sort((a, b) => a.timestamp - b.timestamp);
+        return msgs;
+    } catch {
+        return [];
+    }
+}
+
 function rewriteImageUrls(messages) {
     for (const m of messages) {
         if (m.pics) {
@@ -122,10 +140,38 @@ const server = http.createServer((req, res) => {
 
     if (url.pathname === '/api/messages') {
         const group = url.searchParams.get('group') || '';
-        const messages = loadMessages(group);
+        const date = url.searchParams.get('date') || '';
+        const messages = date ? loadMessagesByDate(group, date) : loadMessages(group);
         rewriteImageUrls(messages);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ messages }));
+        return;
+    }
+
+    // Get available dates and message counts
+    if (url.pathname === '/api/dates') {
+        const group = url.searchParams.get('group') || '';
+        const dir = getGroupDir(group);
+        const dates = {};
+        if (fs.existsSync(dir)) {
+            const files = fs.readdirSync(dir)
+                .filter(f => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
+            for (const file of files) {
+                const dateMatch = file.match(/weibo_chat_(\d{4}-\d{2}-\d{2})\.json/);
+                if (dateMatch) {
+                    const date = dateMatch[1];
+                    try {
+                        const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
+                        const msgs = data.messages || data;
+                        dates[date] = Array.isArray(msgs) ? msgs.length : 0;
+                    } catch {
+                        dates[date] = 0;
+                    }
+                }
+            }
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ dates }));
         return;
     }
 

@@ -265,6 +265,7 @@ function closeLightbox() {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 let allMessages = [];
+let dateCounts = {};      // { '2026-05-05': 361, '2026-05-06': 872, ... }
 let months = [];        // ['2026-04', '2026-05']
 let monthDates = {};    // { '2026-05': ['2026-05-01', ...] }
 let selectedMonth = '';
@@ -464,21 +465,25 @@ function switchGroup(groupId) {
 
 async function loadData() {
     await loadGroups();
+    await loadDates();
+    await loadMessages();
+}
+
+async function loadDates() {
     const groupParam = currentGroup ? '?group=' + encodeURIComponent(currentGroup) : '';
-    const resp = await fetch('/api/messages' + groupParam);
+    const resp = await fetch('/api/dates' + groupParam);
     const data = await resp.json();
-    allMessages = data.messages;
+    const dates = data.dates || {};
+    dateCounts = dates; // Store for stats
+    const allDates = Object.keys(dates).sort();
 
     // Group by month
-    const dateSet = new Set(allMessages.map(m => m.date));
-    const allDates = [...dateSet].sort();
     monthDates = {};
     allDates.forEach(d => {
         const m = d.slice(0, 7);
         if (!monthDates[m]) monthDates[m] = new Set();
         monthDates[m].add(d);
     });
-    // 转为数组
     for (const m in monthDates) monthDates[m] = [...monthDates[m]].sort();
     months = Object.keys(monthDates).sort();
 
@@ -488,6 +493,15 @@ async function loadData() {
     selectedDate = datesInMonth[datesInMonth.length - 1];
 
     renderCalendar();
+}
+
+async function loadMessages() {
+    if (!selectedDate) return;
+    const groupParam = currentGroup ? '&group=' + encodeURIComponent(currentGroup) : '';
+    const resp = await fetch('/api/messages?date=' + selectedDate + groupParam);
+    const data = await resp.json();
+    allMessages = data.messages || [];
+
     renderHours();
     renderAll();
 }
@@ -573,8 +587,7 @@ function changeMonth(delta) {
     const si = document.getElementById('searchInput'); if (si) si.value = '';
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     renderCalendar();
-    renderHours();
-    renderAll();
+    loadMessages();
 }
 
 function selectDate(d) {
@@ -586,8 +599,7 @@ function selectDate(d) {
     const si = document.getElementById('searchInput'); if (si) si.value = '';
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     renderCalendar();
-    renderHours();
-    renderAll();
+    loadMessages();
 }
 
 // 小时热力条
@@ -955,7 +967,7 @@ function renderStats() {
 
     const panel = document.getElementById('statsPanel');
     let html = '';
-    html += renderDayChart(allFiltered);
+    html += renderDayChart(); // Use date metadata for day chart
     html += renderUserRanking(filtered);
     html += renderHourChart(filtered);
     html += renderMediaBreakdown(allFiltered);
@@ -963,18 +975,17 @@ function renderStats() {
     panel.innerHTML = html;
 }
 
-function renderDayChart(msgs) {
-    const dayCounts = {};
-    msgs.forEach(m => { dayCounts[m.date] = (dayCounts[m.date] || 0) + 1; });
-    const days = Object.keys(dayCounts).sort();
+function renderDayChart() {
+    const days = Object.keys(dateCounts).sort();
     if (days.length === 0) return '';
-    const maxCount = Math.max(...Object.values(dayCounts));
+    const maxCount = Math.max(...Object.values(dateCounts));
+    const total = Object.values(dateCounts).reduce((a, b) => a + b, 0);
     const bars = days.map(d => {
-        const count = dayCounts[d];
+        const count = dateCounts[d];
         const height = maxCount > 0 ? Math.max(2, (count / maxCount) * 150) : 2;
         return `<div class="stats-bar-wrap"><div class="stats-bar" style="height:${height}px"><span class="stats-bar-val">${count}</span></div><div class="stats-bar-label">${d.slice(5)}</div></div>`;
     }).join('');
-    return `<div class="stats-section"><div class="stats-section-title">Messages Per Day (total: ${msgs.length})</div><div class="stats-chart">${bars}</div></div>`;
+    return `<div class="stats-section"><div class="stats-section-title">Messages Per Day (total: ${total})</div><div class="stats-chart">${bars}</div></div>`;
 }
 
 function renderUserRanking(msgs) {
