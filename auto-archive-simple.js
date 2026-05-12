@@ -805,7 +805,19 @@ async function main() {
         console.log(`已保存到: ${filepath}`);
 
         for (const [date, msgs] of Object.entries(groups)) {
-            fs.writeFileSync(path.join(groupDir, `weibo_chat_${date}.json`), JSON.stringify(msgs, null, 2));
+            const dayFile = path.join(groupDir, `weibo_chat_${date}.json`);
+            let existingMsgs = [];
+            try {
+                const existingData = JSON.parse(fs.readFileSync(dayFile, 'utf-8'));
+                existingMsgs = Array.isArray(existingData) ? existingData : (existingData.messages || []);
+            } catch (e) {
+                // File doesn't exist or invalid, start fresh
+            }
+            // Merge and deduplicate by message ID
+            const merged = [...existingMsgs, ...msgs];
+            const deduped = [...new Map(merged.map(m => [m.id, m])).values()];
+            deduped.sort((a, b) => a.timestamp - b.timestamp);
+            fs.writeFileSync(dayFile, JSON.stringify(deduped, null, 2));
         }
         console.log(`已按天拆分保存 ${Object.keys(groups).length} 个文件`);
 
