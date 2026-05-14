@@ -131,7 +131,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .msg-time { margin-top: 3px; padding-left: 15px; font-size: 13px; color: #536471; font-variant-numeric: tabular-nums; }
 .msg-item-continuation .msg-time { margin-top: 0; color: #7b8894; }
 .msg-body { min-width: 0; }
-.msg-content { display: inline-block; max-width: 100%; padding: 8px 11px; border: 1px solid #e5edf2; border-radius: 8px; background: #fff; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, #cfd9de) 55%, transparent); font-size: 15px; line-height: 1.5; color: #0f1419; word-break: break-word; overflow-wrap: anywhere; }
+.msg-content { display: inline-block; max-width: min(100%, 480px); padding: 8px 11px; border: 1px solid #e5edf2; border-radius: 8px; background: #fff; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, #cfd9de) 55%, transparent); font-size: 15px; line-height: 1.5; color: #0f1419; word-break: break-word; overflow-wrap: anywhere; }
 .msg-content img { max-width: 300px; max-height: 200px; border-radius: 16px; margin-top: 8px; vertical-align: middle; }
 .msg-link { color: #1d9bf0; text-decoration: none; word-break: break-all; }
 .msg-link:hover { text-decoration: underline; }
@@ -431,11 +431,12 @@ function processForward(text) {
         }
 
         const quote = s.substring(1, closeIdx); // 去掉「」
-        const rest = s.substring(closeIdx + 1).trim();
-        if (rest.startsWith(SEP)) {
-            return { quote: quote, reply: rest.substring(SEP.length) };
+        const rest = s.substring(closeIdx + 1);
+        const sepIdx = rest.indexOf(SEP);
+        if (sepIdx !== -1) {
+            return { quote: quote, reply: rest.substring(sepIdx + SEP.length) };
         }
-        return { quote: quote, reply: rest };
+        return { quote: quote, reply: rest.trim() };
     }
 
     const { quote, reply } = parseQuote(text);
@@ -453,7 +454,7 @@ function processForward(text) {
 
     const replyHtml = pipe(reply || '');
 
-    return `<div class="forward-quote">${quoteHtml}</div><div class="forward-reply">${replyHtml}</div>`;
+    return `<div class="forward-quote">${quoteHtml}</div><div class="forward-reply"><br>${replyHtml}</div>`;
 }
 
 // Weekday
@@ -815,7 +816,11 @@ function isNoise(m) {
     const c = (m.content || '').trim();
     if (NOISE_RE.test(c)) return true;
     if (DOTS_RE.test(c)) return true;
-    if (c.includes('领红包')) return true;
+    // Red packet system messages
+    if (c.includes('收到红包消息')) return true;
+    if (c.includes('领取了') && c.includes('的红包')) return true;
+    if (c.includes('最佳手气')) return true;
+    if (/^\d+\.\d+元，@/.test(c)) return true;
     return false;
 }
 
@@ -908,20 +913,20 @@ function renderMessages(msgs) {
                 attach += '<div class="msg-pics">' + m.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>';
             }
         }
-        // 附件：分享的帖子
-        if (m.share) {
+        // 附件：分享的帖子（已有引用内容时跳过，避免重复显示）
+        if (m.share && !(m.content || '').includes(' - - - - - - - - - - - - - - - ')) {
             const s = m.share;
             const title = escapeHtml(s.title || s.url || '');
             const author = s.author ? `<div class="share-author">${escapeHtml(s.author)}</div>` : '';
-            const text = s.text ? `<div class="share-text">${processEmoji(escapeHtml(s.text))}</div>` : '';
+            const text = (s.text && s.text !== s.title) ? `<div class="share-text">${processEmoji(escapeHtml(s.text))}</div>` : '';
             const desc = s.description ? `<div class="share-desc">${escapeHtml(s.description)}</div>` : '';
             const picsHtml = s.pics && s.pics.length > 0 ? '<div class="msg-pics">' + s.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>' : '';
             const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? 'Reposts ' + s.reposts : ''} ${s.comments ? 'Comments ' + s.comments : ''} ${s.likes ? 'Likes ' + s.likes : ''}</div>` : '';
             const link = s.url ? `<a class="share-link" href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>` : '';
             attach += `<div class="share-card">${author}${title ? '<div class="share-title">' + title + '</div>' : ''}${text}${desc}${picsHtml}${stats}${link}</div>`;
         }
-        // 附件：视频链接
-        if (m.videoUrl) {
+        // 附件：视频链接（已有分享卡片时跳过，避免重复）
+        if (m.videoUrl && !m.share) {
             attach += `<div class="msg-video"><a href="${m.videoUrl}" target="_blank" rel="noopener" class="msg-link">▶ Watch Video</a></div>`;
         }
         // 附件：普通链接

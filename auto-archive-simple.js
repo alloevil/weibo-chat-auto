@@ -100,8 +100,11 @@ const USER_SCRIPT = `
     let messageIds = new Set();
     window.__ARCHIVER_STATE__ = {
         messages: [],
+        lastGroupId: null,
         getCount: () => messages.length,
         getMessages: () => messages,
+        reset: () => { messages = []; messageIds = new Set(); window.__ARCHIVER_STATE__.messages = []; },
+        resetGroupId: () => { window.__ARCHIVER_STATE__.lastGroupId = null; },
     };
 
     function getMsgId(msg) { return msg?.id || msg?.id_str || msg?.mid || msg?.message_id || null; }
@@ -156,7 +159,7 @@ const USER_SCRIPT = `
                 description: info.description || '',
                 author: statusUser.screen_name || '',
                 authorAvatar: statusUser.avatar_hd || statusUser.avatar_large || '',
-                text: (status.text || '').replace(/<[^>]+>/g, '').replace(/[\r\n]+/g, ' ').substring(0, 300),
+                text: (status.text || '').replace(/<[^>]+>/g, '').replace(/[\\r\\n]+/g, ' ').substring(0, 300),
                 pics: picUrls,
                 reposts: status.reposts_count || 0,
                 comments: status.comments_count || 0,
@@ -199,15 +202,6 @@ const USER_SCRIPT = `
         const msgList = Array.isArray(msgs) ? msgs : (Array.isArray(data.list) ? data.list : []);
         let added = 0;
         for (const m of msgList) {
-            // DEBUG: 打印包含"微博"的原始消息结构
-            const debugContent = (m.content ?? m.text ?? '').replace(/[\r\n]+/g, ' ');
-            if (debugContent.includes('微博')) {
-                console.log('[DEBUG] raw msg keys:', Object.keys(m).join(', '));
-                console.log('[DEBUG] content:', debugContent.substring(0, 200));
-                console.log('[DEBUG] url_objects:', JSON.stringify(m.url_objects).substring(0, 300));
-                console.log('[DEBUG] object:', JSON.stringify(m.object).substring(0, 200));
-                console.log('[DEBUG] page_id:', m.page_id, '| url:', m.url, '| short_url:', m.short_url);
-            }
             const n = normalizeMessage(m);
             if (n) { messages.push(n); window.__ARCHIVER_STATE__.messages.push(n); added++; }
         }
@@ -224,6 +218,8 @@ const USER_SCRIPT = `
         try {
             let url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
             if (url && MSG_API_REGEX.test(url)) {
+                const idMatch = url.match(/[?&]id=(\\d+)/);
+                if (idMatch) window.__ARCHIVER_STATE__.lastGroupId = idMatch[1];
                 resp.clone().json().then(handleApiResponse).catch(() => {});
             }
         } catch {}
@@ -235,7 +231,14 @@ const USER_SCRIPT = `
     const origSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function (...a) {
         this.addEventListener('load', function () {
-            try { const url = this._url || this.responseURL || ''; if (url && MSG_API_REGEX.test(url)) handleApiResponse(JSON.parse(this.responseText)); } catch {}
+            try {
+                const url = this._url || this.responseURL || '';
+                if (url && MSG_API_REGEX.test(url)) {
+                    const idMatch = url.match(/[?&]id=(\\d+)/);
+                    if (idMatch) window.__ARCHIVER_STATE__.lastGroupId = idMatch[1];
+                    handleApiResponse(JSON.parse(this.responseText));
+                }
+            } catch {}
         });
         return origSend.apply(this, a);
     };
@@ -267,8 +270,14 @@ async function main() {
 
     const page = await browser.newPage();
 
+    // 监听浏览器控制台输出
+    page.on('console', msg => {
+        if (msg.type() === 'error') console.log('[浏览器错误]', msg.text());
+    });
+    page.on('pageerror', err => console.log('[页面错误]', err.message));
+
     // Puppeteer 网络层消息捕获
-    const networkMessages = [];
+    let networkMessages = [];
     const capturedApiUrls = []; // 完整捕获消息 API URL
 
     page.on('response', async (response) => {
@@ -381,9 +390,26 @@ async function main() {
     }
 
     // 注入归档脚本（在点击群聊之前，这样可以捕获所有 API 响应）
+    // 写入临时文件，使用 path 方式注入以避免字符串转义问题
+    const scriptFile = path.join(__dirname, '.archiver-script.js');
+    fs.writeFileSync(scriptFile, USER_SCRIPT);
     console.log('注入归档脚本...');
-    await page.addScriptTag({ content: USER_SCRIPT });
-    await delay(500);
+    await page.addScriptTag({ path: scriptFile });
+    await delay(2000);
+    const scriptOk = await page.evaluate(() => !!window.__ARCHIVER_STATE__).catch(() => false);
+    if (!scriptOk) {
+        console.log('⚠ 初始脚本注入失败，尝试重新注入...');
+        await delay(3000);
+        await page.addScriptTag({ path: scriptFile });
+        await delay(2000);
+    }
+    const finalCheck = await page.evaluate(() => !!window.__ARCHIVER_STATE__).catch(() => false);
+    console.log('归档脚本状态:', finalCheck ? '✓ 已就绪' : '✗ 未就绪');
+
+    // 等待页面初始加载的 API 请求，获取第一个群的 group ID
+    await delay(3000);
+    let initialGroupId = await page.evaluate(() => window.__ARCHIVER_STATE__?.lastGroupId || null);
+    console.log('初始群组 ID:', initialGroupId || '(未获取)');
 
     // 关闭可能存在的弹窗（如"扫码分享"等）
     await page.evaluate(() => {
@@ -402,6 +428,7 @@ async function main() {
     console.log('目标群聊:', GROUPS.join(', '));
 
     for (const currentGroupName of GROUPS) {
+    networkMessages = []; // 每个群独立，不累积上一个群的网络层消息
     const groupDir = getGroupOutputDir(currentGroupName);
     const stateFile = getGroupStateFile(currentGroupName);
     if (!fs.existsSync(groupDir)) fs.mkdirSync(groupDir, { recursive: true });
@@ -450,56 +477,79 @@ async function main() {
 
     if (groupClicked.found) {
         console.log(`✓ 已点击群聊 (方式: ${groupClicked.method})`);
-        // 等待 API 响应
-        await delay(5000);
+        // 等待页面可能的导航和加载
+        try { await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }); } catch {}
+        await delay(3000);
     } else {
         console.log('⚠ 未找到群聊，请手动点击');
         console.log('等待 60 秒供手动操作...');
         await delay(60000);
     }
 
+    // 检查 __ARCHIVER_STATE__ 是否存在，不存在则重新注入
+    let scriptInjected = await page.evaluate(() => !!window.__ARCHIVER_STATE__).catch(() => false);
+    if (!scriptInjected) {
+        console.log('归档脚本不存在，等待页面稳定并重新注入...');
+        await delay(3000);
+        try {
+            await page.addScriptTag({ path: scriptFile });
+            await delay(2000);
+            scriptInjected = await page.evaluate(() => !!window.__ARCHIVER_STATE__).catch(() => false);
+        } catch (e) {
+            console.log('脚本注入出错:', e.message);
+        }
+        if (!scriptInjected) {
+            console.log('⚠ 脚本注入失败，跳过此群');
+            continue;
+        }
+        console.log('✓ 脚本重新注入成功');
+    }
+
     // 自动加载历史消息 — 通过 API 直接分页获取
     console.log('开始通过 API 分页加载所有历史消息...');
 
-    // 先等待初始消息加载，同时从页面获取 group_id 和 source 参数
-    const apiInfo = await page.evaluate(() => {
-        // 从页面中提取 group_id（从 URL hash 或 DOM）
-        let groupId = null;
+    await page.evaluate(() => {
+        window.__ARCHIVER_STATE__?.reset();
+    }).catch(() => {});
 
-        // 方法1: 从已捕获的 API 请求中提取
-        const entries = performance.getEntriesByType('resource');
-        for (const entry of entries) {
-            const match = entry.name.match(/query_messages\.json.*[?&]id=(\d+)/);
-            if (match) {
-                groupId = match[1];
-                break;
-            }
+    console.log('等待 API 请求...');
+    let groupId = null;
+
+    // 记录捕获前的 URL 数量，用于检测新请求
+    const prevCount = capturedApiUrls.length;
+
+    // 从最近捕获的 URL 中查找 group ID（向后搜索，取最新）
+    function findGroupIdFromUrls(startIdx) {
+        for (let j = capturedApiUrls.length - 1; j >= (startIdx || 0); j--) {
+            const match = capturedApiUrls[j].match(/[?&]id=(\d+)/);
+            if (match) return match[1];
         }
-
-        // 方法2: 从 Vue 实例中提取
-        if (!groupId) {
-            const app = document.querySelector('#app')?.__vue_app__ || document.querySelector('#app')?.__vue__;
-            if (app) {
-                // 遍历组件查找 group ID
-                const text = document.body.innerHTML;
-                const m = text.match(/gid[=:]\s*["']?(\d{10,})/);
-                if (m) groupId = m[1];
-            }
-        }
-
-        return {
-            groupId,
-            archiverCount: window.__ARCHIVER_STATE__?.getCount() || 0,
-        };
-    });
-
-    let groupId = apiInfo.groupId;
-    if (!groupId) {
-        // 尝试从已看到的 API URL 中提取（上一次运行已知的 ID）
-        console.log('未能从页面获取 group ID，使用已知 ID');
-        groupId = '4761715839862414';
+        return null;
     }
-    console.log(`群组 ID: ${groupId}`);
+
+    // 先检查已有 URL 中最新的（适用于第一个群 - 页面加载时的请求）
+    groupId = findGroupIdFromUrls(0);
+    if (groupId) {
+        console.log(`✓ 从已捕获 URL 获取群组 ID: ${groupId}`);
+    } else {
+        // 等待新请求出现
+        for (let i = 0; i < 20; i++) {
+            await delay(1000);
+            if (capturedApiUrls.length > prevCount) {
+                groupId = findGroupIdFromUrls(prevCount);
+                if (groupId) {
+                    console.log(`✓ 从新 API 请求获取群组 ID: ${groupId}`);
+                    break;
+                }
+            }
+        }
+    }
+    // 使用从 clicked group 中提取的 group_id
+
+    if (!groupId) {
+        console.log(`⚠ 无法获取群 "${currentGroupName}" 的 ID，跳过此群`);
+        continue;
+    }
 
     // 等待初始消息加载
     let waitCount = 0;
@@ -674,16 +724,6 @@ async function main() {
 
             let added = 0;
             for (const m of msgList) {
-                // DEBUG: 打印包含"微博"的原始消息结构
-                const debugContent = (m.content ?? m.text ?? '').replace(/[\r\n]+/g, ' ');
-                if (debugContent.includes('微博')) {
-                    console.log('[DEBUG] raw msg keys:', Object.keys(m).join(', '));
-                    console.log('[DEBUG] content:', debugContent.substring(0, 200));
-                    console.log('[DEBUG] url_objects:', JSON.stringify(m.url_objects).substring(0, 500));
-                    console.log('[DEBUG] object:', JSON.stringify(m.object).substring(0, 300));
-                    console.log('[DEBUG] page_id:', m.page_id, '| url:', m.url, '| short_url:', m.short_url);
-                    console.log('[DEBUG] type:', m.type, '| msg_type:', m.msg_type, '| media_type:', m.media_type);
-                }
                 const n = normalizeMessage(m);
                 if (n && !messageIds.has(String(n.id))) {
                     messageIds.add(String(n.id));
@@ -821,15 +861,19 @@ async function main() {
         }
         console.log(`已按天拆分保存 ${Object.keys(groups).length} 个文件`);
 
+        // 删除时间戳全量文件（数据已拆分到按天文件中）
+        try { fs.unlinkSync(filepath); } catch {}
+
         // 保存归档状态：记录最新消息的时间戳，下次从这里继续
         const newestMsg = messages[messages.length - 1];
+        const newestTs = newestMsg?.timestamp;
         const newState = {
-            lastTimestamp: newestMsg.timestamp,
             lastRun: new Date().toISOString(),
             lastMessageCount: messages.length,
+            lastTimestamp: (newestTs && !isNaN(newestTs)) ? newestTs : Date.now(),
         };
         fs.writeFileSync(stateFile, JSON.stringify(newState, null, 2));
-        console.log(`归档状态已保存 (截止: ${new Date(newestMsg.timestamp).toLocaleString('zh-CN')})`);
+        console.log(`归档状态已保存 (截止: ${new Date(newState.lastTimestamp).toLocaleString('zh-CN')})`);
     }
 
     } // end for each group
