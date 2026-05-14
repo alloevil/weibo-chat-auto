@@ -3,6 +3,8 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "=== 微博聊天自动归档 - 安装 ==="
 echo ""
 
@@ -15,11 +17,11 @@ fi
 echo "Node.js 版本: $(node --version)"
 
 # 创建日志目录
-mkdir -p /Users/allo/weibo-chat-auto/logs
+mkdir -p "$SCRIPT_DIR/logs"
 echo "✓ 创建日志目录"
 
 # 检查 Cookie 文件
-if [ ! -f "/Users/allo/weibo-chat-auto/cookies.json" ]; then
+if [ ! -f "$SCRIPT_DIR/cookies.json" ]; then
     echo ""
     echo "⚠️  未找到 Cookie 文件"
     echo "请先运行: npm run save-cookies"
@@ -28,7 +30,7 @@ if [ ! -f "/Users/allo/weibo-chat-auto/cookies.json" ]; then
 fi
 
 # 安装 launchd 定时任务
-PLIST_FILE="/Users/allo/weibo-chat-auto/com.allo.weibo-chat-archive.plist"
+PLIST_FILE="$SCRIPT_DIR/com.allo.weibo-chat-archive.plist"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 
 if [ -f "$PLIST_FILE" ]; then

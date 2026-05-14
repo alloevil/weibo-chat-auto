@@ -27,49 +27,69 @@ function loadMessages(groupName = '') {
     const dir = getGroupDir(groupName);
     if (!fs.existsSync(dir)) return [];
 
-    if (!messageCaches[groupName]) messageCaches[groupName] = { cache: null, mtimes: {} };
-    const entry = messageCaches[groupName];
+    if (!messageCaches[groupName]) messageCaches[groupName] = {};
+    const cache = messageCaches[groupName];
 
     const files = fs.readdirSync(dir)
         .filter(f => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
 
+    let changed = false;
     const currentMtimes = {};
-    let changed = files.length !== Object.keys(entry.mtimes).length;
     for (const f of files) {
         const mt = fs.statSync(path.join(dir, f)).mtimeMs;
         currentMtimes[f] = mt;
-        if (entry.mtimes[f] !== mt) changed = true;
+        if (!cache[f] || cache[f].mtime !== mt) changed = true;
     }
-
-    if (!changed && entry.cache) return entry.cache;
+    if (!changed && Object.keys(cache).length === files.length) {
+        // Return merged cache
+        const all = [];
+        for (const f of files) all.push(...cache[f].messages);
+        all.sort((a, b) => a.timestamp - b.timestamp);
+        return all;
+    }
 
     const allMessages = [];
     for (const file of files) {
-        try {
-            const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
-            const msgs = data.messages || data;
-            if (Array.isArray(msgs)) allMessages.push(...msgs);
-        } catch {}
+        const mt = currentMtimes[file];
+        if (cache[file] && cache[file].mtime === mt) {
+            allMessages.push(...cache[file].messages);
+        } else {
+            try {
+                const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
+                const msgs = data.messages || data;
+                if (Array.isArray(msgs)) {
+                    cache[file] = { mtime: mt, messages: msgs };
+                    allMessages.push(...msgs);
+                }
+            } catch {}
+        }
     }
 
     allMessages.sort((a, b) => a.timestamp - b.timestamp);
-    entry.cache = allMessages;
-    entry.mtimes = currentMtimes;
     return allMessages;
 }
+
+// Per-file cache for loadMessagesByDate
+const fileCaches = {};
 
 function loadMessagesByDate(groupName = '', date = '') {
     const dir = getGroupDir(groupName);
     if (!fs.existsSync(dir)) return [];
 
-    const file = path.join(dir, `weibo_chat_${date}.json`);
-    if (!fs.existsSync(file)) return [];
+    const filePath = path.join(dir, `weibo_chat_${date}.json`);
+    if (!fs.existsSync(filePath)) return [];
 
     try {
-        const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+        const mt = fs.statSync(filePath).mtimeMs;
+        const cacheKey = filePath;
+        if (fileCaches[cacheKey] && fileCaches[cacheKey].mtime === mt) {
+            return fileCaches[cacheKey].messages;
+        }
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         const msgs = data.messages || data;
         if (!Array.isArray(msgs)) return [];
         msgs.sort((a, b) => a.timestamp - b.timestamp);
+        fileCaches[cacheKey] = { mtime: mt, messages: msgs };
         return msgs;
     } catch {
         return [];

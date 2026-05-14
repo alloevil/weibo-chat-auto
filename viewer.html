@@ -1166,6 +1166,25 @@ selectDate = function(d) {
 };
 
 loadData();
+
+// Auto-refresh: poll every 60s, reload if new data available
+let lastArchivedTs = 0;
+async function checkForUpdates() {
+    try {
+        const groupParam = currentGroup ? '?group=' + encodeURIComponent(currentGroup) : '';
+        const resp = await fetch('/api/groups' + groupParam);
+        const data = await resp.json();
+        if (data.lastArchived && data.lastArchived > lastArchivedTs) {
+            lastArchivedTs = data.lastArchived;
+            await loadDates();
+            await loadMessages();
+            const dt = new Date(data.lastArchived);
+            const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('lastArchived').textContent = `Last archived: ${timeStr}`;
+        }
+    } catch {}
+}
+setInterval(checkForUpdates, 60000);
 </script>
 </body>
 </html>
