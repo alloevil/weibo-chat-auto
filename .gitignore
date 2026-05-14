@@ -1,9 +1,12 @@
 node_modules/
 output/
+cache/
 cookies.json
-last-archive-state.json
-debug.png
-debug-dom.png
+last-archive-state*.json
+state/
+.archiver-script.js
+debug*.png
+screenshot.png
 *.log
 logs/
 temp-chrome/

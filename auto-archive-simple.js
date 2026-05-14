@@ -23,7 +23,9 @@ function getGroupOutputDir(groupName) {
 
 function getGroupStateFile(groupName) {
     const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-    return path.join(__dirname, `last-archive-state_${safe}.json`);
+    const stateDir = path.join(__dirname, 'state');
+    if (!fs.existsSync(stateDir)) fs.mkdirSync(stateDir, { recursive: true });
+    return path.join(stateDir, `last-archive-state_${safe}.json`);
 }
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

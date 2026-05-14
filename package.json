@@ -6,7 +6,7 @@
   "scripts": {
     "save-cookies": "node save-cookies.js",
     "archive": "node auto-archive-simple.js",
-    "clean": "node -e \"const fs=require('fs'),p=require('path');const d='output';fs.readdirSync(d).filter(f=>/T\\d{2}-/.test(f)).forEach(f=>{console.log('Remove:',f);fs.unlinkSync(p.join(d,f))})\"",
+    "clean": "node -e \"const fs=require('fs'),p=require('path');function clean(d){if(!fs.existsSync(d))return;fs.readdirSync(d,{withFileTypes:true}).forEach(e=>{const fp=p.join(d,e.name);if(e.isDirectory()){clean(fp)}else if(/T\\d{2}-/.test(e.name)){console.log('Remove:',fp);fs.unlinkSync(fp)}})}clean('output')\"",
     "start-chrome": "./start-chrome.sh",
     "view": "node viewer-server.js"
   },

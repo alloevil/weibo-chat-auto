@@ -99,6 +99,19 @@ function rewriteImageUrls(messages) {
     }
 }
 
+const CACHE_DIR = path.join(__dirname, 'cache', 'images');
+if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+
+function serveImage(res, filePath, contentType) {
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400',
+        'Content-Length': stat.size,
+    });
+    fs.createReadStream(filePath).pipe(res);
+}
+
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
 
@@ -175,33 +188,20 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-const CACHE_DIR = path.join(__dirname, 'cache', 'images');
-if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+    // Image proxy: /api/image?fid=xxx (with disk cache)
+    if (url.pathname === '/api/image') {
+        const fid = url.searchParams.get('fid');
+        if (!fid) { res.writeHead(400); res.end('Missing fid'); return; }
 
-function serveImage(res, filePath, contentType) {
-    const stat = fs.statSync(filePath);
-    res.writeHead(200, {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400',
-        'Content-Length': stat.size,
-    });
-    fs.createReadStream(filePath).pipe(res);
-}
+        const cacheFile = path.join(CACHE_DIR, `${fid}.jpg`);
+        if (fs.existsSync(cacheFile)) {
+            serveImage(res, cacheFile, 'image/jpeg');
+            return;
+        }
 
-// Image proxy: /api/image?fid=xxx (with disk cache)
-if (url.pathname === '/api/image') {
-    const fid = url.searchParams.get('fid');
-    if (!fid) { res.writeHead(400); res.end('Missing fid'); return; }
-
-    const cacheFile = path.join(CACHE_DIR, `${fid}.jpg`);
-    if (fs.existsSync(cacheFile)) {
-        serveImage(res, cacheFile, 'image/jpeg');
-        return;
-    }
-
-    const imageUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
-    const cookieHeader = loadCookies();
-    const req = https.get(imageUrl, {
+        const imageUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
+        const cookieHeader = loadCookies();
+        const req = https.get(imageUrl, {
             headers: {
                 'Cookie': cookieHeader,
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -219,7 +219,6 @@ if (url.pathname === '/api/image') {
                 'Content-Type': ct,
                 'Cache-Control': 'public, max-age=86400',
             });
-            // Cache to disk
             const chunks = [];
             proxyRes.on('data', chunk => chunks.push(chunk));
             proxyRes.on('end', () => {
