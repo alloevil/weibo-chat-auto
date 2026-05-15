@@ -564,15 +564,19 @@ async function loadDates() {
     renderCalendar();
 }
 
-async function loadMessages() {
+async function loadMessages(preserveScroll) {
     if (!selectedDate) return;
     const groupParam = currentGroup ? '&group=' + encodeURIComponent(currentGroup) : '';
     const resp = await fetch('/api/messages?date=' + selectedDate + groupParam);
     const data = await resp.json();
     allMessages = data.messages || [];
 
+    const scrollTop = preserveScroll ? document.getElementById('messages')?.scrollTop : null;
     renderHours();
     renderAll();
+    if (preserveScroll && scrollTop != null) {
+        requestAnimationFrame(() => { document.getElementById('messages').scrollTop = scrollTop; });
+    }
 }
 
 function updateDateToggle() {
@@ -1227,7 +1231,7 @@ async function checkForUpdates() {
         if (data.lastArchived && data.lastArchived > lastArchivedTs) {
             lastArchivedTs = data.lastArchived;
             await loadDates();
-            await loadMessages();
+            await loadMessages(true);
             const dt = new Date(data.lastArchived);
             const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
             document.getElementById('lastArchived').textContent = `Last archived: ${timeStr}`;
