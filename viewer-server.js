@@ -2,6 +2,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const PORT = 3456;
 const OUTPUT_DIR = path.join(__dirname, 'output');
@@ -205,6 +206,28 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ dates }));
+        return;
+    }
+
+    // Sync: trigger archiver
+    if (url.pathname === '/api/sync' && req.method === 'POST') {
+        // Invalidate all message caches
+        for (const key in messageCaches) delete messageCaches[key];
+        for (const key in fileCaches) delete fileCaches[key];
+        execFile(process.execPath, [path.join(__dirname, 'auto-archive-simple.js')], {
+            timeout: 600000,
+            env: { ...process.env, PATH: process.env.PATH },
+        }, (err, stdout, stderr) => {
+            if (err) {
+                console.error('[sync] error:', stderr || err.message);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: false, error: stderr || err.message }));
+            } else {
+                console.log('[sync] done');
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true }));
+            }
+        });
         return;
     }
 
