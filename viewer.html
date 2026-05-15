@@ -1010,6 +1010,12 @@ function renderAll() {
     renderMessages(filtered);
     renderMediaBar();
 
+    // 筛选后滚动到第一条消息
+    if (selectedHours.size > 0 || selectedUsers.size > 0 || searchQuery) {
+        const msgEl = document.getElementById('messages');
+        if (msgEl) msgEl.scrollTop = 0;
+    }
+
     const users = new Set(filtered.map(m => m.user));
     const newCount = filtered.filter(m => m.timestamp > lastVisitTimestamp).length;
     const newInfo = newCount > 0 ? ` · <span style="color:#1d9bf0">${newCount} new</span>` : '';
