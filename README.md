@@ -1,30 +1,32 @@
 # Weibo Group Chat Archiver
 
-自动抓取微博网页聊天群的历史消息，支持定时运行、按天导出和本地可视化查看。
-
-## 预览
-
-![微博聊天查看器预览](screenshot.png)
+自动抓取微博网页聊天群的历史消息，支持多群、定时运行、按天导出和本地可视化查看。
 
 ## 功能
 
+**归档**
+- 多群支持，通过 `config.json` 配置
 - 自动登录（Cookie 保持）
 - 通过 API 分页加载所有历史消息
+- 增量归档，每次从上次截止时间继续
 - 按日期分组导出为 JSON
-- 支持定时任务（macOS launchd）
-- 支持无头模式（后台运行）
-- 本地 Web 查看器（支持日历、时段热力图、用户筛选、媒体类型筛选）
-- 自动提取图片（通过 fids），分享卡片图片通过代理绕过防盗链
-- 微博分享卡片展示（标题、作者、图片、转评赞）
-- 视频链接和附件 URL 展示
-- 转发引用区块高亮显示
-- 用户头像显示
-- Emoji 渲染为 Unicode
+- 定时任务（macOS launchd）+ 手动 Sync Now
+
+**查看器**
+- 多群切换
+- 日历选择 + 自动刷新（60s 轮询）
+- 时段热力图、用户筛选、媒体类型筛选
+- 搜索（消息内容 + 用户名，高亮匹配）
+- 消息统计面板（日活跃、用户排行、时段分布、词频）
+- 红包/噪声消息过滤
+- 图片代理（绕过防盗链）、视频链接
+- 微博分享卡片、转发引用区块
+- 用户头像、Emoji 渲染
 
 ## 安装
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/weibo-chat-auto.git
+git clone https://github.com/alloevil/weibo-chat-auto.git
 cd weibo-chat-auto
 npm install
 ```
@@ -41,12 +43,13 @@ npm run save-cookies
 
 ### 2. 配置目标群聊
 
-编辑 `auto-archive-simple.js`，将 `groupName` 改为你要归档的群名称（必须与微博聊天中的群名完全一致）：
+编辑 `config.json`，`groups` 数组填入群名称（必须与微博聊天中的群名完全一致）：
 
-```javascript
-const CONFIG = {
-    groupName: '你的群名称',  // 例如 '家人群'、'公司群'
-};
+```json
+{
+    "chromePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "groups": ["群名称A", "群名称B"]
+}
 ```
 
 ### 3. 运行归档
@@ -55,7 +58,7 @@ const CONFIG = {
 npm run archive
 ```
 
-首次运行会拉取最近 7 天的消息，之后每次从上次截止时间继续。
+首次运行会拉取最近 7 天的消息，之后每次增量更新。
 
 ### 4. 查看归档数据
 
@@ -63,50 +66,39 @@ npm run archive
 npm run view
 ```
 
-打开 http://localhost:3456 查看消息。
+打开 http://localhost:3456 查看消息。页面右上角有 **Sync Now** 按钮可手动触发同步。
 
 ### 5. 定时自动运行（可选）
 
 ```bash
-# 编辑 plist 中的路径，然后：
-launchctl load com.allo.weibo-chat-archive.plist
+./setup.sh
+```
 
-# 查看状态
-launchctl list | grep weibo
+或手动管理：
 
-# 停用
-launchctl unload com.allo.weibo-chat-archive.plist
+```bash
+launchctl load ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist
+launchctl list | grep weibo        # 查看状态
+launchctl unload ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist  # 停用
 ```
 
 ## 项目结构
 
 ```
+├── config.json              # 群聊配置 + Chrome 路径
 ├── auto-archive-simple.js   # 主归档脚本
 ├── save-cookies.js          # Cookie 保存工具
 ├── viewer-server.js         # 本地查看器服务器
-├── viewer.html              # 查看器页面
+├── viewer.html              # 查看器页面（单页应用）
 ├── cookies.json             # 登录凭据（不提交）
-├── cookies.json.example     # Cookie 模板
+├── state/                   # 归档状态文件（不提交）
 ├── output/                  # 归档数据（不提交）
-│   ├── weibo_chat_2026-05-01.json
-│   └── ...
+│   └── 群名/
+│       ├── weibo_chat_2026-05-01.json
+│       └── ...
+├── cache/images/            # 图片缓存（不提交）
 ├── com.allo.weibo-chat-archive.plist  # macOS 定时任务配置
 └── package.json
-```
-
-## 配置
-
-编辑 `auto-archive-simple.js` 中的 `CONFIG`：
-
-```javascript
-const CONFIG = {
-    chatUrl: 'https://api.weibo.com/chat#/chat',
-    outputDir: path.join(__dirname, 'output'),
-    chromePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    cookieFile: path.join(__dirname, 'cookies.json'),
-    stateFile: path.join(__dirname, 'last-archive-state.json'),
-    groupName: '你的群名称',
-};
 ```
 
 ## 输出数据格式
@@ -145,7 +137,7 @@ const CONFIG = {
 
 ### 页面加载失败
 
-检查 Chrome 路径是否正确，确保已安装 Google Chrome
+检查 `config.json` 中的 `chromePath` 是否正确，确保已安装 Google Chrome
 
 ### 图片不显示
 
