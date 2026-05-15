@@ -121,18 +121,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 
 /* Message list */
 .messages { flex: 1; overflow-y: auto; }
-.msg-item { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); padding: 12px 16px 12px 12px; border-bottom: 1px solid #eff3f4; border-left: 4px solid var(--user-accent, #cfd9de); gap: 16px; transition: background .1s; }
+.msg-item { padding: 10px 16px 10px 48px; border-bottom: 1px solid #eff3f4; border-left: 4px solid var(--user-accent, #cfd9de); transition: background .1s; position: relative; }
 .msg-item:hover { background: #f7f9f9; }
-.msg-item-continuation { padding-top: 6px; padding-bottom: 6px; border-bottom-color: #f2f5f7; }
-.msg-meta { min-width: 0; padding-top: 1px; }
-.msg-user { display: flex; align-items: baseline; gap: 7px; font-size: 14px; font-weight: 700; color: #0f1419; line-height: 1.35; white-space: normal; word-break: break-word; }
-.msg-user::before { content: attr(data-initial); width: 22px; height: 22px; border-radius: 50%; background: var(--user-accent, #536471); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; transform: translateY(-1px); overflow: hidden; }
-.msg-user .msg-av { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; transform: translateY(-1px); }
-.msg-user .msg-av + .msg-av-name::before { display: none; }
-.msg-user[data-hasavatar]::before { display: none; }
-.msg-item-continuation .msg-user { display: none; }
-.msg-time { margin-top: 3px; padding-left: 15px; font-size: 13px; color: #536471; font-variant-numeric: tabular-nums; }
-.msg-item-continuation .msg-time { margin-top: 0; color: #7b8894; }
+.msg-item-continuation { padding-top: 2px; padding-bottom: 2px; border-bottom-color: #f2f5f7; }
+.msg-item-continuation .msg-header { display: none; }
+.cont-avatar { position: absolute; left: 12px; top: 10px; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--user-accent, #536471); color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.msg-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--user-accent, #536471); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; position: absolute; left: 12px; top: 10px; }
+.msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.msg-user { font-size: 14px; font-weight: 700; color: #0f1419; line-height: 1.35; }
+.msg-time { font-size: 12px; color: #536471; font-variant-numeric: tabular-nums; }
 .msg-body { min-width: 0; }
 .msg-content { display: inline-block; max-width: min(100%, 480px); padding: 8px 11px; border: 1px solid #e5edf2; border-radius: 8px; background: #fff; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, #cfd9de) 55%, transparent); font-size: 15px; line-height: 1.5; color: #0f1419; word-break: break-word; overflow-wrap: anywhere; }
 .msg-content img { max-width: 300px; max-height: 200px; border-radius: 16px; margin-top: 8px; vertical-align: middle; }
@@ -175,9 +173,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .forward-reply { margin-top: 2px; }
 
 @media (max-width: 760px) {
-    .msg-item { grid-template-columns: 1fr; gap: 6px; }
-    .msg-time { display: inline; margin-left: 6px; }
-    .msg-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; }
+    .msg-item { padding-left: 40px; }
+    .msg-avatar { width: 24px; height: 24px; font-size: 10px; }
+    .msg-header { gap: 4px; }
 }
 
 /* Empty state */
@@ -942,7 +940,7 @@ function renderMessages(msgs) {
                 attach += '<div class="msg-pics">' + m.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>';
             }
         }
-        // 附件：分享的帖子（已有引用内容时跳过，避免重复显示）
+        // 附件：分享的帖子（转发引用场景跳过，避免与引用块重复）
         if (m.share && !(m.content || '').includes(' - - - - - - - - - - - - - - - ')) {
             const s = m.share;
             const title = escapeHtml(s.title || s.url || '');
@@ -962,16 +960,33 @@ function renderMessages(msgs) {
         if (m.link && !m.share) {
             attach += `<div class="msg-link-attach"><a href="${m.link}" target="_blank" rel="noopener" class="msg-link">${escapeHtml(m.link)}</a></div>`;
         }
+        // 分享内容与正文重复时，用简短指示替代正文（保留格式结构）
+        if (m.share && m.content && !m.content.includes(' - - - - - - - - - - - - - - - ')) {
+            const s = m.share;
+            const raw = (m.content || '').replace(/[\s​]+/g, '');
+            const title = (s.title || '').replace(/[\s​]+/g, '');
+            if (title.length >= 8 && raw.includes(title.substring(0, Math.min(20, title.length)))) {
+                const link = s.url ? `<a class="msg-link" href="${s.url}" target="_blank">${escapeHtml(s.url)}</a>` : '';
+                content = `<span style="color:#536471;font-size:13px">↗ ${escapeHtml((s.author || '') + ' ' + title.substring(0, 25))}${title.length > 25 ? '...' : ''}</span> ${link}`;
+            }
+        }
         const userInitial = escapeHtml(m.user.charAt(0));
         const avatarHtml = m.avatar ? `<img class="msg-av" src="${m.avatar}" loading="lazy" onerror="this.remove()">` : '';
         const userAttr = m.avatar ? `data-hasavatar data-initial="${userInitial}"` : `data-initial="${userInitial}"`;
         const userName = searchQuery ? highlightText(escapeHtml(m.user), escapeHtml(searchQuery)) : escapeHtml(m.user);
         const isNew = m.timestamp > lastVisitTimestamp;
         const newBadge = isNew ? '<span class="msg-new">NEW</span>' : '';
+        const avatarEl = m.avatar
+            ? `<div class="msg-avatar"><img src="${m.avatar}" onerror="this.parentElement.textContent='${userInitial}'"></div>`
+            : `<div class="msg-avatar">${userInitial}</div>`;
+        const contAvatar = continuation
+            ? (m.avatar ? `<img class="cont-avatar" src="${m.avatar}" onerror="this.remove()">` : `<span class="cont-avatar">${userInitial}</span>`)
+            : '';
         return `<div class="msg-item${continuation}" style="--user-accent:${accent}">
-            <div class="msg-meta">
-                <div class="msg-user" ${userAttr}>${avatarHtml}${userName}${newBadge}</div>
-                <div class="msg-time">${time}</div>
+            ${continuation ? contAvatar : avatarEl}
+            <div class="msg-header">
+                <span class="msg-user">${userName}${newBadge}</span>
+                <span class="msg-time">${time}</span>
             </div>
             <div class="msg-body">
                 <div class="msg-content">${content}</div>
