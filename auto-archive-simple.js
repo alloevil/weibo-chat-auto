@@ -256,48 +256,21 @@ async function main() {
         fs.mkdirSync(CONFIG.outputDir, { recursive: true });
     }
 
-    // 启动浏览器（复用已登录的 Chrome 会话）
+    // 启动浏览器（使用保存的 Cookie 登录）
     console.log('启动浏览器...');
-    let browser;
-    let page;
-    let connectedToExisting = false;
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        executablePath: CONFIG.chromePath,
+        defaultViewport: null,
+        protocolTimeout: 600000,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--window-size=1280,800',
+        ],
+    });
 
-    // 尝试连接到已运行的 Chrome（需带 --remote-debugging-port=9222）
-    try {
-        const resp = await fetch('http://127.0.0.1:9222/json/version').catch(() => null);
-        if (resp && resp.ok) {
-            const info = await resp.json();
-            browser = await puppeteer.connect({ browserWSEndpoint: info.webSocketDebuggerUrl, defaultViewport: null });
-            page = await browser.newPage();
-            connectedToExisting = true;
-            console.log('✓ 已连接到运行中的 Chrome');
-        }
-    } catch {}
-
-    // 连接失败，启动新的 Chrome 实例（需要关闭已有的 Chrome）
-    if (!browser) {
-        const os = require('os');
-        const userDataDir = path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome');
-        try {
-            const { execSync } = require('child_process');
-            const ps = execSync('pgrep -x "Google Chrome" 2>/dev/null || true').toString().trim();
-            if (ps) {
-                console.log('⚠️  Chrome 正在运行，无法使用 profile。');
-                console.log('请关闭 Chrome 后重试，或用以下命令启动 Chrome 支持远程连接：');
-                console.log('  open -a "Google Chrome" --args --remote-debugging-port=9222');
-                process.exit(1);
-            }
-        } catch {}
-        browser = await puppeteer.launch({
-            headless: false,
-            executablePath: CONFIG.chromePath,
-            defaultViewport: null,
-            userDataDir: userDataDir,
-            protocolTimeout: 600000,
-            args: ['--no-first-run', '--window-size=1280,800'],
-        });
-        page = await browser.newPage();
-    }
+    const page = await browser.newPage();
 
     // 监听浏览器控制台输出
     page.on('console', msg => {
@@ -391,7 +364,7 @@ async function main() {
         const loginOk = await waitForLogin(page);
         if (!loginOk) {
             console.log('登录失败，退出');
-            if (connectedToExisting) await page.close(); else await browser.close();
+            await browser.close();
             process.exit(1);
         }
 
@@ -913,15 +886,10 @@ async function main() {
     console.log(`Cookie 已更新 (${finalCookies.length} 个)`);
     console.log('下次运行将自动使用已保存的登录状态');
 
-    // 关闭浏览器（连接模式只关闭页面，不关闭浏览器）
-    if (connectedToExisting) {
-        await page.close();
-        console.log('✓ 归档完成（Chrome 保持运行）');
-    } else {
-        await browser.close();
-        console.log('重新打开 Chrome...');
-        exec('open -a "Google Chrome"');
-    }
+    // 关闭浏览器
+    await browser.close();
+    console.log('重新打开 Chrome...');
+    exec('open -a "Google Chrome"');
 
     console.log('完成！');
 }
