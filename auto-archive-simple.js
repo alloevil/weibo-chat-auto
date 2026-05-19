@@ -256,16 +256,29 @@ async function main() {
         fs.mkdirSync(CONFIG.outputDir, { recursive: true });
     }
 
-    // 启动浏览器（干净模式）
+    // 启动浏览器（复用 Chrome profile）
     console.log('启动浏览器...');
+    const os = require('os');
+    const userDataDir = path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome');
+
+    // 检查 Chrome 是否正在运行（profile 会被锁定）
+    try {
+        const { execSync } = require('child_process');
+        const ps = execSync('pgrep -x "Google Chrome" 2>/dev/null || true').toString().trim();
+        if (ps) {
+            console.log('⚠️  检测到 Chrome 正在运行，请先关闭 Chrome 再运行归档。');
+            process.exit(1);
+        }
+    } catch {}
+
     const browser = await puppeteer.launch({
-        headless: 'new',
+        headless: false,
         executablePath: CONFIG.chromePath,
         defaultViewport: null,
+        userDataDir: userDataDir,
         protocolTimeout: 600000, // 10 分钟，用于大量消息分页
         args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
+            '--no-first-run',
             '--window-size=1280,800',
         ],
     });
