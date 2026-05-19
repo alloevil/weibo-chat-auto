@@ -39,7 +39,9 @@ npm install
 npm run save-cookies
 ```
 
-浏览器会打开微博登录页面，登录后 Cookie 自动保存到 `cookies.json`。
+浏览器会打开微博聊天页面，扫码登录后 Cookie 自动保存到 `cookies.json`。
+
+> Cookie 有时效性。归档器每次成功运行后会自动刷新，保持定时任务运行即可。过期后重新运行 `npm run save-cookies`。
 
 ### 2. 配置目标群聊
 
@@ -133,7 +135,25 @@ launchctl unload ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist  # 停
 
 ### Cookie 失效
 
-重新运行 `npm run save-cookies`
+Cookie 有时效性，过期后归档器无法登录微博。表现为归档日志中出现"未找到群聊"或"扫描登录"。
+
+**解决方法：**
+
+```bash
+npm run save-cookies
+```
+
+浏览器会打开微博聊天页面。扫码登录后 Cookie 自动保存。
+
+**为什么 Cookie 会过期？**
+
+归档器通过 Puppeteer 启动独立的 Chrome 实例，不共享你日常浏览器的登录状态。微博的 Cookie 有时效性（通常几天到两周）。如果长时间没有运行归档（例如定时任务被停用），Cookie 会过期。
+
+**保持 Cookie 活跃的方法：**
+
+- 保持定时任务运行 — 归档器每次成功运行后会自动刷新 Cookie
+- 或每天在 viewer 页面点一次 **Sync Now** 按钮
+- Cookie 过期后运行 `npm run save-cookies` 重新登录即可
 
 ### 页面加载失败
 
