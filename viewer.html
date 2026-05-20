@@ -724,6 +724,9 @@ function toggleHour(h) {
     else selectedHours.add(h);
     renderHours();
     renderAll();
+    // 滚动到点击时段的第一条消息
+    const target = document.querySelector(`.msg-item[data-hour="${h}"]`);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function clearHours() {
@@ -986,7 +989,7 @@ function renderMessages(msgs) {
         const contAvatar = continuation
             ? (m.avatar ? `<img class="cont-avatar" src="${m.avatar}" onerror="this.remove()">` : `<span class="cont-avatar">${userInitial}</span>`)
             : '';
-        return `<div class="msg-item${continuation}" style="--user-accent:${accent}">
+        return `<div class="msg-item${continuation}" data-hour="${new Date(m.timestamp).getHours()}" style="--user-accent:${accent}">
             ${continuation ? contAvatar : avatarEl}
             <div class="msg-header">
                 <span class="msg-user">${userName}${newBadge}</span>
@@ -1014,8 +1017,8 @@ function renderAll() {
     renderMessages(filtered);
     renderMediaBar();
 
-    // 筛选后滚动到第一条消息
-    if (selectedHours.size > 0 || selectedUsers.size > 0 || searchQuery) {
+    // 用户/搜索筛选后滚动到顶部（时段筛选由 toggleHour 处理）
+    if (selectedUsers.size > 0 || searchQuery) {
         const msgEl = document.getElementById('messages');
         if (msgEl) msgEl.scrollTop = 0;
     }
