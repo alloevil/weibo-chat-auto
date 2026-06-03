@@ -39,9 +39,13 @@ npm install
 npm run save-cookies
 ```
 
-浏览器会打开微博聊天页面，扫码登录后 Cookie 自动保存到 `cookies.json`。
+会弹出一个**全新的浏览器窗口**（不是你日常用的 Chrome），打开微博聊天页面：
 
-> Cookie 有时效性。归档器每次成功运行后会自动刷新，保持定时任务运行即可。过期后重新运行 `npm run save-cookies`。
+1. 用微博 App 扫描页面上的二维码
+2. 手机确认登录
+3. 浏览器跳转到聊天列表后，Cookie 自动保存到 `cookies.json`，窗口关闭
+
+> **为什么用独立窗口？** 归档器通过 Puppeteer 启动独立浏览器，与你日常的 Chrome 隔离，不共享登录状态。所以必须单独扫码登录一次，把 Cookie 存到 `cookies.json`，归档器之后用它来访问微博。
 
 ### 2. 配置目标群聊
 
@@ -83,6 +87,31 @@ launchctl load ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist
 launchctl list | grep weibo        # 查看状态
 launchctl unload ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist  # 停用
 ```
+
+## 日常使用
+
+配置好之后，日常只需要这两步：
+
+```bash
+npm run view      # 启动查看器（一直开着即可）
+```
+
+打开 http://localhost:3456，点右上角 **Sync Now** 按钮即可同步最新消息。查看器会每 60 秒自动刷新数据。
+
+### Cookie 维护
+
+Cookie 有时效性（通常几天到两周）。**归档器每次成功运行后会自动刷新 Cookie**，所以：
+
+- **保持定时任务运行** → Cookie 自动续期，永不过期（推荐）
+- 或**每天点一次 Sync Now** → 手动保持 Cookie 活跃
+
+只有当长时间没运行归档、Cookie 已过期时（同步报错、日历不更新），才需要重新扫码：
+
+```bash
+npm run save-cookies   # 重新扫码登录
+```
+
+> 重新扫码不影响已归档的数据，只是刷新登录凭据。
 
 ## 项目结构
 
