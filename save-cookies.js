@@ -1,59 +1,66 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const cookieFile = path.join(__dirname, 'cookies.json');
 const chatUrl = 'https://api.weibo.com/chat#/chat';
 const chromePath = require('./config.json').chromePath;
 
-// Chrome 用户 profile 路径（复用已登录的会话）
-const userDataDir = path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome');
-
 async function saveCookies() {
     console.log('=== 保存微博 Cookie ===');
-    console.log('将使用你的 Chrome profile（复用已登录状态）\n');
-
-    // 检查 Chrome 是否正在运行
-    const { execSync } = require('child_process');
-    let chromeRunning = false;
-    try {
-        const ps = execSync('pgrep -f "Google Chrome" | head -1').toString().trim();
-        chromeRunning = !!ps;
-    } catch {}
-
-    if (chromeRunning) {
-        console.log('⚠️  检测到 Chrome 正在运行。');
-        console.log('请先关闭 Chrome，然后重新运行此命令。\n');
-        console.log('（因为 Chrome 会锁定 profile，无法同时使用）');
-        process.exit(1);
-    }
+    console.log('将打开浏览器，请用微博 App 扫码登录\n');
 
     const browser = await puppeteer.launch({
         headless: false,
         executablePath: chromePath,
         defaultViewport: null,
-        userDataDir: userDataDir,
         args: ['--no-first-run', '--window-size=1280,800'],
     });
 
     const page = await browser.newPage();
-    await page.goto(chatUrl, { waitUntil: 'networkidle2' });
+    await page.goto(chatUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // 检查是否已登录
-    const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 100));
-    if (bodyText.includes('扫描登录') || bodyText.includes('登录/注册')) {
-        console.log('请在浏览器中登录微博...');
-        console.log('登录成功后，按 Ctrl+C 保存 Cookie 并退出\n');
+    // 检查是否已登录（页面出现具体群聊名说明已进入聊天列表）
+    const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 200));
+    const alreadyLoggedIn = !bodyText.includes('扫描登录') && !bodyText.includes('立即注册') && bodyText.length > 200;
+
+    if (!alreadyLoggedIn) {
+        console.log('========================================');
+        console.log('请在浏览器窗口中用微博 App 扫码登录');
+        console.log('登录后会自动保存 Cookie');
+        console.log('========================================');
+        // 等待登录成功：登录页包含"扫描登录"，登录后跳转到聊天列表
         await page.waitForFunction(() => {
-            return !document.body.innerText.includes('扫描登录');
+            const text = document.body.innerText;
+            if (text.includes('扫描登录') || text.includes('立即注册')) return false;
+            return text.length > 500;
         }, { timeout: 600000 });
+        console.log('✓ 登录成功！等待页面稳定...');
+        await new Promise(r => setTimeout(r, 5000));
     } else {
         console.log('✓ 已检测到登录状态');
     }
 
-    // 保存 Cookie
-    const cookies = await page.cookies();
+    // 从所有相关域名收集 Cookie（认证 Cookie 分散在多个域名）
+    const domains = [
+        'https://api.weibo.com',
+        'https://weibo.com',
+        'https://passport.weibo.com',
+        'https://login.sina.com.cn',
+    ];
+    let allCookies = [];
+    for (const d of domains) {
+        try { allCookies.push(...await page.cookies(d)); } catch {}
+    }
+    // 去重（domain + name）
+    const seen = new Set();
+    const cookies = allCookies.filter(c => {
+        const key = c.domain + '|' + c.name;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
     fs.writeFileSync(cookieFile, JSON.stringify(cookies, null, 2));
     console.log(`Cookie 已保存到: ${cookieFile}`);
     console.log(`共 ${cookies.length} 个 Cookie`);
