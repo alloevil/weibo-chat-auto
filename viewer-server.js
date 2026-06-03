@@ -218,15 +218,32 @@ const server = http.createServer((req, res) => {
             timeout: 600000,
             env: { ...process.env, PATH: process.env.PATH },
         }, (err, stdout, stderr) => {
+            const out = (stdout || '') + (stderr || '');
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+
             if (err) {
                 console.error('[sync] error:', stderr || err.message);
-                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ ok: false, error: stderr || err.message }));
-            } else {
-                console.log('[sync] done');
-                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true }));
+                return;
             }
+
+            // 归档器可能 exit 0 但实际失败（Cookie 过期、未找到群聊）
+            if (out.includes('需要登录') || out.includes('扫描登录') || out.includes('登录失败')) {
+                res.end(JSON.stringify({ ok: false, error: 'Cookie 已过期，请在终端运行 npm run save-cookies 重新登录' }));
+                return;
+            }
+
+            // 统计成功归档的群数和被跳过的群
+            const archived = (out.match(/已保存到:/g) || []).length;
+            const skipped = (out.match(/跳过此群/g) || []).length;
+
+            if (archived === 0 && skipped > 0) {
+                res.end(JSON.stringify({ ok: false, error: `所有群同步失败（${skipped} 个群未找到，可能 Cookie 已过期）` }));
+                return;
+            }
+
+            console.log(`[sync] done (archived=${archived}, skipped=${skipped})`);
+            res.end(JSON.stringify({ ok: true, archived, skipped }));
         });
         return;
     }

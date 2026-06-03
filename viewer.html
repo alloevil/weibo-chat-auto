@@ -22,6 +22,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .sync-btn { height: 28px; padding: 0 10px; margin-left: 8px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #0f1419; cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; }
 .sync-btn:hover { background: #f7f9f9; }
 .sync-btn.syncing { background: #eff3f4; color: #536471; cursor: wait; }
+.toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.18); opacity: 0; transition: transform .25s ease, opacity .25s ease; z-index: 1000; pointer-events: none; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+.toast.success { background: #0f1419; color: #fff; }
+.toast.error { background: #f4212e; color: #fff; }
 
 /* Calendar */
 .calendar { display: none; flex-direction: column; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eff3f4; }
@@ -224,6 +228,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 </style>
 </head>
 <body>
+
+<div class="toast" id="toast"></div>
 
 <div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lightbox-img" src=""></div>
 
@@ -508,6 +514,15 @@ function switchGroup(groupId) {
     loadData();
 }
 
+let toastTimer = null;
+function showToast(message, type = 'success', duration = 4000) {
+    const el = document.getElementById('toast');
+    el.textContent = message;
+    el.className = 'toast show ' + type;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = 'toast ' + type; }, duration);
+}
+
 async function syncNow() {
     const btn = document.getElementById('syncBtn');
     btn.textContent = 'Syncing...';
@@ -521,11 +536,13 @@ async function syncNow() {
             const dt = new Date();
             const pad = n => String(n).padStart(2, '0');
             document.getElementById('lastArchived').textContent = `Synced: ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+            const skipNote = data.skipped ? `（${data.skipped} 个群跳过）` : '';
+            showToast(`✓ 同步完成${skipNote}`, 'success');
         } else {
-            alert('Sync failed: ' + (data.error || 'unknown'));
+            showToast('同步失败：' + (data.error || '未知错误'), 'error', 8000);
         }
     } catch (e) {
-        alert('Sync error: ' + e.message);
+        showToast('同步出错：' + e.message, 'error', 8000);
     }
     btn.textContent = 'Sync Now';
     btn.classList.remove('syncing');
