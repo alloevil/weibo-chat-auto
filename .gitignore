@@ -5,6 +5,7 @@ cookies.json
 last-archive-state*.json
 state/
 .archiver-script.js
+.shot-*.js
 debug*.png
 screenshot.png
 *.log
