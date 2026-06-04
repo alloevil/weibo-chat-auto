@@ -4,6 +4,7 @@
   "description": "Weibo Group Chat Archiver - 微博群聊消息自动归档工具",
   "main": "auto-archive-simple.js",
   "scripts": {
+    "setup": "./setup.sh",
     "save-cookies": "node save-cookies.js",
     "archive": "node auto-archive-simple.js",
     "clean": "node -e \"const fs=require('fs'),p=require('path');function clean(d){if(!fs.existsSync(d))return;fs.readdirSync(d,{withFileTypes:true}).forEach(e=>{const fp=p.join(d,e.name);if(e.isDirectory()){clean(fp)}else if(/T\\d{2}-/.test(e.name)){console.log('Remove:',fp);fs.unlinkSync(fp)}})}clean('output')\"",

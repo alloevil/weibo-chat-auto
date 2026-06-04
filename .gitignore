@@ -2,6 +2,7 @@ node_modules/
 output/
 cache/
 cookies.json
+config.json
 last-archive-state*.json
 state/
 .archiver-script.js
@@ -13,3 +14,4 @@ logs/
 temp-chrome/
 .DS_Store
 dom-diagnosis.json
+com.allo.weibo-chat-archive.plist
