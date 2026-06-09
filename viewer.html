@@ -67,6 +67,31 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 /* Content area */
 .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #eff3f4; }
 
+/* 上下文聚焦面板（右侧滑入第三栏）*/
+.context-panel { width: 0; flex-shrink: 0; display: flex; flex-direction: column; background: #fff; border-left: 1px solid #eff3f4; overflow: hidden; transition: width .2s ease; }
+.context-panel.open { width: 380px; }
+.ctx-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
+.ctx-title { font-size: 16px; font-weight: 800; }
+.ctx-close { width: 28px; height: 28px; border: none; background: none; cursor: pointer; font-size: 18px; color: #536471; border-radius: 50%; }
+.ctx-close:hover { background: #f7f9f9; color: #0f1419; }
+.ctx-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+.ctx-section-label { padding: 8px 16px 4px; font-size: 11px; font-weight: 700; color: #8899a6; text-transform: uppercase; letter-spacing: .04em; }
+.ctx-msg { padding: 8px 16px; border-left: 3px solid transparent; cursor: pointer; }
+.ctx-msg:hover { background: #f7f9f9; }
+.ctx-msg.focus { background: #fff8e6; border-left-color: #ffb400; }
+.ctx-msg.same-user { border-left-color: var(--user-accent, #cfd9de); }
+.ctx-msg-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+.ctx-msg-user { font-size: 13px; font-weight: 700; color: #0f1419; }
+.ctx-msg-time { font-size: 11px; color: #8899a6; }
+.ctx-msg-content { font-size: 14px; line-height: 1.45; color: #0f1419; word-break: break-word; }
+.ctx-jump { font-size: 11px; color: #1d9bf0; margin-left: auto; }
+/* hover 触发的上下文按钮 */
+.msg-ctx-btn { position: absolute; top: 8px; right: 10px; width: 24px; height: 24px; border: 1px solid #cfd9de; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; line-height: 1; display: none; align-items: center; justify-content: center; padding: 0; z-index: 2; }
+.msg-item:hover .msg-ctx-btn { display: flex; }
+.msg-ctx-btn:hover { background: #e8f5fd; border-color: #1d9bf0; }
+/* 主列表里被聚焦的消息描边 */
+.msg-item.ctx-focused { background: #fff8e6; }
+
 /* Hour heatmap */
 .hours-bar { padding: 8px 16px 4px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
 .heatmap { display: flex; gap: 2px; align-items: flex-end; }
@@ -294,6 +319,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
         <div class="messages" id="messages"></div>
         <div class="stats-panel" id="statsPanel"></div>
     </div>
+    <div class="context-panel" id="contextPanel">
+        <div class="ctx-header">
+            <span class="ctx-title">🎯 上下文</span>
+            <button class="ctx-close" onclick="closeContext()" title="关闭 (Esc)">✕</button>
+        </div>
+        <div class="ctx-body" id="contextBody"></div>
+    </div>
 </div>
 
 <script>
@@ -306,10 +338,12 @@ function closeLightbox() {
     document.getElementById('lightbox-img').src = '';
 }
 document.addEventListener('keydown', e => {
-    // Escape: close lightbox or clear search
+    // Escape: close lightbox or context panel or clear search
     if (e.key === 'Escape') {
         if (document.getElementById('lightbox').classList.contains('active')) {
             closeLightbox();
+        } else if (document.getElementById('contextPanel').classList.contains('open')) {
+            closeContext();
         } else if (searchQuery) {
             clearSearch();
         }
@@ -437,6 +471,106 @@ function jumpToMessage(id) {
     t.classList.remove('msg-flash');
     void t.offsetWidth; // 强制重排以重启动画
     t.classList.add('msg-flash');
+}
+
+// ── 上下文聚焦面板（方向 B）──────────────────────
+let ctxFocusId = null;
+
+function closeContext() {
+    document.getElementById('contextPanel').classList.remove('open');
+    document.querySelectorAll('.msg-item.ctx-focused').forEach(e => e.classList.remove('ctx-focused'));
+    ctxFocusId = null;
+}
+
+// 提取消息纯文本预览（去引用结构、转义、限长）
+function ctxPreview(m) {
+    let s = m.content || '';
+    const SEP = ' - - - - - - - - - - - - - - - ';
+    if (s.includes(SEP)) s = s.split(SEP).pop().trim() || s; // 取回复正文部分
+    if (m.pics && m.pics.length) s = (s ? s + ' ' : '') + `[图片x${m.pics.length}]`;
+    if (m.share && !s) s = `[分享] ${m.share.title || ''}`;
+    return s;
+}
+
+function ctxMsgHtml(m, opts = {}) {
+    const cls = ['ctx-msg'];
+    if (opts.focus) cls.push('focus');
+    if (opts.sameUser) cls.push('same-user');
+    const accent = getUserAccent(m.user);
+    const time = (m.time || '').split(' ')[1] || '';
+    const body = processMentions(processUrls(escapeHtml(ctxPreview(m))));
+    return `<div class="${cls.join(' ')}" style="--user-accent:${accent}" onclick="openContext('${m.id}')">
+        <div class="ctx-msg-head">
+            <span class="ctx-msg-user">${escapeHtml(m.user)}</span>
+            <span class="ctx-msg-time">${time}</span>
+            <span class="ctx-jump" onclick="event.stopPropagation();closeContext();jumpToMessage('${m.id}')">跳到列表 ↗</span>
+        </div>
+        <div class="ctx-msg-content">${body}</div>
+    </div>`;
+}
+
+function openContext(id) {
+    id = String(id);
+    // 当天全量消息（按时间排序），与筛选解耦
+    const day = allMessages.filter(m => m.date === selectedDate).sort((a, b) => a.timestamp - b.timestamp);
+    const idx = day.findIndex(m => String(m.id) === id);
+    if (idx === -1) return;
+    const focus = day[idx];
+    ctxFocusId = id;
+
+    const parts = [];
+
+    // 1. 它引用的原消息（复用内容索引）
+    let quotedId = null;
+    if (focus.content && focus.content.includes(' - - - - - - - - - - - - - - - ') && focus.content.startsWith('「')) {
+        const q = focus.content.substring(1, focus.content.indexOf('」'));
+        const hit = window.__contentIndex && window.__contentIndex[normForQuote(q)];
+        if (hit && String(hit.id) !== id) quotedId = String(hit.id);
+    }
+    if (quotedId) {
+        const qm = day.find(m => String(m.id) === quotedId);
+        if (qm) { parts.push('<div class="ctx-section-label">被回复的原消息</div>'); parts.push(ctxMsgHtml(qm, { sameUser: false })); }
+    }
+
+    // 2. 时间邻域（前后各 6 条），焦点居中；同一发言人标记
+    const RADIUS = 6;
+    const from = Math.max(0, idx - RADIUS);
+    const to = Math.min(day.length - 1, idx + RADIUS);
+    parts.push('<div class="ctx-section-label">对话邻域</div>');
+    for (let i = from; i <= to; i++) {
+        const m = day[i];
+        parts.push(ctxMsgHtml(m, { focus: String(m.id) === id, sameUser: m.user === focus.user && String(m.id) !== id }));
+    }
+
+    // 3. 回复了这条消息的后续消息（反向查找）
+    const myKey = focus.content ? normForQuote(focus.content) : null;
+    if (myKey) {
+        const repliers = day.filter(m => {
+            if (String(m.id) === id || !m.content || !m.content.startsWith('「')) return false;
+            const sepi = m.content.indexOf(' - - - - - - - - - - - - - - - ');
+            if (sepi === -1) return false;
+            const q = m.content.substring(1, m.content.indexOf('」'));
+            return normForQuote(q) === myKey;
+        });
+        if (repliers.length) {
+            parts.push('<div class="ctx-section-label">回复了这条的消息</div>');
+            repliers.forEach(m => parts.push(ctxMsgHtml(m, {})));
+        }
+    }
+
+    document.getElementById('contextBody').innerHTML = parts.join('');
+    document.getElementById('contextPanel').classList.add('open');
+
+    // 主列表里标记焦点
+    document.querySelectorAll('.msg-item.ctx-focused').forEach(e => e.classList.remove('ctx-focused'));
+    const inList = document.getElementById('msg-' + id);
+    if (inList) inList.classList.add('ctx-focused');
+
+    // 滚动面板到焦点消息
+    requestAnimationFrame(() => {
+        const f = document.querySelector('.ctx-msg.focus');
+        if (f) f.scrollIntoView({ block: 'center' });
+    });
 }
 
 // Convert URLs to clickable links, render image URLs as thumbnails
@@ -1105,6 +1239,7 @@ function renderMessages(msgs) {
                 <div class="msg-content">${content}</div>
                 ${attach ? '<div class="msg-attach">' + attach + '</div>' : ''}
             </div>
+            <button class="msg-ctx-btn" onclick="openContext('${m.id}')" title="查看上下文">🎯</button>
         </div>`);
     });
     el.innerHTML = pieces.join('');
