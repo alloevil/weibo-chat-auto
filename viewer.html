@@ -123,6 +123,26 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 /* New message badge */
 .msg-new { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #1d9bf0; color: #fff; font-size: 10px; font-weight: 700; margin-left: 8px; vertical-align: middle; }
 
+/* @ 提及 */
+.mention { color: #1d9bf0; font-weight: 600; }
+
+/* 时段分隔（sticky 锚点）*/
+.time-divider { position: sticky; top: 0; z-index: 5; text-align: center; padding: 6px 0; margin: 4px 0; font-size: 12px; color: #536471; }
+.time-divider span { background: #eef3f6; padding: 3px 12px; border-radius: 9999px; }
+
+/* 未读分隔线 */
+.unread-divider { display: flex; align-items: center; gap: 10px; margin: 12px 16px; color: #f4212e; font-size: 12px; font-weight: 700; }
+.unread-divider::before, .unread-divider::after { content: ''; flex: 1; height: 1px; background: #f4212e; opacity: .4; }
+
+/* 引用可跳转 */
+.forward-quote.jumpable { cursor: pointer; }
+.forward-quote.jumpable:hover { background: #d8ebfb; }
+.forward-quote.jumpable::after { content: ' ↩'; color: #1d9bf0; font-size: 11px; }
+
+/* 跳转后高亮闪烁 */
+@keyframes msgFlash { 0% { background: #fff3bf; } 100% { background: transparent; } }
+.msg-flash { animation: msgFlash 1.6s ease-out; }
+
 /* Message list */
 .messages { flex: 1; overflow-y: auto; }
 .msg-item { padding: 10px 16px 10px 48px; border-bottom: 1px solid #eff3f4; border-left: 4px solid var(--user-accent, #cfd9de); transition: background .1s; position: relative; }
@@ -388,6 +408,36 @@ function processEmoji(text) {
     });
 }
 
+// @ 提及高亮（在已转义的 HTML 上操作；用前导边界避免误伤标签属性/邮箱）
+function processMentions(html) {
+    return html.replace(/(^|[\s　>])@([一-龥A-Za-z0-9_\-]{1,30})/g,
+        (_m, pre, name) => `${pre}<span class="mention">@${name}</span>`);
+}
+
+// 引用跳转用：规范化内容取前缀作为匹配键
+function normForQuote(s) {
+    return (s || '').replace(/[\s​　]+/g, '').slice(0, 30);
+}
+
+// 时段分段
+function periodOf(ts) {
+    const h = new Date(ts).getHours();
+    if (h < 6) return { key: 'dawn', label: '凌晨' };
+    if (h < 12) return { key: 'morning', label: '上午' };
+    if (h < 18) return { key: 'afternoon', label: '下午' };
+    return { key: 'evening', label: '晚上' };
+}
+
+// 跳转到原消息并高亮闪烁
+function jumpToMessage(id) {
+    const t = document.getElementById('msg-' + id);
+    if (!t) return;
+    t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    t.classList.remove('msg-flash');
+    void t.offsetWidth; // 强制重排以重启动画
+    t.classList.add('msg-flash');
+}
+
 // Convert URLs to clickable links, render image URLs as thumbnails
 function processUrls(text) {
     return text.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
@@ -404,8 +454,8 @@ function processUrls(text) {
 // Process forwarded messages: "quoted content" - - - - - - reply
 function processForward(text) {
     const SEP = ' - - - - - - - - - - - - - - - ';
-    // 统一处理流程：escape → urls → emoji
-    const pipe = (s) => processEmoji(processUrls(escapeHtml(s)));
+    // 统一处理流程：escape → urls → mentions → emoji
+    const pipe = (s) => processEmoji(processMentions(processUrls(escapeHtml(s))));
 
     if (!text.includes(SEP) && !text.startsWith('「')) return pipe(text);
 
@@ -462,7 +512,14 @@ function processForward(text) {
 
     const replyHtml = pipe(reply || '');
 
-    return `<div class="forward-quote">${quoteHtml}</div><div class="forward-reply"><br>${replyHtml}</div>`;
+    // 尝试匹配被引用的原消息，渲染为可点击跳转
+    const qKey = normForQuote(quote);
+    const targetId = (quoteLabel || !qKey) ? null : (window.__contentIndex && window.__contentIndex[qKey]);
+    const quoteOpen = targetId
+        ? `<div class="forward-quote jumpable" onclick="jumpToMessage('${targetId}')" title="跳转到原消息">`
+        : `<div class="forward-quote">`;
+
+    return `${quoteOpen}${quoteHtml}</div><div class="forward-reply"><br>${replyHtml}</div>`;
 }
 
 // Weekday
@@ -887,11 +944,7 @@ function getFiltered() {
         if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频' && m.content !== 'Video') return false;
         if (mediaFilter === 'link' && !m.link && !m.share && !m.videoUrl) return false;
         if (hideNoise && isNoise(m)) return false;
-        if (searchQuery) {
-            const content = (m.content || '').toLowerCase();
-            const user = (m.user || '').toLowerCase();
-            if (!content.includes(searchQuery) && !user.includes(searchQuery)) return false;
-        }
+        // 注：搜索不再参与过滤，改为在列表内高亮+定位（保留上下文）
         return true;
     });
 }
@@ -930,11 +983,40 @@ function renderMessages(msgs) {
         el.innerHTML = '<div class="empty">No messages</div>';
         return;
     }
-    el.innerHTML = msgs.map((m, index) => {
+    // 构建内容索引（供引用跳转：规范化前缀 → 消息 id）
+    window.__contentIndex = {};
+    for (const m of msgs) {
+        if (m.content && m.id != null) {
+            const key = normForQuote(m.content);
+            if (key && !(key in window.__contentIndex)) window.__contentIndex[key] = m.id;
+        }
+    }
+
+    let lastSeg = null;          // 上一条所属时段
+    let unreadInserted = false;  // 未读分隔线只插一次
+    const pieces = [];
+
+    msgs.forEach((m, index) => {
         const prev = msgs[index - 1];
         const prevTime = prev ? Number(prev.timestamp) : 0;
         const currentTime = Number(m.timestamp);
-        const sameUser = prev && prev.user === m.user && currentTime - prevTime <= 5 * 60 * 1000;
+
+        // 时段分隔锚点
+        let brokeFlow = false;
+        const seg = periodOf(currentTime);
+        if (!lastSeg || seg.key !== lastSeg) {
+            pieces.push(`<div class="time-divider"><span>${seg.label}</span></div>`);
+            lastSeg = seg.key;
+            brokeFlow = true;
+        }
+        // 未读分隔线（首条新消息前，且非整列表第一条）
+        if (!unreadInserted && index > 0 && lastVisitTimestamp > 0 && currentTime > lastVisitTimestamp) {
+            pieces.push(`<div class="unread-divider">以下为新消息</div>`);
+            unreadInserted = true;
+            brokeFlow = true;
+        }
+
+        const sameUser = !brokeFlow && prev && prev.user === m.user && currentTime - prevTime <= 5 * 60 * 1000;
         const time = m.time.split(' ')[1] || '';
         const accent = getUserAccent(m.user);
         const continuation = sameUser ? ' msg-item-continuation' : '';
@@ -998,7 +1080,7 @@ function renderMessages(msgs) {
         const avatarHtml = m.avatar ? `<img class="msg-av" src="${m.avatar}" loading="lazy" onerror="this.remove()">` : '';
         const userAttr = m.avatar ? `data-hasavatar data-initial="${userInitial}"` : `data-initial="${userInitial}"`;
         const userName = searchQuery ? highlightText(escapeHtml(m.user), escapeHtml(searchQuery)) : escapeHtml(m.user);
-        const isNew = m.timestamp > lastVisitTimestamp;
+        const isNew = lastVisitTimestamp > 0 && m.timestamp > lastVisitTimestamp;
         const newBadge = isNew ? '<span class="msg-new">NEW</span>' : '';
         const avatarEl = m.avatar
             ? `<div class="msg-avatar"><img src="${m.avatar}" onerror="this.parentElement.textContent='${userInitial}'"></div>`
@@ -1006,7 +1088,7 @@ function renderMessages(msgs) {
         const contAvatar = continuation
             ? (m.avatar ? `<img class="cont-avatar" src="${m.avatar}" onerror="this.remove()">` : `<span class="cont-avatar">${userInitial}</span>`)
             : '';
-        return `<div class="msg-item${continuation}" data-hour="${new Date(m.timestamp).getHours()}" style="--user-accent:${accent}">
+        pieces.push(`<div class="msg-item${continuation}" id="msg-${m.id}" data-hour="${new Date(m.timestamp).getHours()}" style="--user-accent:${accent}">
             ${continuation ? contAvatar : avatarEl}
             <div class="msg-header">
                 <span class="msg-user">${userName}${newBadge}</span>
@@ -1016,8 +1098,9 @@ function renderMessages(msgs) {
                 <div class="msg-content">${content}</div>
                 ${attach ? '<div class="msg-attach">' + attach + '</div>' : ''}
             </div>
-        </div>`;
-    }).join('');
+        </div>`);
+    });
+    el.innerHTML = pieces.join('');
 }
 
 function escapeHtml(s) {
@@ -1034,8 +1117,8 @@ function renderAll() {
     renderMessages(filtered);
     renderMediaBar();
 
-    // 用户/搜索筛选后滚动到顶部（时段筛选由 toggleHour 处理）
-    if (selectedUsers.size > 0 || searchQuery) {
+    // 用户筛选后滚动到顶部（时段筛选由 toggleHour 处理；搜索由下方定位处理）
+    if (selectedUsers.size > 0 && !searchQuery) {
         const msgEl = document.getElementById('messages');
         if (msgEl) msgEl.scrollTop = 0;
     }
@@ -1046,10 +1129,16 @@ function renderAll() {
     document.getElementById('stats').innerHTML = `${filtered.length} msgs · ${users.size} members${newInfo}`;
     updateDateToggle();
 
-    // Search count
+    // 搜索：不过滤，改为高亮 + 定位到第一处匹配
     if (searchQuery) {
-        document.getElementById('searchCountText').textContent = `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`;
-        document.getElementById('searchNav').className = 'search-nav show';
+        const hits = document.querySelectorAll('.search-highlight');
+        document.getElementById('searchNav').className = 'search-nav' + (hits.length ? ' show' : '');
+        if (hits.length) {
+            searchNavIndex = -1;
+            navigateSearch(1); // 跳到第一处并更新计数
+        } else {
+            document.getElementById('searchCountText').textContent = '无匹配';
+        }
     } else {
         document.getElementById('searchCountText').textContent = '';
         document.getElementById('searchNav').className = 'search-nav';
@@ -1224,9 +1313,9 @@ function renderWordFrequency(msgs) {
 
 // Update last visit timestamp
 function updateLastVisit() {
-    const now = Date.now();
-    localStorage.setItem('lastVisitTimestamp', String(now));
-    lastVisitTimestamp = now;
+    // 仅持久化"本次访问时间"，不改内存变量——
+    // 这样整个会话内 NEW 徽章与未读分隔线稳定表示"自上次打开以来"
+    localStorage.setItem('lastVisitTimestamp', String(Date.now()));
 }
 
 // Update on page unload
