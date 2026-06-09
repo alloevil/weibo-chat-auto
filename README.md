@@ -40,6 +40,17 @@
 
 ---
 
+## ✅ 前置要求
+
+| 必需 | 说明 |
+| --- | --- |
+| 🖥 **macOS** | 定时任务依赖 macOS 的 launchd |
+| 🟢 **Node.js 18+** | [brew install node](https://brew.sh) 或 [nodejs.org](https://nodejs.org)（选 LTS） |
+| 🌐 **Google Chrome** | 归档器用它登录并抓取消息 |
+| 📱 **微博账号 + 手机 App** | 首次需用 App 扫码登录网页版 |
+
+---
+
 ## 🚀 快速开始
 
 ### 一键安装（推荐）

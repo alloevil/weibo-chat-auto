@@ -332,5 +332,12 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Weibo Group Chat Viewer: http://localhost:${PORT}`);
+    const url = `http://localhost:${PORT}`;
+    console.log(`Weibo Group Chat Viewer: ${url}`);
+    // 自动打开浏览器（设 NO_OPEN=1 可禁用）
+    if (!process.env.NO_OPEN) {
+        const opener = process.platform === 'darwin' ? 'open'
+            : process.platform === 'win32' ? 'start' : 'xdg-open';
+        require('child_process').exec(`${opener} ${url}`, () => {});
+    }
 });
