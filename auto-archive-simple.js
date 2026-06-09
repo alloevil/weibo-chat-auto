@@ -3,12 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { exec } = require('child_process');
+const { resolveChromePath } = require('./lib/chrome-path');
 
 // 配置
 const CONFIG = {
     chatUrl: 'https://api.weibo.com/chat#/chat',
     outputDir: path.join(__dirname, 'output'),
-    chromePath: require('./config.json').chromePath,
+    chromePath: resolveChromePath((() => { try { return require('./config.json').chromePath; } catch { return ''; } })()),
     cookieFile: path.join(__dirname, 'cookies.json'),
     launchDelay: 3000,
 };
@@ -886,8 +887,11 @@ async function main() {
 
     // 关闭浏览器
     await browser.close();
-    console.log('重新打开 Chrome...');
-    exec('open -a "Google Chrome"');
+    // 仅 macOS：归档结束后重新唤起用户的 Chrome（历史行为，其它平台无需）
+    if (process.platform === 'darwin') {
+        console.log('重新打开 Chrome...');
+        exec('open -a "Google Chrome"');
+    }
 
     console.log('完成！');
 }

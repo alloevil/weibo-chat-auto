@@ -1,10 +1,13 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
+const { resolveChromePath } = require('./lib/chrome-path');
+let cfgChrome = '';
+try { cfgChrome = require('./config.json').chromePath; } catch { /* 靠探测 */ }
 
 (async () => {
     const browser = await puppeteer.launch({
         headless: 'new',
-        executablePath: require('./config.json').chromePath,
+        executablePath: resolveChromePath(cfgChrome),
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,900'],
     });
     const page = await browser.newPage();

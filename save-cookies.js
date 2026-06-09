@@ -4,7 +4,10 @@ const path = require('path');
 
 const cookieFile = path.join(__dirname, 'cookies.json');
 const chatUrl = 'https://api.weibo.com/chat#/chat';
-const chromePath = require('./config.json').chromePath;
+const { resolveChromePath } = require('./lib/chrome-path');
+let configChromePath = '';
+try { configChromePath = require('./config.json').chromePath; } catch { /* config 可缺省，靠探测 */ }
+const chromePath = resolveChromePath(configChromePath);
 
 async function saveCookies() {
     console.log('=== 保存微博 Cookie ===');
