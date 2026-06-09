@@ -322,7 +322,10 @@ const server = http.createServer((req, res) => {
     // Static page
     if (url.pathname === '/' || url.pathname === '/index.html') {
         const html = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8');
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
         res.end(html);
         return;
     }
