@@ -85,9 +85,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .ctx-msg-time { font-size: 11px; color: #8899a6; }
 .ctx-msg-content { font-size: 14px; line-height: 1.45; color: #0f1419; word-break: break-word; }
 .ctx-jump { font-size: 11px; color: #1d9bf0; margin-left: auto; }
-/* hover 触发的上下文按钮 */
-.msg-ctx-btn { position: absolute; top: 8px; right: 10px; width: 24px; height: 24px; border: 1px solid #cfd9de; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; line-height: 1; display: none; align-items: center; justify-content: center; padding: 0; z-index: 2; }
-.msg-item:hover .msg-ctx-btn { display: flex; }
+/* 消息头部常驻的「上下文」链接 */
+.msg-ctx-link { font-size: 12px; color: #1d9bf0; cursor: pointer; margin-left: 10px; user-select: none; opacity: .75; }
+.msg-ctx-link:hover { opacity: 1; text-decoration: underline; }
+/* 连续消息（无头部）用 hover 浮现的小标签 */
+.msg-ctx-btn { position: absolute; top: 4px; right: 12px; font-size: 12px; color: #1d9bf0; background: #fff; border: 1px solid #cfd9de; border-radius: 6px; padding: 2px 8px; cursor: pointer; line-height: 1.3; display: none; z-index: 2; }
+.msg-item:hover .msg-ctx-btn { display: block; }
 .msg-ctx-btn:hover { background: #e8f5fd; border-color: #1d9bf0; }
 /* 主列表里被聚焦的消息描边 */
 .msg-item.ctx-focused { background: #fff8e6; }
@@ -1234,12 +1237,13 @@ function renderMessages(msgs) {
             <div class="msg-header">
                 <span class="msg-user">${userName}${newBadge}</span>
                 <span class="msg-time">${time}</span>
+                <span class="msg-ctx-link" onclick="openContext('${m.id}')" title="查看这条消息的上下文">🎯 上下文</span>
             </div>
             <div class="msg-body">
                 <div class="msg-content">${content}</div>
                 ${attach ? '<div class="msg-attach">' + attach + '</div>' : ''}
             </div>
-            <button class="msg-ctx-btn" onclick="openContext('${m.id}')" title="查看上下文">🎯</button>
+            ${continuation ? `<span class="msg-ctx-btn" onclick="openContext('${m.id}')">🎯 上下文</span>` : ''}
         </div>`);
     });
     el.innerHTML = pieces.join('');
