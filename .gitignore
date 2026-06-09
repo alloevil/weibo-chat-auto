@@ -7,6 +7,7 @@ last-archive-state*.json
 state/
 .archiver-script.js
 .shot-*.js
+.capture-*.js
 debug*.png
 screenshot.png
 *.log

@@ -9,6 +9,10 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 </p>
 
+![演示](docs/demo.gif)
+
+> 演示中的用户名、群名与头像均为脱敏示例。
+
 ---
 
 ## ✨ 功能
@@ -62,6 +66,8 @@ cd weibo-chat-auto
 ```
 
 `setup.sh` 会引导你完成全部步骤：检查 Node → 安装依赖 → 配置群聊 → 扫码登录 → 询问是否启用定时任务。脚本可重复运行，已配置的步骤会自动跳过。
+
+> 熟练用户可用 `./setup.sh --yes` 非交互安装（仅装依赖+建配置，跳过登录/定时/归档）。
 
 装完后：
 

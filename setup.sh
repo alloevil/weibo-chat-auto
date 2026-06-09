@@ -1,7 +1,11 @@
 #!/bin/bash
 # 微博聊天自动归档 — 一键安装脚本
 #
-# 用法: ./setup.sh
+# 用法:
+#   ./setup.sh          交互式安装（推荐）
+#   ./setup.sh --yes    非交互安装，全部用默认值（不登录/不启用定时任务/不归档）
+#   ./setup.sh --help   显示帮助
+#
 # 可重复运行（幂等）：已配置的步骤会跳过或覆盖。
 
 set -e
@@ -10,6 +14,24 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LABEL="com.allo.weibo-chat-archive"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 PLIST_DEST="$LAUNCH_AGENTS/$LABEL.plist"
+
+# ── 解析参数 ──────────────────────────────────────
+ASSUME_YES=0
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes) ASSUME_YES=1 ;;
+        -h|--help)
+            echo "用法: ./setup.sh [--yes] [--help]"
+            echo "  --yes, -y   非交互安装：检查环境 + 装依赖 + 建 config，"
+            echo "              跳过登录、定时任务与首次归档（用默认值）"
+            echo "  --help, -h  显示本帮助"
+            exit 0 ;;
+        *) echo "未知参数: $arg（用 --help 查看用法）"; exit 1 ;;
+    esac
+done
+
+# 是否进入交互（有 TTY 且未指定 --yes）
+if [ -t 0 ] && [ "$ASSUME_YES" -eq 0 ]; then INTERACTIVE=1; else INTERACTIVE=0; fi
 
 # ── 颜色 ──────────────────────────────────────────
 BOLD=$'\033[1m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; BLUE=$'\033[34m'; DIM=$'\033[2m'; RESET=$'\033[0m'
@@ -21,6 +43,7 @@ step() { echo; echo "${BOLD}$1${RESET}"; }
 echo "${BOLD}═══════════════════════════════════════${RESET}"
 echo "${BOLD}  微博聊天自动归档 · 一键安装${RESET}"
 echo "${BOLD}═══════════════════════════════════════${RESET}"
+[ "$ASSUME_YES" -eq 1 ] && info "非交互模式（--yes）"
 
 # ── 1. 检查运行环境 ──────────────────────────────
 step "[1/5] 检查运行环境"
@@ -68,7 +91,7 @@ if [ -f "$SCRIPT_DIR/config.json" ]; then
     info "如需修改群聊，编辑 ${DIM}config.json${RESET} 的 groups 字段"
 else
     cp "$SCRIPT_DIR/config.example.json" "$SCRIPT_DIR/config.json"
-    if [ -t 0 ]; then
+    if [ "$INTERACTIVE" -eq 1 ]; then
         echo "输入要归档的群名（必须与微博中的群名完全一致）"
         echo "${DIM}多个群用逗号分隔，直接回车则稍后手动编辑 config.json${RESET}"
         printf "群名: "
@@ -94,7 +117,7 @@ step "[4/5] 登录微博"
 if [ -f "$SCRIPT_DIR/cookies.json" ]; then
     ok "cookies.json 已存在，跳过登录"
     info "如需重新登录：${DIM}npm run save-cookies${RESET}"
-elif [ -t 0 ]; then
+elif [ "$INTERACTIVE" -eq 1 ]; then
     printf "现在扫码登录并保存 Cookie？[Y/n] "
     read -r ANS
     if [[ ! "$ANS" =~ ^[Nn] ]]; then
@@ -144,7 +167,7 @@ PLIST
     info "日志：${DIM}$SCRIPT_DIR/logs/archive.log${RESET}"
 }
 
-if [ -t 0 ]; then
+if [ "$INTERACTIVE" -eq 1 ]; then
     printf "启用定时自动归档（每小时一次，保持 Cookie 不过期）？[y/N] "
     read -r ANS
     if [[ "$ANS" =~ ^[Yy] ]]; then
@@ -184,7 +207,7 @@ if [ -f "$SCRIPT_DIR/config.json" ]; then
     ' 2>/dev/null; then HAS_REAL_GROUPS="yes"; fi
 fi
 
-if [ -t 0 ] && [ -f "$SCRIPT_DIR/cookies.json" ] && [ "$HAS_REAL_GROUPS" = "yes" ]; then
+if [ "$INTERACTIVE" -eq 1 ] && [ -f "$SCRIPT_DIR/cookies.json" ] && [ "$HAS_REAL_GROUPS" = "yes" ]; then
     printf "${BOLD}现在就归档一次并打开查看器？${RESET} [Y/n] "
     read -r ANS
     if [[ ! "$ANS" =~ ^[Nn] ]]; then
