@@ -194,6 +194,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .emoji-unknown { display: inline-block; padding: 1px 5px; margin: 0 1px; border-radius: 4px; background: #f0f2f5; color: #536471; font-size: 12px; vertical-align: middle; }
 .forward-quote { border-left: 3px solid #1d9bf0; margin: 4px 0 6px; padding: 8px 12px; background: #e8f4fd; border-radius: 0 6px 6px 0; font-size: 14px; color: #536471; line-height: 1.45; }
 .forward-source { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #d9e8f3; font-size: 12px; color: #1d6fa8; }
+.quote-author { font-weight: 700; color: #1d6fa8; }
 .forward-reply { margin-top: 2px; }
 
 @media (max-width: 760px) {
@@ -512,14 +513,16 @@ function processForward(text) {
 
     const replyHtml = pipe(reply || '');
 
-    // 尝试匹配被引用的原消息，渲染为可点击跳转
+    // 尝试匹配被引用的原消息：可点击跳转 + 标出原作者
     const qKey = normForQuote(quote);
-    const targetId = (quoteLabel || !qKey) ? null : (window.__contentIndex && window.__contentIndex[qKey]);
+    const hit = (quoteLabel || !qKey) ? null : (window.__contentIndex && window.__contentIndex[qKey]);
+    const targetId = hit ? hit.id : null;
+    const authorTag = (hit && hit.user) ? `<span class="quote-author">${escapeHtml(hit.user)}：</span>` : '';
     const quoteOpen = targetId
         ? `<div class="forward-quote jumpable" onclick="jumpToMessage('${targetId}')" title="跳转到原消息">`
         : `<div class="forward-quote">`;
 
-    return `${quoteOpen}${quoteHtml}</div><div class="forward-reply"><br>${replyHtml}</div>`;
+    return `${quoteOpen}${authorTag}${quoteHtml}</div><div class="forward-reply"><br>${replyHtml}</div>`;
 }
 
 // Weekday
@@ -983,12 +986,12 @@ function renderMessages(msgs) {
         el.innerHTML = '<div class="empty">No messages</div>';
         return;
     }
-    // 构建内容索引（供引用跳转：规范化前缀 → 消息 id）
+    // 构建内容索引（供引用跳转 + 显示原作者：规范化前缀 → {id, user}）
     window.__contentIndex = {};
     for (const m of msgs) {
         if (m.content && m.id != null) {
             const key = normForQuote(m.content);
-            if (key && !(key in window.__contentIndex)) window.__contentIndex[key] = m.id;
+            if (key && !(key in window.__contentIndex)) window.__contentIndex[key] = { id: m.id, user: m.user };
         }
     }
 
