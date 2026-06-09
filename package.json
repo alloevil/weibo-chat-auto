@@ -11,10 +11,21 @@
     "start-chrome": "./start-chrome.sh",
     "view": "node viewer-server.js"
   },
-  "keywords": ["weibo", "chat", "archive"],
-  "author": "allo",
-  "license": "ISC",
+  "keywords": ["weibo", "chat", "archive", "puppeteer", "viewer"],
+  "author": "alloevil",
+  "license": "MIT",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alloevil/weibo-chat-auto.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alloevil/weibo-chat-auto/issues"
+  },
+  "homepage": "https://github.com/alloevil/weibo-chat-auto#readme",
   "dependencies": {
     "puppeteer": "^24.43.0"
   }
