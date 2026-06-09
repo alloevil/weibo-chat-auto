@@ -330,6 +330,19 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // 静态 JS 模块（lib/*.js）
+    if (/^\/lib\/[\w-]+\.js$/.test(url.pathname)) {
+        const filePath = path.join(__dirname, url.pathname);
+        if (fs.existsSync(filePath)) {
+            res.writeHead(200, {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+            });
+            res.end(fs.readFileSync(filePath, 'utf-8'));
+            return;
+        }
+    }
+
     res.writeHead(404);
     res.end('Not Found');
 });

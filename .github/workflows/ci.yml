@@ -23,7 +23,8 @@ jobs:
 
       - name: Syntax-check all JS files
         run: |
-          for f in *.js; do
+          for f in *.js lib/*.js test/*.js; do
+            [ -e "$f" ] || continue
             echo "checking $f"
             node --check "$f"
           done
@@ -39,6 +40,12 @@ jobs:
           "
           node --check .viewer-inline.js
           rm -f .viewer-inline.js
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
 
       - name: Validate JSON files
         run: |

@@ -9,9 +9,19 @@
     "archive": "node auto-archive-simple.js",
     "clean": "node -e \"const fs=require('fs'),p=require('path');function clean(d){if(!fs.existsSync(d))return;fs.readdirSync(d,{withFileTypes:true}).forEach(e=>{const fp=p.join(d,e.name);if(e.isDirectory()){clean(fp)}else if(/T\\d{2}-/.test(e.name)){console.log('Remove:',fp);fs.unlinkSync(fp)}})}clean('output')\"",
     "start-chrome": "./start-chrome.sh",
-    "view": "node viewer-server.js"
+    "view": "node viewer-server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
-  "keywords": ["weibo", "chat", "archive", "puppeteer", "viewer"],
+  "keywords": [
+    "weibo",
+    "chat",
+    "archive",
+    "puppeteer",
+    "viewer"
+  ],
   "author": "alloevil",
   "license": "MIT",
   "type": "commonjs",
@@ -28,5 +38,10 @@
   "homepage": "https://github.com/alloevil/weibo-chat-auto#readme",
   "dependencies": {
     "puppeteer": "^24.43.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3"
   }
 }

@@ -1,0 +1,7 @@
+node_modules/
+output/
+cache/
+docs/
+package-lock.json
+viewer.html
+*.md

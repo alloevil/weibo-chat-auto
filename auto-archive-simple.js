@@ -766,13 +766,11 @@ async function main() {
                 const rawMsgs = data.messages || data.data?.messages || data.data || [];
                 const msgList = Array.isArray(rawMsgs) ? rawMsgs : [];
                 if (msgList.length === 0) break;
-                let added = 0;
                 for (const m of msgList) {
                     const n = normalizeMessage(m);
                     if (n && !messageIds.has(String(n.id))) {
                         messageIds.add(String(n.id));
                         allApiMessages.push(n);
-                        added++;
                     }
                 }
                 const firstMsg = msgList[0];
