@@ -987,8 +987,12 @@ function renderMessages(msgs) {
         return;
     }
     // 构建内容索引（供引用跳转 + 显示原作者：规范化前缀 → {id, user}）
+    // 用当天全量消息构建，与筛选解耦——否则被筛掉的原消息会导致引用解析不出作者
     window.__contentIndex = {};
-    for (const m of msgs) {
+    const indexSource = (typeof allMessages !== 'undefined' && allMessages.length)
+        ? allMessages.filter(m => m.date === selectedDate)
+        : msgs;
+    for (const m of indexSource) {
         if (m.content && m.id != null) {
             const key = normForQuote(m.content);
             if (key && !(key in window.__contentIndex)) window.__contentIndex[key] = { id: m.id, user: m.user };
