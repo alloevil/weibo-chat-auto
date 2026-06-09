@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Syntax-check all JS files
+        run: |
+          for f in *.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+
+      - name: Syntax-check inline script in viewer.html
+        run: |
+          node -e "
+            const fs = require('fs');
+            const html = fs.readFileSync('viewer.html', 'utf8');
+            const m = html.match(/<script>([\s\S]*)<\/script>/);
+            if (!m) { console.error('No <script> block found in viewer.html'); process.exit(1); }
+            fs.writeFileSync('.viewer-inline.js', m[1]);
+          "
+          node --check .viewer-inline.js
+          rm -f .viewer-inline.js
+
+      - name: Validate JSON files
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json OK')"
+          node -e "JSON.parse(require('fs').readFileSync('config.example.json','utf8')); console.log('config.example.json OK')"
+
+      - name: Shellcheck setup.sh
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck -S warning setup.sh || true
