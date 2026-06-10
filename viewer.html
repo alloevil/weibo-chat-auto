@@ -22,7 +22,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .sync-btn { height: 28px; padding: 0 10px; margin-left: 8px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #0f1419; cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; }
 .sync-btn:hover { background: #f7f9f9; }
 .sync-btn.syncing { background: #eff3f4; color: #536471; cursor: wait; }
-.toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.18); opacity: 0; transition: transform .25s ease, opacity .25s ease; z-index: 1000; pointer-events: none; }
+.toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.18); opacity: 0; transition: transform .25s ease, opacity .25s ease; z-index: 1000; pointer-events: none; cursor: pointer; }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 .toast.success { background: #0f1419; color: #fff; }
 .toast.error { background: #f4212e; color: #fff; }
@@ -278,7 +278,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 </head>
 <body>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" onclick="dismissToast()"></div>
 
 <div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lightbox-img" src=""></div>
 
@@ -652,6 +652,11 @@ function showToast(message, type = 'success', duration = 4000) {
     el.className = 'toast show ' + type;
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.className = 'toast ' + type; }, duration);
+}
+function dismissToast() {
+    const el = document.getElementById('toast');
+    el.className = el.className.replace(' show', '');
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
 }
 
 async function syncNow() {
