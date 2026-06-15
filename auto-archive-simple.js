@@ -273,6 +273,7 @@ async function main() {
 
     const page = await browser.newPage();
 
+    try { // 确保任何异常都能关闭浏览器，防止僵尸 Chrome 进程
     // 监听浏览器控制台输出
     page.on('console', msg => {
         if (msg.type() === 'error') console.log('[浏览器错误]', msg.text());
@@ -886,7 +887,9 @@ async function main() {
     console.log('下次运行将自动使用已保存的登录状态');
 
     // 关闭浏览器
-    await browser.close();
+    } finally {
+        await browser.close().catch(() => {});
+    }
     // 仅 macOS：归档结束后重新唤起用户的 Chrome（历史行为，其它平台无需）
     if (process.platform === 'darwin') {
         console.log('重新打开 Chrome...');

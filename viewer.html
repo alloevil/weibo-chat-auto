@@ -651,7 +651,10 @@ function showToast(message, type = 'success', duration = 4000) {
     el.textContent = message;
     el.className = 'toast show ' + type;
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.className = 'toast ' + type; }, duration);
+    // 错误 toast 常驻，等用户点击关闭；成功 toast 自动消失
+    if (type !== 'error') {
+        toastTimer = setTimeout(() => { el.className = 'toast ' + type; }, duration);
+    }
 }
 function dismissToast() {
     const el = document.getElementById('toast');
