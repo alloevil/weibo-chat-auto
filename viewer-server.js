@@ -2,7 +2,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, exec } = require('child_process');
 
 const PORT = 3456;
 const OUTPUT_DIR = path.join(__dirname, 'output');
@@ -246,6 +246,90 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({ ok: true, archived, skipped }));
         });
         return;
+    }
+
+    // Schedule: read/update launchd interval (macOS only)
+    if (url.pathname === '/api/schedule') {
+        if (process.platform !== 'darwin') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ supported: false }));
+            return;
+        }
+
+        const PLIST_LABEL = 'com.allo.weibo-chat-archive';
+        const PLIST_PATH = path.join(process.env.HOME, 'Library/LaunchAgents', `${PLIST_LABEL}.plist`);
+
+        if (req.method === 'GET') {
+            let interval = 0;
+            let enabled = false;
+            try {
+                const content = fs.readFileSync(PLIST_PATH, 'utf-8');
+                const match = content.match(/<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/);
+                if (match) interval = parseInt(match[1], 10);
+                enabled = true;
+            } catch {}
+            // Check if actually loaded
+            exec(`launchctl list ${PLIST_LABEL} 2>/dev/null`, (err) => {
+                if (err) enabled = false;
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ supported: true, enabled, interval }));
+            });
+            return;
+        }
+
+        if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                try {
+                    const { interval } = JSON.parse(body);
+                    if (typeof interval !== 'number' || interval < 0) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ ok: false, error: 'Invalid interval' }));
+                        return;
+                    }
+
+                    const unload = `launchctl unload "${PLIST_PATH}" 2>/dev/null`;
+
+                    if (interval === 0) {
+                        // Disable: just unload
+                        exec(unload, () => {
+                            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                            res.end(JSON.stringify({ ok: true, enabled: false, interval: 0 }));
+                        });
+                        return;
+                    }
+
+                    // Update plist with new interval
+                    let content;
+                    try { content = fs.readFileSync(PLIST_PATH, 'utf-8'); } catch {
+                        res.writeHead(404, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ ok: false, error: 'Plist not found. Run setup.sh first.' }));
+                        return;
+                    }
+                    content = content.replace(
+                        /(<key>StartInterval<\/key>\s*<integer>)\d+(<\/integer>)/,
+                        `$1${interval}$2`
+                    );
+                    fs.writeFileSync(PLIST_PATH, content, 'utf-8');
+
+                    // Reload
+                    exec(`${unload}; launchctl load "${PLIST_PATH}"`, (err) => {
+                        if (err) {
+                            res.writeHead(500, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ ok: false, error: err.message }));
+                            return;
+                        }
+                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ ok: true, enabled: true, interval }));
+                    });
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: e.message }));
+                }
+            });
+            return;
+        }
     }
 
     // Image proxy: /api/image?fid=xxx (with disk cache)
