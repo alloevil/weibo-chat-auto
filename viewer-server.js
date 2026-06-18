@@ -7,6 +7,13 @@ const { execFile, exec } = require('child_process');
 const PORT = 3456;
 const OUTPUT_DIR = path.join(__dirname, 'output');
 
+process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException]', err.message);
+});
+process.on('unhandledRejection', (err) => {
+    console.error('[unhandledRejection]', err);
+});
+
 function loadCookies() {
     const cookieFile = path.join(__dirname, 'cookies.json');
     try {
@@ -345,7 +352,7 @@ const server = http.createServer((req, res) => {
 
         const imageUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
         const cookieHeader = loadCookies();
-        const req = https.get(imageUrl, {
+        const proxyReq = https.get(imageUrl, {
             headers: {
                 'Cookie': cookieHeader,
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -371,8 +378,8 @@ const server = http.createServer((req, res) => {
                 res.end(buffer);
             });
         });
-        req.on('error', () => { res.writeHead(500); res.end('Proxy error'); });
-        req.setTimeout(15000, () => { req.destroy(); res.writeHead(504); res.end('Timeout'); });
+        proxyReq.on('error', () => { if (!res.headersSent) { res.writeHead(500); res.end('Proxy error'); } });
+        proxyReq.setTimeout(15000, () => { proxyReq.destroy(); if (!res.headersSent) { res.writeHead(504); res.end('Timeout'); } });
         return;
     }
 
@@ -380,7 +387,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/sinaimg') {
         const imgUrl = url.searchParams.get('url');
         if (!imgUrl || !/^https:\/\/wx[0-9]*\.sinaimg\.cn\//.test(imgUrl)) { res.writeHead(403); res.end('Forbidden'); return; }
-        const req = https.get(imgUrl, {
+        const proxyReq = https.get(imgUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 'Referer': 'https://weibo.com/',
@@ -398,8 +405,8 @@ const server = http.createServer((req, res) => {
             });
             proxyRes.pipe(res);
         });
-        req.on('error', () => { res.writeHead(500); res.end('Proxy error'); });
-        req.setTimeout(15000, () => { req.destroy(); res.writeHead(504); res.end('Timeout'); });
+        proxyReq.on('error', () => { if (!res.headersSent) { res.writeHead(500); res.end('Proxy error'); } });
+        proxyReq.setTimeout(15000, () => { proxyReq.destroy(); if (!res.headersSent) { res.writeHead(504); res.end('Timeout'); } });
         return;
     }
 
