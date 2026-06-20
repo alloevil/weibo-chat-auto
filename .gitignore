@@ -3,6 +3,7 @@ output/
 cache/
 cookies.json
 config.json
+ai-config.json
 last-archive-state*.json
 state/
 .archiver-script.js

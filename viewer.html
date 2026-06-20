@@ -24,6 +24,46 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .sync-btn.syncing { background: #eff3f4; color: #536471; cursor: wait; }
 .schedule-select { height: 28px; padding: 0 8px; margin-left: 8px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #536471; cursor: pointer; font-size: 12px; font-weight: 500; appearance: none; -webkit-appearance: none; padding-right: 20px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23536471'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
 .schedule-select:hover { background-color: #f7f9f9; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23536471'/%3E%3C/svg%3E"); }
+
+/* AI Settings Modal */
+.ai-btn { height: 28px; padding: 0 10px; margin-left: 8px; border: 1px solid #cfd9de; border-radius: 9999px; background: #fff; color: #536471; cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; }
+.ai-btn:hover { background: #f7f9f9; color: #0f1419; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 2000; display: none; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 16px; padding: 24px; width: 420px; max-width: 90vw; box-shadow: 0 8px 40px rgba(0,0,0,.2); }
+.modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+.modal-field { margin-bottom: 12px; }
+.modal-field label { display: block; font-size: 13px; font-weight: 600; color: #536471; margin-bottom: 4px; }
+.modal-field input[type="text"], .modal-field input[type="password"] { width: 100%; height: 36px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 8px; font-size: 14px; outline: none; transition: border-color .15s; }
+.modal-field input:focus { border-color: #1d9bf0; }
+.modal-field .switch-wrap { display: flex; align-items: center; gap: 8px; }
+.modal-field .switch-wrap input[type="checkbox"] { width: 36px; height: 20px; appearance: none; -webkit-appearance: none; background: #cfd9de; border-radius: 10px; position: relative; cursor: pointer; transition: background .2s; }
+.modal-field .switch-wrap input[type="checkbox"]::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.modal-field .switch-wrap input[type="checkbox"]:checked { background: #1d9bf0; }
+.modal-field .switch-wrap input[type="checkbox"]:checked::after { transform: translateX(16px); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.modal-actions button { height: 36px; padding: 0 20px; border-radius: 9999px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all .15s; }
+.modal-cancel { border: 1px solid #cfd9de; background: #fff; color: #0f1419; }
+.modal-cancel:hover { background: #f7f9f9; }
+.modal-save { border: none; background: #1d9bf0; color: #fff; }
+.modal-save:hover { background: #1a8cd8; }
+
+/* Summary Panel */
+.summary-bar { padding: 0 16px; border-bottom: 1px solid #eff3f4; }
+.summary-btn { height: 30px; padding: 0 14px; margin: 8px 0; border: 1px solid #e0d4f7; border-radius: 9999px; background: linear-gradient(135deg, #f8f4ff, #fff); color: #7c3aed; cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s; }
+.summary-btn:hover { background: linear-gradient(135deg, #ede9fe, #f8f4ff); border-color: #7c3aed; }
+.summary-btn:disabled { opacity: .6; cursor: wait; }
+.summary-content { padding: 12px 0; font-size: 14px; line-height: 1.6; display: none; }
+.summary-content.show { display: block; }
+.summary-content h2 { font-size: 15px; font-weight: 700; margin: 12px 0 6px; color: #0f1419; }
+.summary-content h2:first-child { margin-top: 0; }
+.summary-content ul { margin: 4px 0 8px 20px; }
+.summary-content li { margin-bottom: 4px; }
+.summary-content a { color: #1d9bf0; text-decoration: none; }
+.summary-content a:hover { text-decoration: underline; }
+.summary-content p { margin: 4px 0; }
+.summary-collapse { border: none; background: none; color: #536471; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+.summary-collapse:hover { background: #f7f9f9; color: #0f1419; }
 .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.18); opacity: 0; transition: transform .25s ease, opacity .25s ease; z-index: 1000; pointer-events: none; cursor: pointer; }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 .toast.success { background: #0f1419; color: #fff; }
@@ -300,8 +340,39 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
             <option value="14400">定时: 4h</option>
         </select>
         <button class="sync-btn" id="syncBtn" onclick="syncNow()">Sync Now</button>
+        <button class="ai-btn" id="aiSettingsBtn" onclick="openAiSettings()">⚙️ AI</button>
     </div>
     <div class="calendar" id="calendar"></div>
+</div>
+
+<!-- AI Settings Modal -->
+<div class="modal-overlay" id="aiModal" onclick="if(event.target===this)closeAiSettings()">
+    <div class="modal">
+        <h3>AI 摘要设置</h3>
+        <div class="modal-field">
+            <label>API Base URL</label>
+            <input type="text" id="aiBaseUrl" placeholder="https://api.deepseek.com/v1">
+        </div>
+        <div class="modal-field">
+            <label>API Key</label>
+            <input type="password" id="aiApiKey" placeholder="sk-xxx">
+        </div>
+        <div class="modal-field">
+            <label>模型名称</label>
+            <input type="text" id="aiModel" placeholder="deepseek-chat">
+        </div>
+        <div class="modal-field">
+            <label>多模态（Vision）</label>
+            <div class="switch-wrap">
+                <input type="checkbox" id="aiVision">
+                <span style="font-size:12px;color:#536471">启用后会将图片发送给模型分析</span>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-cancel" onclick="closeAiSettings()">取消</button>
+            <button class="modal-save" onclick="saveAiSettings()">保存</button>
+        </div>
+    </div>
 </div>
 
 <div class="main">
@@ -328,6 +399,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
             </div>
         </div>
         <div class="filter-bar" id="filterBar"></div>
+        <div class="summary-bar" id="summaryBar" style="display:none">
+            <button class="summary-btn" id="summaryBtn" onclick="loadSummary()">✨ AI 摘要</button>
+            <button class="summary-collapse" id="summaryCollapse" onclick="toggleSummary()" style="display:none">收起</button>
+            <div class="summary-content" id="summaryContent"></div>
+        </div>
         <div class="messages" id="messages"></div>
         <div class="stats-panel" id="statsPanel"></div>
     </div>
@@ -729,6 +805,121 @@ async function updateSchedule(val) {
     }
 }
 
+// --- AI Summary ---
+let aiConfigured = false;
+
+async function checkAiConfig() {
+    try {
+        const resp = await fetch('/api/ai-config');
+        const data = await resp.json();
+        aiConfigured = !!(data.ok && data.config && data.config.baseUrl && data.config.model);
+    } catch { aiConfigured = false; }
+    updateSummaryBar();
+}
+
+function updateSummaryBar() {
+    const bar = document.getElementById('summaryBar');
+    if (aiConfigured && selectedDate) {
+        bar.style.display = '';
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function openAiSettings() {
+    document.getElementById('aiModal').classList.add('show');
+    fetch('/api/ai-config').then(r => r.json()).then(data => {
+        if (data.ok && data.config) {
+            document.getElementById('aiBaseUrl').value = data.config.baseUrl || '';
+            document.getElementById('aiApiKey').placeholder = data.config.apiKey || 'sk-xxx';
+            document.getElementById('aiApiKey').value = '';
+            document.getElementById('aiModel').value = data.config.model || '';
+            document.getElementById('aiVision').checked = !!data.config.vision;
+        }
+    }).catch(() => {});
+}
+
+function closeAiSettings() {
+    document.getElementById('aiModal').classList.remove('show');
+}
+
+async function saveAiSettings() {
+    const baseUrl = document.getElementById('aiBaseUrl').value.trim();
+    const apiKeyInput = document.getElementById('aiApiKey').value.trim();
+    const model = document.getElementById('aiModel').value.trim();
+    const vision = document.getElementById('aiVision').checked;
+
+    try {
+        const resp = await fetch('/api/ai-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ baseUrl, apiKey: apiKeyInput, model, vision })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showToast('AI 设置已保存', 'success');
+            closeAiSettings();
+            checkAiConfig();
+        } else {
+            showToast('保存失败：' + (data.error || ''), 'error', 8000);
+        }
+    } catch (e) {
+        showToast('保存失败：' + e.message, 'error', 8000);
+    }
+}
+
+async function loadSummary() {
+    const btn = document.getElementById('summaryBtn');
+    const content = document.getElementById('summaryContent');
+    const collapse = document.getElementById('summaryCollapse');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ 生成中...';
+
+    const groupParam = currentGroup ? '&group=' + encodeURIComponent(currentGroup) : '';
+    try {
+        const resp = await fetch(`/api/summary?date=${selectedDate}${groupParam}`);
+        const data = await resp.json();
+        if (data.ok) {
+            content.innerHTML = renderMarkdown(data.summary);
+            content.classList.add('show');
+            collapse.style.display = '';
+            btn.textContent = data.cached ? '✨ AI 摘要（已缓存）' : '✨ AI 摘要';
+        } else {
+            showToast('摘要生成失败：' + (data.error || ''), 'error', 8000);
+            btn.textContent = '✨ AI 摘要';
+        }
+    } catch (e) {
+        showToast('摘要请求失败：' + e.message, 'error', 8000);
+        btn.textContent = '✨ AI 摘要';
+    }
+    btn.disabled = false;
+}
+
+function toggleSummary() {
+    const content = document.getElementById('summaryContent');
+    const collapse = document.getElementById('summaryCollapse');
+    if (content.classList.contains('show')) {
+        content.classList.remove('show');
+        collapse.textContent = '展开摘要';
+    } else {
+        content.classList.add('show');
+        collapse.textContent = '收起';
+    }
+}
+
+function renderMarkdown(md) {
+    return md
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+        .replace(/\n{2,}/g, '<br>')
+        .replace(/\n/g, '');
+}
+
 async function loadData() {
     await loadGroups();
     await loadDates();
@@ -870,6 +1061,14 @@ function selectDate(d) {
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     renderCalendar();
     loadMessages();
+    // Reset summary panel
+    const sc2 = document.getElementById('summaryContent');
+    if (sc2) { sc2.classList.remove('show'); sc2.innerHTML = ''; }
+    const sb = document.getElementById('summaryBtn');
+    if (sb) sb.textContent = '✨ AI 摘要';
+    const col = document.getElementById('summaryCollapse');
+    if (col) col.style.display = 'none';
+    updateSummaryBar();
 }
 
 // 小时热力条
@@ -1432,6 +1631,7 @@ selectDate = function(d) {
 
 loadData();
 loadSchedule();
+checkAiConfig();
 
 // Auto-refresh: poll every 60s, reload if new data available
 let lastArchivedTs = 0;

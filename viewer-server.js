@@ -410,6 +410,256 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // AI config: read/write ai-config.json
+    if (url.pathname === '/api/ai-config') {
+        const AI_CONFIG_PATH = path.join(__dirname, 'ai-config.json');
+
+        if (req.method === 'GET') {
+            try {
+                const cfg = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
+                const masked = { ...cfg };
+                if (masked.apiKey) {
+                    const k = masked.apiKey;
+                    masked.apiKey = k.length > 8 ? k.slice(0, 3) + '***' + k.slice(-4) : '***';
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, config: masked }));
+            } catch {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, config: null }));
+            }
+            return;
+        }
+
+        if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+                try {
+                    const { baseUrl, apiKey, model, vision } = JSON.parse(body);
+                    let existingKey = '';
+                    try { existingKey = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8')).apiKey || ''; } catch {}
+                    const cfg = { baseUrl: baseUrl || '', apiKey: apiKey || existingKey, model: model || '', vision: !!vision };
+                    fs.writeFileSync(AI_CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8');
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true }));
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: e.message }));
+                }
+            });
+            return;
+        }
+    }
+
+    // AI summary: generate or return cached
+    if (url.pathname === '/api/summary' && req.method === 'GET') {
+        const group = url.searchParams.get('group') || '';
+        const date = url.searchParams.get('date') || '';
+        if (!date) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'Missing date' })); return; }
+
+        const AI_CONFIG_PATH = path.join(__dirname, 'ai-config.json');
+        let aiConfig;
+        try { aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8')); } catch {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: '未配置 AI，请先在设置中配置' }));
+            return;
+        }
+        if (!aiConfig.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: 'AI 配置不完整' }));
+            return;
+        }
+
+        // Check cache
+        const dir = getGroupDir(group);
+        const cacheFile = path.join(dir, `summary_${date}.json`);
+        if (fs.existsSync(cacheFile)) {
+            try {
+                const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, summary: cached.summary, cached: true }));
+                return;
+            } catch {}
+        }
+
+        // Load messages for the date
+        const messages = loadMessagesByDate(group, date);
+        if (!messages.length) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: '当天无消息数据' }));
+            return;
+        }
+
+        // Format messages for LLM
+        const formatted = messages.map(m => {
+            const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+            let text = m.content || '';
+            if (m.share) text += ` [分享: ${m.share.title || m.share.text || m.share.url}]`;
+            if (m.pics && m.pics.length) text += ` [图片x${m.pics.length}]`;
+            return `[${t}] ${m.user}: ${text}`;
+        }).join('\n');
+
+        const systemPrompt = `你是一个群聊记录分析助手。请对以下微博群聊记录进行话题提炼和总结。
+
+核心要求：
+1. **准确性第一**：只总结消息中明确出现的内容，不要推测或补充未提及的信息
+2. **话题识别**：将消息按讨论话题聚类，即使话题在时间上是交叉的也要分开归纳
+3. **保留关键观点**：记录谁说了什么关键观点，用「用户名：观点」格式标注
+4. **忽略噪声**：跳过纯表情回复、红包提示、系统消息、无实质内容的附和
+
+重点标识（如果当天出现以下内容，请用标签醒目标出）：
+- 💰 **财经/投资**：股票、基金、行情分析、投资决策相关讨论
+- 🎁 **好物推荐**：工具、App、书籍、硬件等推荐，标注推荐人和理由
+- 👤 **tombkeeper 发言**：此用户的观点和分享单独标注（无论在哪个话题中）
+
+输出格式：
+## 话题一：[话题标题] [标签]
+[2-4句话概括讨论内容，标注关键发言人和核心观点]
+
+## 话题二：[话题标题] [标签]
+...
+
+## 值得关注的链接/分享
+- [标题或描述](链接) — 分享者：xxx
+（没有则省略此节）
+
+注意：
+- 话题标题要具体，不要用"日常闲聊"这种模糊表述
+- [标签] 为 💰/🎁/👤 之一或多个，不符合任何重点类别则不加标签
+- 如果某条消息是在引用/回复另一条，注意还原对话上下文
+- 不确定的内容宁可不写，不要编造`;
+
+        // Build LLM request
+        const userContent = [];
+        userContent.push({ type: 'text', text: `以下是 ${date} 的群聊记录（${messages.length} 条消息）：\n\n${formatted}` });
+
+        // Call LLM with the prepared content
+        function callLLM() {
+            const llmMessages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: aiConfig.vision ? userContent : formatted }
+            ];
+            const reqBody = JSON.stringify({ model: aiConfig.model, messages: llmMessages });
+            const apiUrl = new URL(aiConfig.baseUrl.replace(/\/$/, '') + '/chat/completions');
+            const isHttps = apiUrl.protocol === 'https:';
+            const httpModule = isHttps ? https : http;
+            const options = {
+                hostname: apiUrl.hostname,
+                port: apiUrl.port || (isHttps ? 443 : 80),
+                path: apiUrl.pathname + apiUrl.search,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${aiConfig.apiKey}`,
+                },
+                agent: false,
+            };
+
+            const llmReq = httpModule.request(options, (llmRes) => {
+                const chunks = [];
+                llmRes.on('data', chunk => chunks.push(chunk));
+                llmRes.on('end', () => {
+                    const body = Buffer.concat(chunks).toString();
+                    try {
+                        const data = JSON.parse(body);
+                        if (data.error) {
+                            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                            res.end(JSON.stringify({ ok: false, error: data.error.message || JSON.stringify(data.error) }));
+                            return;
+                        }
+                        const summary = data.choices?.[0]?.message?.content || '';
+                        try { fs.writeFileSync(cacheFile, JSON.stringify({ summary, date, generatedAt: new Date().toISOString() }), 'utf-8'); } catch {}
+                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ ok: true, summary, cached: false }));
+                    } catch (e) {
+                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ ok: false, error: 'LLM 返回解析失败: ' + e.message }));
+                    }
+                });
+            });
+            llmReq.on('error', (e) => {
+                if (!res.headersSent) {
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: 'LLM 请求失败: ' + e.message }));
+                }
+            });
+            llmReq.setTimeout(90000, () => {
+                llmReq.destroy();
+                if (!res.headersSent) {
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: 'LLM 请求超时（90s）' }));
+                }
+            });
+            llmReq.end(reqBody);
+        }
+
+        // Vision: collect images as base64, then call LLM
+        if (aiConfig.vision) {
+            const picUrls = [];
+            for (const m of messages) {
+                if (m.pics && picUrls.length < 5) {
+                    for (const pic of m.pics) {
+                        if (picUrls.length >= 5) break;
+                        picUrls.push(pic);
+                    }
+                }
+            }
+            if (picUrls.length > 0) {
+                const cookieHeader = loadCookies();
+                const fetchImage = (picUrl) => new Promise((resolve) => {
+                    let imgUrl = picUrl;
+                    let fid = null;
+                    if (picUrl.startsWith('/api/image?fid=')) {
+                        fid = picUrl.split('fid=')[1];
+                        imgUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
+                    } else {
+                        const fidMatch = picUrl.match(/fid=(\d+)/);
+                        if (fidMatch) fid = fidMatch[1];
+                    }
+                    const imgCacheFile = fid ? path.join(CACHE_DIR, `${fid}.jpg`) : path.join(CACHE_DIR, picUrl.replace(/[^a-zA-Z0-9]/g, '_').slice(-40) + '.jpg');
+                    if (fs.existsSync(imgCacheFile)) {
+                        const stat = fs.statSync(imgCacheFile);
+                        if (stat.size > 3.5 * 1024 * 1024) { resolve(null); return; }
+                        const imgBuf = fs.readFileSync(imgCacheFile);
+                        const isPng = imgBuf[0] === 0x89 && imgBuf[1] === 0x50;
+                        if (imgBuf[0] !== 0xFF && !isPng) { resolve(null); return; }
+                        const mime = isPng ? 'image/png' : 'image/jpeg';
+                        resolve(`data:${mime};base64,` + imgBuf.toString('base64'));
+                        return;
+                    }
+                    https.get(imgUrl, { headers: { 'Cookie': cookieHeader, 'Referer': 'https://api.weibo.com/chat' } }, (imgRes) => {
+                        if (imgRes.statusCode !== 200) { resolve(null); return; }
+                        const chunks = [];
+                        imgRes.on('data', c => chunks.push(c));
+                        imgRes.on('end', () => {
+                            const buf = Buffer.concat(chunks);
+                            if (buf.length > 3.5 * 1024 * 1024) { resolve(null); return; }
+                            // Validate it's actually an image (JPEG or PNG magic bytes)
+                            const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+                            const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+                            if (!isJpeg && !isPng) { resolve(null); return; }
+                            try { fs.writeFileSync(imgCacheFile, buf); } catch {}
+                            const mime = isPng ? 'image/png' : 'image/jpeg';
+                            resolve(`data:${mime};base64,` + buf.toString('base64'));
+                        });
+                    }).on('error', () => resolve(null));
+                });
+                Promise.all(picUrls.map(fetchImage)).then((base64Images) => {
+                    for (const b64 of base64Images.filter(Boolean)) {
+                        userContent.push({ type: 'image_url', image_url: { url: b64 } });
+                    }
+                    callLLM();
+                });
+            } else {
+                callLLM();
+            }
+        } else {
+            callLLM();
+        }
+        return;
+    }
+
     // Static page
     if (url.pathname === '/' || url.pathname === '/index.html') {
         const html = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8');
