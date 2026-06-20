@@ -491,8 +491,8 @@ const server = http.createServer((req, res) => {
             return;
         }
 
-        // Format messages for LLM
-        const formatted = messages.map(m => {
+        // Format messages for LLM — track pic positions for vision enrichment
+        let formatted = messages.map((m) => {
             const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
             let text = m.content || '';
             if (m.share) text += ` [分享: ${m.share.title || m.share.text || m.share.url}]`;
@@ -530,16 +530,8 @@ const server = http.createServer((req, res) => {
 - 如果某条消息是在引用/回复另一条，注意还原对话上下文
 - 不确定的内容宁可不写，不要编造`;
 
-        // Build LLM request
-        const userContent = [];
-        userContent.push({ type: 'text', text: `以下是 ${date} 的群聊记录（${messages.length} 条消息）：\n\n${formatted}` });
-
-        // Call LLM with the prepared content
-        function callLLM() {
-            const llmMessages = [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: aiConfig.vision ? userContent : formatted }
-            ];
+        // Helper: call OpenAI-compatible API
+        function callApi(llmMessages, onSuccess, onError) {
             const reqBody = JSON.stringify({ model: aiConfig.model, messages: llmMessages });
             const apiUrl = new URL(aiConfig.baseUrl.replace(/\/$/, '') + '/chat/completions');
             const isHttps = apiUrl.protocol === 'https:';
@@ -555,7 +547,6 @@ const server = http.createServer((req, res) => {
                 },
                 agent: false,
             };
-
             const llmReq = httpModule.request(options, (llmRes) => {
                 const chunks = [];
                 llmRes.on('data', chunk => chunks.push(chunk));
@@ -563,49 +554,48 @@ const server = http.createServer((req, res) => {
                     const body = Buffer.concat(chunks).toString();
                     try {
                         const data = JSON.parse(body);
-                        if (data.error) {
-                            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                            res.end(JSON.stringify({ ok: false, error: data.error.message || JSON.stringify(data.error) }));
-                            return;
-                        }
-                        const summary = data.choices?.[0]?.message?.content || '';
-                        try { fs.writeFileSync(cacheFile, JSON.stringify({ summary, date, generatedAt: new Date().toISOString() }), 'utf-8'); } catch {}
-                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                        res.end(JSON.stringify({ ok: true, summary, cached: false }));
-                    } catch (e) {
-                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                        res.end(JSON.stringify({ ok: false, error: 'LLM 返回解析失败: ' + e.message }));
-                    }
+                        if (data.error) { onError(data.error.message || JSON.stringify(data.error)); return; }
+                        onSuccess(data.choices?.[0]?.message?.content || '');
+                    } catch (e) { onError('LLM 返回解析失败: ' + e.message); }
                 });
             });
-            llmReq.on('error', (e) => {
-                if (!res.headersSent) {
-                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, error: 'LLM 请求失败: ' + e.message }));
-                }
-            });
-            llmReq.setTimeout(90000, () => {
-                llmReq.destroy();
-                if (!res.headersSent) {
-                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, error: 'LLM 请求超时（90s）' }));
-                }
-            });
+            llmReq.on('error', (e) => onError('LLM 请求失败: ' + e.message));
+            llmReq.setTimeout(90000, () => { llmReq.destroy(); onError('LLM 请求超时（90s）'); });
             llmReq.end(reqBody);
         }
 
-        // Vision: collect images as base64, then call LLM
+        // Final summary call
+        function callSummary() {
+            const llmMessages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `以下是 ${date} 的群聊记录（${messages.length} 条消息）：\n\n${formatted}` }
+            ];
+            callApi(llmMessages, (summary) => {
+                try { fs.writeFileSync(cacheFile, JSON.stringify({ summary, date, generatedAt: new Date().toISOString() }), 'utf-8'); } catch {}
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, summary, cached: false }));
+            }, (err) => {
+                if (!res.headersSent) {
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: err }));
+                }
+            });
+        }
+
+        // Vision two-step: describe images first, enrich text, then summarize
         if (aiConfig.vision) {
-            const picUrls = [];
+            // Collect images with their message context
+            const imageItems = [];
             for (const m of messages) {
-                if (m.pics && picUrls.length < 5) {
+                if (m.pics && imageItems.length < 5) {
                     for (const pic of m.pics) {
-                        if (picUrls.length >= 5) break;
-                        picUrls.push(pic);
+                        if (imageItems.length >= 5) break;
+                        const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+                        imageItems.push({ url: pic, user: m.user, time: t, context: (m.content || '').slice(0, 50) });
                     }
                 }
             }
-            if (picUrls.length > 0) {
+            if (imageItems.length > 0) {
                 const cookieHeader = loadCookies();
                 const fetchImage = (picUrl) => new Promise((resolve) => {
                     let imgUrl = picUrl;
@@ -635,7 +625,6 @@ const server = http.createServer((req, res) => {
                         imgRes.on('end', () => {
                             const buf = Buffer.concat(chunks);
                             if (buf.length > 3.5 * 1024 * 1024) { resolve(null); return; }
-                            // Validate it's actually an image (JPEG or PNG magic bytes)
                             const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
                             const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
                             if (!isJpeg && !isPng) { resolve(null); return; }
@@ -645,17 +634,68 @@ const server = http.createServer((req, res) => {
                         });
                     }).on('error', () => resolve(null));
                 });
-                Promise.all(picUrls.map(fetchImage)).then((base64Images) => {
-                    for (const b64 of base64Images.filter(Boolean)) {
-                        userContent.push({ type: 'image_url', image_url: { url: b64 } });
+
+                // Step 1: Download all images
+                Promise.all(imageItems.map(item => fetchImage(item.url))).then((base64Results) => {
+                    // Pair images with their context
+                    const validImages = [];
+                    for (let i = 0; i < base64Results.length; i++) {
+                        if (base64Results[i]) {
+                            validImages.push({ base64: base64Results[i], ...imageItems[i] });
+                        }
                     }
-                    callLLM();
+                    if (!validImages.length) { callSummary(); return; }
+
+                    // Step 2: Describe each image via vision API
+                    let described = 0;
+                    const descriptions = new Array(validImages.length);
+                    validImages.forEach((img, idx) => {
+                        const descMessages = [
+                            { role: 'user', content: [
+                                { type: 'text', text: `这是群聊中 ${img.user} 在 ${img.time} 发的图片${img.context ? '，消息文字：' + img.context : ''}。请用一句话简要描述图片内容（20-50字），只描述你看到的，不要猜测。` },
+                                { type: 'image_url', image_url: { url: img.base64 } }
+                            ] }
+                        ];
+                        callApi(descMessages, (desc) => {
+                            descriptions[idx] = desc.replace(/\n/g, ' ').slice(0, 100);
+                            described++;
+                            if (described === validImages.length) {
+                                // Step 3: Enrich formatted text with descriptions
+                                for (let i = 0; i < validImages.length; i++) {
+                                    const img = validImages[i];
+                                    const placeholder = `[${img.time}] ${img.user}:`;
+                                    const line = formatted.split('\n').find(l => l.includes(placeholder) && l.includes('[图片'));
+                                    if (line) {
+                                        const enriched = line.replace(/\[图片x\d+\]/, `[图片: ${descriptions[i]}]`);
+                                        formatted = formatted.replace(line, enriched);
+                                    }
+                                }
+                                callSummary();
+                            }
+                        }, (err) => {
+                            descriptions[idx] = null;
+                            described++;
+                            if (described === validImages.length) {
+                                for (let i = 0; i < validImages.length; i++) {
+                                    if (!descriptions[i]) continue;
+                                    const img = validImages[i];
+                                    const placeholder = `[${img.time}] ${img.user}:`;
+                                    const line = formatted.split('\n').find(l => l.includes(placeholder) && l.includes('[图片'));
+                                    if (line) {
+                                        const enriched = line.replace(/\[图片x\d+\]/, `[图片: ${descriptions[i]}]`);
+                                        formatted = formatted.replace(line, enriched);
+                                    }
+                                }
+                                callSummary();
+                            }
+                        });
+                    });
                 });
             } else {
-                callLLM();
+                callSummary();
             }
         } else {
-            callLLM();
+            callSummary();
         }
         return;
     }
