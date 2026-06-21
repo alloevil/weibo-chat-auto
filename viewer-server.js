@@ -130,6 +130,41 @@ function rewriteImageUrls(messages) {
 const CACHE_DIR = path.join(__dirname, 'cache', 'images');
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
+// Reusable LLM API caller (OpenAI-compatible)
+function callLlmApi(messages, callback) {
+    let aiConfig;
+    try {
+        aiConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'ai-config.json'), 'utf-8'));
+    } catch { callback(null, 'AI 未配置'); return; }
+    const reqBody = JSON.stringify({ model: aiConfig.model, messages });
+    const apiUrl = new URL(aiConfig.baseUrl.replace(/\/$/, '') + '/chat/completions');
+    const isHttps = apiUrl.protocol === 'https:';
+    const httpModule = isHttps ? https : http;
+    const options = {
+        hostname: apiUrl.hostname,
+        port: apiUrl.port || (isHttps ? 443 : 80),
+        path: apiUrl.pathname + apiUrl.search,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
+        agent: false,
+    };
+    const llmReq = httpModule.request(options, (llmRes) => {
+        const chunks = [];
+        llmRes.on('data', chunk => chunks.push(chunk));
+        llmRes.on('end', () => {
+            const body = Buffer.concat(chunks).toString();
+            try {
+                const data = JSON.parse(body);
+                if (data.error) { callback(null, data.error.message || JSON.stringify(data.error)); return; }
+                callback(data.choices?.[0]?.message?.content || '');
+            } catch (e) { callback(null, '解析失败: ' + e.message); }
+        });
+    });
+    llmReq.on('error', (e) => callback(null, '请求失败: ' + e.message));
+    llmReq.setTimeout(90000, () => { llmReq.destroy(); callback(null, '请求超时（90s）'); });
+    llmReq.end(reqBody);
+}
+
 function serveImage(res, filePath, contentType) {
     const stat = fs.statSync(filePath);
     res.writeHead(200, {
@@ -697,6 +732,111 @@ const server = http.createServer((req, res) => {
         } else {
             callSummary();
         }
+        return;
+    }
+
+    // --- Q&A Endpoint (Agentic RAG) ---
+    if (url.pathname === '/api/qa' && req.method === 'POST') {
+        let body = '';
+        req.on('data', c => body += c);
+        req.on('end', () => {
+            const reply = (data) => { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
+            let params;
+            try { params = JSON.parse(body); } catch { reply({ ok: false, error: '参数解析失败' }); return; }
+            const { group, question } = params;
+            if (!group || !question) { reply({ ok: false, error: '缺少 group 或 question' }); return; }
+
+            // Load all messages for this group
+            const allMessages = loadMessages(group);
+            if (!allMessages.length) { reply({ ok: false, error: '该群无消息数据' }); return; }
+
+            // Step 1: LLM extracts search keywords from the question
+            const extractPrompt = [
+                { role: 'system', content: '你是一个搜索关键词提取器。根据用户的问题，提取3-5个最相关的搜索关键词，用于在群聊记录中检索。直接输出关键词，用逗号分隔，不要输出任何其他内容。注意：如果问题提到人名，人名必须作为关键词。' },
+                { role: 'user', content: question }
+            ];
+            callLlmApi(extractPrompt, (keywords, err) => {
+                if (err) { reply({ ok: false, error: '关键词提取失败: ' + err }); return; }
+
+                // Step 2: Search messages using extracted keywords
+                const keywordList = keywords.split(/[,，、\s]+/).filter(k => k.length > 0);
+                const scored = [];
+                for (let i = 0; i < allMessages.length; i++) {
+                    const m = allMessages[i];
+                    const text = (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
+                    let score = 0;
+                    for (const kw of keywordList) {
+                        if (text.includes(kw)) score++;
+                    }
+                    if (score > 0) scored.push({ idx: i, score });
+                }
+
+                if (!scored.length) {
+                    // No keyword matches — try direct LLM answer with recent messages sample
+                    reply({ ok: true, answer: '未找到与该问题相关的聊天记录。请尝试换一种问法或使用更具体的关键词。', sources: [] });
+                    return;
+                }
+
+                // Sort by score, take top hits
+                scored.sort((a, b) => b.score - a.score);
+                const topHits = scored.slice(0, 15);
+
+                // Step 3: Expand context — for each hit, include ±5 surrounding messages, deduplicate
+                const segments = new Set();
+                const contextChunks = [];
+                for (const hit of topHits) {
+                    const start = Math.max(0, hit.idx - 5);
+                    const end = Math.min(allMessages.length, hit.idx + 6);
+                    const segKey = `${start}-${end}`;
+                    if (segments.has(segKey)) continue;
+                    // Merge overlapping segments
+                    let skip = false;
+                    for (const existing of segments) {
+                        const [es, ee] = existing.split('-').map(Number);
+                        if (start >= es && end <= ee) { skip = true; break; }
+                    }
+                    if (skip) continue;
+                    segments.add(segKey);
+                    const chunk = allMessages.slice(start, end).map(m => {
+                        const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+                        const date = m.time ? m.time.split(' ')[0] : '';
+                        let text = m.content || '';
+                        if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
+                        if (m.pics?.length) text += ` [图片x${m.pics.length}]`;
+                        return `[${date} ${t}] ${m.user}: ${text}`;
+                    }).join('\n');
+                    const firstMsg = allMessages[start];
+                    contextChunks.push({ text: chunk, date: firstMsg.time?.split(' ')[0] || '', score: hit.score });
+                }
+
+                // Limit total context to ~8000 chars
+                let totalLen = 0;
+                const finalChunks = [];
+                for (const c of contextChunks) {
+                    if (totalLen + c.text.length > 8000) break;
+                    finalChunks.push(c);
+                    totalLen += c.text.length;
+                }
+
+                // Step 4: LLM generates answer with citations
+                const contextText = finalChunks.map((c, i) => `--- 片段 ${i + 1}（${c.date}）---\n${c.text}`).join('\n\n');
+                const answerPrompt = [
+                    { role: 'system', content: `你是一个群聊记录问答助手。根据提供的聊天记录片段回答用户问题。
+
+要求：
+1. 只基于提供的聊天记录回答，不要编造
+2. 引用具体发言人和日期
+3. 如果记录中没有足够信息回答问题，明确说明
+4. 用简洁的中文回答，保持准确` },
+                    { role: 'user', content: `问题：${question}\n\n以下是相关的群聊记录片段：\n\n${contextText}` }
+                ];
+                callLlmApi(answerPrompt, (answer, ansErr) => {
+                    if (ansErr) { reply({ ok: false, error: '回答生成失败: ' + ansErr }); return; }
+                    const sources = finalChunks.map(c => ({ date: c.date, preview: c.text.split('\n').slice(0, 3).join(' | ').slice(0, 100) }));
+                    reply({ ok: true, answer, sources, keywords: keywordList });
+                });
+            });
+        });
         return;
     }
 

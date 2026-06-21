@@ -64,6 +64,29 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .summary-content p { margin: 4px 0; }
 .summary-collapse { border: none; background: none; color: #536471; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
 .summary-collapse:hover { background: #f7f9f9; color: #0f1419; }
+
+/* Q&A Panel */
+.qa-bar { padding: 8px 16px; border-bottom: 1px solid #eff3f4; display: none; }
+.qa-bar.show { display: block; }
+.qa-input-row { display: flex; gap: 8px; align-items: center; }
+.qa-input { flex: 1; height: 36px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 9999px; font-size: 14px; outline: none; transition: border-color .15s; }
+.qa-input:focus { border-color: #1d9bf0; }
+.qa-send { height: 36px; padding: 0 16px; border: none; border-radius: 9999px; background: linear-gradient(135deg, #1d9bf0, #0d8de0); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+.qa-send:hover { opacity: .85; }
+.qa-send:disabled { opacity: .5; cursor: wait; }
+.qa-answer { margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 12px; font-size: 14px; line-height: 1.7; display: none; }
+.qa-answer.show { display: block; }
+.qa-answer h2 { font-size: 14px; font-weight: 700; margin: 10px 0 4px; }
+.qa-answer h2:first-child { margin-top: 0; }
+.qa-answer p { margin: 4px 0; }
+.qa-answer ul { margin: 4px 0 8px 18px; }
+.qa-answer li { margin-bottom: 3px; }
+.qa-sources { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e8ecf0; }
+.qa-sources summary { font-size: 12px; color: #536471; cursor: pointer; }
+.qa-source-item { font-size: 12px; color: #536471; padding: 2px 0; cursor: pointer; }
+.qa-source-item:hover { color: #1d9bf0; }
+.qa-keywords { margin-top: 6px; font-size: 12px; color: #536471; }
+.qa-keywords span { display: inline-block; padding: 1px 6px; margin: 2px 3px 2px 0; background: #e8f5fd; border-radius: 4px; color: #1d9bf0; font-size: 11px; }
 .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.18); opacity: 0; transition: transform .25s ease, opacity .25s ease; z-index: 1000; pointer-events: none; cursor: pointer; }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 .toast.success { background: #0f1419; color: #fff; }
@@ -404,6 +427,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
             <button class="summary-collapse" id="summaryCollapse" onclick="toggleSummary()" style="display:none">收起</button>
             <div class="summary-content" id="summaryContent"></div>
         </div>
+        <div class="qa-bar" id="qaBar">
+            <div class="qa-input-row">
+                <input class="qa-input" id="qaInput" placeholder="问问这个群的历史记录..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
+                <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
+            </div>
+            <div class="qa-answer" id="qaAnswer"></div>
+        </div>
         <div class="messages" id="messages"></div>
         <div class="stats-panel" id="statsPanel"></div>
     </div>
@@ -728,6 +758,7 @@ function switchGroup(groupId) {
     const si = document.getElementById('searchInput'); if (si) si.value = '';
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     loadData();
+    updateQaBar();
 }
 
 let toastTimer = null;
@@ -815,6 +846,7 @@ async function checkAiConfig() {
         aiConfigured = !!(data.ok && data.config && data.config.baseUrl && data.config.model);
     } catch { aiConfigured = false; }
     updateSummaryBar();
+    updateQaBar();
 }
 
 function updateSummaryBar() {
@@ -906,6 +938,68 @@ function toggleSummary() {
         content.classList.add('show');
         collapse.textContent = '收起';
     }
+}
+
+// --- Q&A ---
+function updateQaBar() {
+    const bar = document.getElementById('qaBar');
+    if (aiConfigured && currentGroup) {
+        bar.classList.add('show');
+    } else {
+        bar.classList.remove('show');
+    }
+}
+
+async function askQuestion() {
+    const input = document.getElementById('qaInput');
+    const question = input.value.trim();
+    if (!question) return;
+    const btn = document.getElementById('qaSendBtn');
+    const answerDiv = document.getElementById('qaAnswer');
+    btn.disabled = true;
+    btn.textContent = '检索中...';
+    answerDiv.classList.add('show');
+    answerDiv.innerHTML = '<div style="color:#536471">正在检索相关记录并生成回答...</div>';
+
+    try {
+        const resp = await fetch('/api/qa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ group: currentGroup, question })
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            answerDiv.innerHTML = `<div style="color:#f4212e">错误：${data.error}</div>`;
+            return;
+        }
+        let html = renderMarkdown(data.answer);
+        if (data.sources && data.sources.length) {
+            html += '<div class="qa-sources"><details><summary>来源片段 (' + data.sources.length + ')</summary>';
+            for (const s of data.sources) {
+                html += `<div class="qa-source-item" onclick="jumpToDate('${s.date}')">${s.date} — ${escapeHtml(s.preview)}</div>`;
+            }
+            html += '</details></div>';
+        }
+        if (data.keywords && data.keywords.length) {
+            html += '<div class="qa-keywords">检索关键词：' + data.keywords.map(k => `<span>${escapeHtml(k)}</span>`).join('') + '</div>';
+        }
+        answerDiv.innerHTML = html;
+    } catch (e) {
+        answerDiv.innerHTML = `<div style="color:#f4212e">请求失败：${e.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '提问';
+    }
+}
+
+function jumpToDate(date) {
+    if (!date) return;
+    selectedDate = date;
+    const month = date.slice(0, 7);
+    if (monthDates[month]) selectedMonth = month;
+    renderCalendar();
+    loadMessages();
+    updateSummaryBar();
 }
 
 function renderMarkdown(md) {
