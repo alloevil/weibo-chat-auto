@@ -73,7 +73,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .qa-send:hover { opacity: .85; }
 .qa-send:disabled { opacity: .5; cursor: wait; }
 .noise-toggle { flex-shrink: 0; }
-.qa-answer-wrap { padding: 0 16px 8px; border-bottom: 1px solid #eff3f4; display: none; }
+.qa-answer-wrap { padding: 0 16px 8px; border-bottom: 1px solid #eff3f4; }
 .qa-answer { padding: 12px; background: #f8fafc; border-radius: 12px; font-size: 14px; line-height: 1.7; }
 .qa-answer h2 { font-size: 14px; font-weight: 700; margin: 10px 0 4px; }
 .qa-answer h2:first-child { margin-top: 0; }
@@ -422,7 +422,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
                     <button class="search-nav-btn" onclick="navigateSearch(1)" title="Next">▼</button>
                 </div>
             </div>
-            <div class="qa-inline" id="qaInline" style="display:none">
+            <div class="qa-inline" id="qaInline">
                 <input class="qa-input" id="qaInput" placeholder="问问群历史..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
                 <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
             </div>
@@ -749,6 +749,7 @@ async function loadGroups() {
         ).join('');
         sel.style.display = '';
     }
+    updateQaBar();
 }
 
 function switchGroup(groupId) {
@@ -943,14 +944,7 @@ function toggleSummary() {
 }
 
 // --- Q&A ---
-function updateQaBar() {
-    const qaInline = document.getElementById('qaInline');
-    if (aiConfigured && currentGroup) {
-        qaInline.style.display = '';
-    } else {
-        qaInline.style.display = 'none';
-    }
-}
+function updateQaBar() {}
 
 async function askQuestion() {
     const input = document.getElementById('qaInput');
@@ -985,6 +979,9 @@ async function askQuestion() {
         }
         if (data.keywords && data.keywords.length) {
             html += '<div class="qa-keywords">检索关键词：' + data.keywords.map(k => `<span>${escapeHtml(k)}</span>`).join('') + '</div>';
+        }
+        if (data.dateRange) {
+            html += `<div class="qa-keywords">检索范围：${data.dateRange.from || '?'} 至 ${data.dateRange.to || '?'}</div>`;
         }
         answerDiv.innerHTML = html;
     } catch (e) {
