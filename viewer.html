@@ -66,16 +66,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .summary-collapse:hover { background: #f7f9f9; color: #0f1419; }
 
 /* Q&A Panel */
-.qa-bar { padding: 8px 16px; border-bottom: 1px solid #eff3f4; display: none; }
-.qa-bar.show { display: block; }
-.qa-input-row { display: flex; gap: 8px; align-items: center; }
-.qa-input { flex: 1; height: 36px; padding: 0 12px; border: 1px solid #cfd9de; border-radius: 9999px; font-size: 14px; outline: none; transition: border-color .15s; }
-.qa-input:focus { border-color: #1d9bf0; }
-.qa-send { height: 36px; padding: 0 16px; border: none; border-radius: 9999px; background: linear-gradient(135deg, #1d9bf0, #0d8de0); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+.qa-inline { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+.qa-inline .qa-input { width: 180px; height: 32px; padding: 0 10px; border: 1px solid #cfd9de; border-radius: 9999px; font-size: 13px; outline: none; transition: border-color .15s; }
+.qa-inline .qa-input:focus { border-color: #1d9bf0; width: 240px; }
+.qa-send { height: 32px; padding: 0 12px; border: none; border-radius: 9999px; background: linear-gradient(135deg, #1d9bf0, #0d8de0); color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .15s; white-space: nowrap; }
 .qa-send:hover { opacity: .85; }
 .qa-send:disabled { opacity: .5; cursor: wait; }
-.qa-answer { margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 12px; font-size: 14px; line-height: 1.7; display: none; }
-.qa-answer.show { display: block; }
+.noise-toggle { flex-shrink: 0; }
+.qa-answer-wrap { padding: 0 16px 8px; border-bottom: 1px solid #eff3f4; display: none; }
+.qa-answer { padding: 12px; background: #f8fafc; border-radius: 12px; font-size: 14px; line-height: 1.7; }
 .qa-answer h2 { font-size: 14px; font-weight: 700; margin: 10px 0 4px; }
 .qa-answer h2:first-child { margin-top: 0; }
 .qa-answer p { margin: 4px 0; }
@@ -198,8 +197,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .filter-export:hover { color: #0f1419; }
 
 /* Search */
-.search-bar { display: flex; align-items: center; padding: 6px 16px; gap: 8px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; }
-.search-input-wrap { position: relative; flex: 1; max-width: 400px; }
+.search-bar { display: flex; align-items: center; padding: 6px 16px; gap: 8px; border-bottom: 1px solid #eff3f4; flex-shrink: 0; flex-wrap: nowrap; }
+.search-input-wrap { position: relative; flex: 1; min-width: 150px; max-width: 300px; }
 .search-input { width: 100%; height: 36px; padding: 0 36px 0 36px; border: 1px solid #cfd9de; border-radius: 9999px; background: #f7f9f9; font-size: 14px; color: #0f1419; outline: none; transition: border-color .15s; }
 .search-input:focus { border-color: #1d9bf0; background: #fff; }
 .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none; }
@@ -410,7 +409,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
         <div class="search-bar" id="searchBar">
             <div class="search-input-wrap">
                 <span class="search-icon">🔍</span>
-                <input type="text" class="search-input" id="searchInput" placeholder="Search messages and users..." oninput="onSearchInput(this.value)">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search messages..." oninput="onSearchInput(this.value)">
                 <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
             </div>
             <div class="search-count" id="searchCount">
@@ -420,6 +419,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
                     <button class="search-nav-btn" onclick="navigateSearch(1)" title="Next">▼</button>
                 </div>
             </div>
+            <div class="noise-toggle" id="noiseToggle">
+                <div class="media-btn active" id="noiseBtnInline" onclick="toggleNoise()" data-tooltip="Hide greetings, red packets, and noise">Hide Noise</div>
+            </div>
+            <div class="qa-inline" id="qaInline" style="display:none">
+                <input class="qa-input" id="qaInput" placeholder="问问群历史..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
+                <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
+            </div>
         </div>
         <div class="filter-bar" id="filterBar"></div>
         <div class="summary-bar" id="summaryBar" style="display:none">
@@ -427,12 +433,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
             <button class="summary-collapse" id="summaryCollapse" onclick="toggleSummary()" style="display:none">收起</button>
             <div class="summary-content" id="summaryContent"></div>
         </div>
-        <div class="qa-bar" id="qaBar">
-            <div class="qa-input-row">
-                <input class="qa-input" id="qaInput" placeholder="问问这个群的历史记录..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
-                <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
-            </div>
-            <div class="qa-answer" id="qaAnswer"></div>
+        <div class="qa-answer-wrap" id="qaAnswerWrap" style="display:none">
+            <div class="qa-answer show" id="qaAnswer"></div>
         </div>
         <div class="messages" id="messages"></div>
         <div class="stats-panel" id="statsPanel"></div>
@@ -942,11 +944,11 @@ function toggleSummary() {
 
 // --- Q&A ---
 function updateQaBar() {
-    const bar = document.getElementById('qaBar');
+    const qaInline = document.getElementById('qaInline');
     if (aiConfigured && currentGroup) {
-        bar.classList.add('show');
+        qaInline.style.display = '';
     } else {
-        bar.classList.remove('show');
+        qaInline.style.display = 'none';
     }
 }
 
@@ -955,10 +957,11 @@ async function askQuestion() {
     const question = input.value.trim();
     if (!question) return;
     const btn = document.getElementById('qaSendBtn');
+    const answerWrap = document.getElementById('qaAnswerWrap');
     const answerDiv = document.getElementById('qaAnswer');
     btn.disabled = true;
     btn.textContent = '检索中...';
-    answerDiv.classList.add('show');
+    answerWrap.style.display = '';
     answerDiv.innerHTML = '<div style="color:#536471">正在检索相关记录并生成回答...</div>';
 
     try {
@@ -1233,10 +1236,12 @@ function renderMediaBar() {
         { key: 'video', label: 'Video', tip: 'Show messages with videos' },
         { key: 'link', label: 'Links', tip: 'Show messages with links or shares' },
     ];
-    const noiseBtn = `<div class="media-btn ${hideNoise ? 'active' : ''}" onclick="toggleNoise()" data-tooltip="Hide greetings, red packets, and noise">Hide Noise</div>`;
     document.getElementById('mediaBar').innerHTML = types.map(t =>
         `<div class="media-btn ${mediaFilter === t.key ? 'active' : ''}" onclick="setMediaFilter('${t.key}')" data-tooltip="${t.tip}">${t.label}</div>`
-    ).join('') + noiseBtn;
+    ).join('');
+    // Update inline noise button state
+    const nb = document.getElementById('noiseBtnInline');
+    if (nb) nb.className = 'media-btn' + (hideNoise ? ' active' : '');
 }
 
 function setMediaFilter(type) {
