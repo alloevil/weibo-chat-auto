@@ -549,7 +549,7 @@ const server = http.createServer((req, res) => {
     // sinaimg CDN image proxy
     if (url.pathname === '/api/sinaimg') {
         const imgUrl = url.searchParams.get('url');
-        if (!imgUrl || !/^https:\/\/wx[0-9]*\.sinaimg\.cn\//.test(imgUrl)) { res.writeHead(403); res.end('Forbidden'); return; }
+        if (!imgUrl || !/^https:\/\/[a-z0-9]+\.sinaimg\.cn\//.test(imgUrl)) { res.writeHead(403); res.end('Forbidden'); return; }
         const proxyReq = https.get(imgUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -860,6 +860,21 @@ const server = http.createServer((req, res) => {
         } else {
             callSummary();
         }
+        return;
+    }
+
+    // --- Tauri signal endpoints (HTTP-based IPC for desktop app) ---
+    if (url.pathname === '/api/request-login' && req.method === 'POST') {
+        global.__pendingAction = 'open_login';
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+    }
+    if (url.pathname === '/api/pending-action') {
+        const action = global.__pendingAction || null;
+        global.__pendingAction = null;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ action }));
         return;
     }
 

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "微博群聊",
+  "version": "1.5.0",
+  "identifier": "com.alloevil.weibo-chat",
+  "build": {
+    "beforeBuildCommand": "node sidecar/build.mjs",
+    "beforeDevCommand": ""
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "externalBin": [
+      "binaries/viewer-server"
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "微博群聊",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "url": "about:blank"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {}
+}

@@ -1,0 +1,18 @@
+[package]
+name = "weibo-chat-viewer"
+version = "1.5.0"
+edition = "2021"
+
+[lib]
+name = "weibo_chat_viewer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"

@@ -17,3 +17,8 @@ temp-chrome/
 .DS_Store
 dom-diagnosis.json
 com.allo.weibo-chat-archive.plist
+
+# Tauri
+src-tauri/target/
+src-tauri/binaries/
+sidecar/dist/
