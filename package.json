@@ -37,7 +37,11 @@
   },
   "homepage": "https://github.com/alloevil/weibo-chat-auto#readme",
   "dependencies": {
-    "puppeteer": "^24.43.0"
+    "@ai-sdk/openai": "^3.0.73",
+    "@ai-sdk/openai-compatible": "^2.0.51",
+    "ai": "^6.0.208",
+    "puppeteer": "^24.43.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "eslint": "^9.39.4",
