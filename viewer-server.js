@@ -175,6 +175,134 @@ function serveImage(res, filePath, contentType) {
     fs.createReadStream(filePath).pipe(res);
 }
 
+function qaLegacy(question, allMessages, reply) {
+    const today = new Date().toISOString().split('T')[0];
+    const extractPrompt = [
+        { role: 'system', content: `你是一个搜索查询解析器。今天是 ${today}。根据用户的问题，提取搜索关键词和时间范围。
+
+输出严格JSON格式（不要输出其他内容）：
+{"keywords": ["关键词1", "关键词2", ...], "person": "人名或null", "dateFrom": "YYYY-MM-DD或null", "dateTo": "YYYY-MM-DD或null"}
+
+规则：
+- keywords: 3-5个最相关的搜索关键词（排除人名和时间词）
+- person: 如果问题针对某个人（如"xx说了什么"），提取人名，否则null
+- dateFrom/dateTo: 将时间表述转为绝对日期（"昨天"→昨天日期，"最近"→7天前到今天，无时间→null）
+- 不要把时间词放入keywords` },
+        { role: 'user', content: question }
+    ];
+    callLlmApi(extractPrompt, (extraction, err) => {
+        if (err) { reply({ ok: false, error: '查询解析失败: ' + err }); return; }
+
+        let keywordList, dateFrom, dateTo, person;
+        try {
+            const parsed = JSON.parse(extraction.replace(/```json?\s*|\s*```/g, '').trim());
+            keywordList = parsed.keywords || [];
+            dateFrom = parsed.dateFrom || null;
+            dateTo = parsed.dateTo || null;
+            person = parsed.person || null;
+        } catch {
+            keywordList = extraction.split(/[,，、\s]+/).filter(k => k.length > 0);
+            dateFrom = null; dateTo = null; person = null;
+        }
+
+        let messages = allMessages;
+        if (dateFrom || dateTo) {
+            messages = allMessages.filter(m => {
+                const d = (m.time || '').split(' ')[0].replace(/\//g, '-');
+                if (!d) return false;
+                if (dateFrom && d < dateFrom) return false;
+                if (dateTo && d > dateTo) return false;
+                return true;
+            });
+            if (!messages.length) {
+                reply({ ok: true, answer: `在 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间未找到聊天记录。`, sources: [], keywords: keywordList });
+                return;
+            }
+        }
+
+        const scored = [];
+        for (let i = 0; i < messages.length; i++) {
+            const m = messages[i];
+            const text = (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
+            let score = 0;
+            if (person && (m.user || '').toLowerCase().includes(person.toLowerCase())) score += 3;
+            for (const kw of keywordList) {
+                if (text.toLowerCase().includes(kw.toLowerCase())) score++;
+            }
+            if (score > 0) scored.push({ idx: i, score });
+        }
+
+        if (!scored.length && (dateFrom || dateTo)) {
+            const sample = messages.slice(-50);
+            const ctx = sample.map(m => {
+                const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+                const date = m.time ? m.time.split(' ')[0] : '';
+                let text = m.content || '';
+                if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
+                return `[${date} ${t}] ${m.user}: ${text}`;
+            }).join('\n');
+            callLlmApi([
+                { role: 'system', content: '你是一个群聊记录问答助手。根据提供的聊天记录回答用户问题。只基于记录回答，不要编造。用简洁的中文回答。' },
+                { role: 'user', content: `问题：${question}\n\n以下是 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间的群聊记录：\n\n${ctx.slice(0, 8000)}` }
+            ], (answer, ansErr) => {
+                if (ansErr) { reply({ ok: false, error: '回答生成失败: ' + ansErr }); return; }
+                reply({ ok: true, answer, sources: [{ date: dateFrom || dateTo || '', preview: `${messages.length} 条消息` }], keywords: keywordList, dateRange: { from: dateFrom, to: dateTo } });
+            });
+            return;
+        }
+
+        if (!scored.length) {
+            reply({ ok: true, answer: '未找到与该问题相关的聊天记录。请尝试换一种问法或使用更具体的关键词。', sources: [], keywords: keywordList });
+            return;
+        }
+
+        scored.sort((a, b) => b.score - a.score);
+        const topHits = scored.slice(0, 20);
+        const segments = new Set();
+        const contextChunks = [];
+        for (const hit of topHits) {
+            const start = Math.max(0, hit.idx - 5);
+            const end = Math.min(messages.length, hit.idx + 6);
+            const segKey = `${start}-${end}`;
+            if (segments.has(segKey)) continue;
+            let skip = false;
+            for (const existing of segments) {
+                const [es, ee] = existing.split('-').map(Number);
+                if (start >= es && end <= ee) { skip = true; break; }
+            }
+            if (skip) continue;
+            segments.add(segKey);
+            const chunk = messages.slice(start, end).map(m => {
+                const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+                const date = m.time ? m.time.split(' ')[0] : '';
+                let text = m.content || '';
+                if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
+                if (m.pics?.length) text += ` [图片x${m.pics.length}]`;
+                return `[${date} ${t}] ${m.user}: ${text}`;
+            }).join('\n');
+            contextChunks.push({ text: chunk, date: (messages[start].time?.split(' ')[0] || '').replace(/\//g, '-'), score: hit.score });
+        }
+
+        let totalLen = 0;
+        const finalChunks = [];
+        for (const c of contextChunks) {
+            if (totalLen + c.text.length > 8000) break;
+            finalChunks.push(c);
+            totalLen += c.text.length;
+        }
+
+        const contextText = finalChunks.map((c, i) => `--- 片段 ${i + 1}（${c.date}）---\n${c.text}`).join('\n\n');
+        callLlmApi([
+            { role: 'system', content: '你是一个群聊记录问答助手。根据提供的聊天记录片段回答用户问题。只基于记录回答，不要编造。引用具体发言人和日期。用简洁的中文回答。' },
+            { role: 'user', content: `问题：${question}\n\n以下是相关的群聊记录片段：\n\n${contextText}` }
+        ], (answer, ansErr) => {
+            if (ansErr) { reply({ ok: false, error: '回答生成失败: ' + ansErr }); return; }
+            const sources = finalChunks.map(c => ({ date: c.date, preview: c.text.split('\n').slice(0, 3).join(' | ').slice(0, 100) }));
+            reply({ ok: true, answer, sources, keywords: keywordList, dateRange: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined });
+        });
+    });
+}
+
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
 
@@ -743,173 +871,30 @@ const server = http.createServer((req, res) => {
             const reply = (data) => { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
             let params;
             try { params = JSON.parse(body); } catch { reply({ ok: false, error: '参数解析失败' }); return; }
-            const { group, question } = params;
+            const { group, question, mode } = params;
             if (!group || !question) { reply({ ok: false, error: '缺少 group 或 question' }); return; }
 
-            // Load all messages for this group
             const allMessages = loadMessages(group);
             if (!allMessages.length) { reply({ ok: false, error: '该群无消息数据' }); return; }
 
-            // Step 1: LLM extracts search keywords AND date range from the question
-            const today = new Date().toISOString().split('T')[0];
-            const extractPrompt = [
-                { role: 'system', content: `你是一个搜索查询解析器。今天是 ${today}。根据用户的问题，提取搜索关键词和时间范围。
+            if (mode === 'legacy') {
+                // Legacy mode: original keyword extraction approach
+                qaLegacy(question, allMessages, reply);
+                return;
+            }
 
-输出严格JSON格式（不要输出其他内容）：
-{"keywords": ["关键词1", "关键词2", ...], "person": "人名或null", "dateFrom": "YYYY-MM-DD或null", "dateTo": "YYYY-MM-DD或null"}
-
-规则：
-- keywords: 3-5个最相关的搜索关键词（排除人名和时间词）
-- person: 如果问题针对某个人（如"xx说了什么"），提取人名，否则null
-- dateFrom/dateTo: 将时间表述转为绝对日期：
-  - "昨天" → 昨天日期到昨天日期
-  - "前天" → 前天日期到前天日期
-  - "上周" → 上周一到上周日
-  - "最近" / "最近几天" → 7天前到今天
-  - "这周" → 本周一到今天
-  - "上个月" → 上月1号到上月最后一天
-  - 无时间表述 → null
-- 不要把"昨天""最近""上周"等时间词放入keywords` },
-                { role: 'user', content: question }
-            ];
-            callLlmApi(extractPrompt, (extraction, err) => {
-                if (err) { reply({ ok: false, error: '查询解析失败: ' + err }); return; }
-
-                // Parse LLM output as JSON
-                let keywordList, dateFrom, dateTo, person;
-                try {
-                    const parsed = JSON.parse(extraction.replace(/```json?\s*|\s*```/g, '').trim());
-                    keywordList = parsed.keywords || [];
-                    dateFrom = parsed.dateFrom || null;
-                    dateTo = parsed.dateTo || null;
-                    person = parsed.person || null;
-                } catch {
-                    // Fallback: treat entire output as comma-separated keywords
-                    keywordList = extraction.split(/[,，、\s]+/).filter(k => k.length > 0);
-                    dateFrom = null;
-                    dateTo = null;
-                    person = null;
-                }
-
-                // Filter messages by date range if specified
-                let messages = allMessages;
-                if (dateFrom || dateTo) {
-                    messages = allMessages.filter(m => {
-                        const d = (m.time || '').split(' ')[0].replace(/\//g, '-');
-                        if (!d) return false;
-                        if (dateFrom && d < dateFrom) return false;
-                        if (dateTo && d > dateTo) return false;
-                        return true;
-                    });
-                    if (!messages.length) {
-                        reply({ ok: true, answer: `在 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间未找到聊天记录。`, sources: [], keywords: keywordList });
-                        return;
-                    }
-                }
-
-                // Step 2: Search messages using keywords + person filter
-                const scored = [];
-                for (let i = 0; i < messages.length; i++) {
-                    const m = messages[i];
-                    const text = (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
-                    let score = 0;
-                    // Person match gives high base score
-                    if (person && (m.user || '').toLowerCase().includes(person.toLowerCase())) {
-                        score += 3;
-                    }
-                    for (const kw of keywordList) {
-                        if (text.toLowerCase().includes(kw.toLowerCase())) score++;
-                    }
-                    if (score > 0) scored.push({ idx: i, score });
-                }
-
-                if (!scored.length && (dateFrom || dateTo)) {
-                    // Date filtered but no hits — show messages in range as context
-                    const sample = messages.slice(-50);
-                    const contextText = sample.map(m => {
-                        const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-                        const date = m.time ? m.time.split(' ')[0] : '';
-                        let text = m.content || '';
-                        if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
-                        return `[${date} ${t}] ${m.user}: ${text}`;
-                    }).join('\n');
-                    const answerPrompt = [
-                        { role: 'system', content: `你是一个群聊记录问答助手。根据提供的聊天记录回答用户问题。只基于提供的记录回答，不要编造。如果记录中没有相关信息，明确说明。用简洁的中文回答。` },
-                        { role: 'user', content: `问题：${question}\n\n以下是 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间的群聊记录：\n\n${contextText.slice(0, 8000)}` }
-                    ];
-                    callLlmApi(answerPrompt, (answer, ansErr) => {
-                        if (ansErr) { reply({ ok: false, error: '回答生成失败: ' + ansErr }); return; }
-                        reply({ ok: true, answer, sources: [{ date: dateFrom || dateTo || '', preview: `${messages.length} 条消息` }], keywords: keywordList, dateRange: { from: dateFrom, to: dateTo } });
-                    });
-                    return;
-                }
-
-                if (!scored.length) {
-                    reply({ ok: true, answer: '未找到与该问题相关的聊天记录。请尝试换一种问法或使用更具体的关键词。', sources: [], keywords: keywordList });
-                    return;
-                }
-
-                // Sort by score, take top hits
-                scored.sort((a, b) => b.score - a.score);
-                const topHits = scored.slice(0, 20);
-
-                // Step 3: Expand context — for each hit, include ±5 surrounding messages, deduplicate
-                const segments = new Set();
-                const contextChunks = [];
-                for (const hit of topHits) {
-                    const start = Math.max(0, hit.idx - 5);
-                    const end = Math.min(messages.length, hit.idx + 6);
-                    const segKey = `${start}-${end}`;
-                    if (segments.has(segKey)) continue;
-                    let skip = false;
-                    for (const existing of segments) {
-                        const [es, ee] = existing.split('-').map(Number);
-                        if (start >= es && end <= ee) { skip = true; break; }
-                    }
-                    if (skip) continue;
-                    segments.add(segKey);
-                    const chunk = messages.slice(start, end).map(m => {
-                        const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-                        const date = m.time ? m.time.split(' ')[0] : '';
-                        let text = m.content || '';
-                        if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
-                        if (m.pics?.length) text += ` [图片x${m.pics.length}]`;
-                        return `[${date} ${t}] ${m.user}: ${text}`;
-                    }).join('\n');
-                    const firstMsg = messages[start];
-                    contextChunks.push({ text: chunk, date: (firstMsg.time?.split(' ')[0] || '').replace(/\//g, '-'), score: hit.score });
-                }
-
-                // Limit total context to ~8000 chars
-                let totalLen = 0;
-                const finalChunks = [];
-                for (const c of contextChunks) {
-                    if (totalLen + c.text.length > 8000) break;
-                    finalChunks.push(c);
-                    totalLen += c.text.length;
-                }
-
-                // Step 4: LLM generates answer with citations
-                const contextText = finalChunks.map((c, i) => `--- 片段 ${i + 1}（${c.date}）---\n${c.text}`).join('\n\n');
-                const answerPrompt = [
-                    { role: 'system', content: `你是一个群聊记录问答助手。根据提供的聊天记录片段回答用户问题。
-
-要求：
-1. 只基于提供的聊天记录回答，不要编造
-2. 引用具体发言人和日期
-3. 如果记录中没有足够信息回答问题，明确说明
-4. 用简洁的中文回答，保持准确` },
-                    { role: 'user', content: `问题：${question}\n\n以下是相关的群聊记录片段：\n\n${contextText}` }
-                ];
-                callLlmApi(answerPrompt, (answer, ansErr) => {
-                    if (ansErr) { reply({ ok: false, error: '回答生成失败: ' + ansErr }); return; }
-                    const sources = finalChunks.map(c => ({ date: c.date, preview: c.text.split('\n').slice(0, 3).join(' | ').slice(0, 100) }));
-                    reply({ ok: true, answer, sources, keywords: keywordList, dateRange: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined });
+            // Agent mode (default): Vercel AI SDK with tool-use loop
+            import('./qa-agent.mjs').then(({ askAgent }) => {
+                askAgent(question, allMessages).then(reply).catch(e => {
+                    reply({ ok: false, error: 'Agent 异常: ' + e.message });
                 });
+            }).catch(e => {
+                reply({ ok: false, error: '加载 Agent 模块失败: ' + e.message });
             });
         });
         return;
     }
+
 
     // Static page
     if (url.pathname === '/' || url.pathname === '/index.html') {
