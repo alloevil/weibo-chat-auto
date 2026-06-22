@@ -51,6 +51,34 @@ npm run archive   # 手动归档一次
 npm run view      # 启动查看器 → http://localhost:3456
 ```
 
+### 🖥 桌面应用（macOS）
+
+无需手动管理 Cookie，应用内扫码即可登录：
+
+```bash
+# 前置：安装 Rust 和 Bun
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+curl -fsSL https://bun.sh/install | bash
+
+# 构建并运行
+cd src-tauri
+node ../sidecar/build.mjs   # 编译 Node 服务为独立二进制（需 bun）
+cargo run                    # 启动桌面 app
+```
+
+技术栈：Tauri v2 + Node.js sidecar (Bun compiled) + WKWebView
+
+<details>
+<summary><b>桌面应用架构说明</b></summary>
+
+- **Tauri v2** 提供原生窗口，内嵌 WKWebView 加载 `http://127.0.0.1:3456`
+- **Sidecar** 模式：用 Bun 把 `viewer-server.js` 编译为 ~60MB 独立二进制，app 启动时自动拉起
+- **登录流程**：点击"🔑 登录"→ Rust 打开微博登录 WebView → 用户扫码 → `cookies_for_url()` 提取所有 Cookie（含 HttpOnly）→ 自动保存
+- **IPC 桥接**：WKWebView 加载 localhost 页面时无法注入 Tauri IPC，改用 HTTP 信号（前端 POST → 服务器缓存 → Rust 轮询）
+- **图片代理**：微博 CDN 检查 Referer，通过 `/api/sinaimg?url=` 本地代理绕过
+
+</details>
+
 <details>
 <summary><b>手动安装（分步说明）</b></summary>
 
