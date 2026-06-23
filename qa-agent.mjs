@@ -377,8 +377,8 @@ async function conversationLoop(question, allMessages, config) {
 }
 
 // ─── Public API ────────────────────────────────────────────────────────
-export async function askAgent(question, allMessages) {
-  const aiConfig = loadAiConfig();
+export async function askAgent(question, allMessages, aiConfigOverride) {
+  const aiConfig = aiConfigOverride || loadAiConfig();
   if (!aiConfig) return { ok: false, error: 'AI 未配置' };
 
   try {

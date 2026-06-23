@@ -899,8 +899,12 @@ const server = http.createServer((req, res) => {
             }
 
             // Agent mode (default): Vercel AI SDK with tool-use loop
+            let aiConfig;
+            try { aiConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'ai-config.json'), 'utf-8')); } catch {
+                reply({ ok: false, error: 'AI 未配置' }); return;
+            }
             import('./qa-agent.mjs').then(({ askAgent }) => {
-                askAgent(question, allMessages).then(reply).catch(e => {
+                askAgent(question, allMessages, aiConfig).then(reply).catch(e => {
                     reply({ ok: false, error: 'Agent 异常: ' + e.message });
                 });
             }).catch(e => {
