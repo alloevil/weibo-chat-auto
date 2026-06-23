@@ -384,7 +384,9 @@ const server = http.createServer((req, res) => {
         // Invalidate all message caches
         for (const key in messageCaches) delete messageCaches[key];
         for (const key in fileCaches) delete fileCaches[key];
-        execFile(process.execPath, [path.join(__dirname, 'auto-archive-simple.js')], {
+        const isBundled = !process.execPath.endsWith('node') && !process.execPath.endsWith('bun');
+        const jsRuntime = isBundled ? 'node' : process.execPath;
+        execFile(jsRuntime, [path.join(__dirname, 'auto-archive-simple.js')], {
             timeout: 600000,
             env: { ...process.env, PATH: process.env.PATH },
         }, (err, stdout, stderr) => {
