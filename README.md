@@ -34,48 +34,41 @@
 
 ## 🚀 快速开始
 
-### 一键安装（推荐）
-
 ```bash
 git clone https://github.com/alloevil/weibo-chat-auto.git
 cd weibo-chat-auto
-./setup.sh
 ```
 
-`setup.sh` 会引导你完成全部步骤：检查 Node → 安装依赖 → 配置群聊 → 扫码登录 → 询问是否启用定时任务。脚本可重复运行，已配置的步骤会自动跳过。
+| 方式 | 命令 | 说明 |
+|------|------|------|
+| **桌面应用** | `./run-desktop.sh` | 原生 app，应用内扫码登录，无需手动配 Cookie |
+| **网页版** | `./setup.sh` | 浏览器查看器 http://localhost:3456 |
 
-装完后：
-
-```bash
-npm run archive   # 手动归档一次
-npm run view      # 启动查看器 → http://localhost:3456
-```
+首次运行会自动安装所需依赖（Rust/Bun/npm）。
 
 ### 🖥 桌面应用（macOS）
 
-无需手动管理 Cookie，应用内扫码即可登录：
-
 ```bash
-# 前置：安装 Rust 和 Bun
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-curl -fsSL https://bun.sh/install | bash
-
-# 构建并运行
-cd src-tauri
-node ../sidecar/build.mjs   # 编译 Node 服务为独立二进制（需 bun）
-cargo run                    # 启动桌面 app
+./run-desktop.sh
 ```
 
-技术栈：Tauri v2 + Node.js sidecar (Bun compiled) + WKWebView
+一条命令完成：检测环境 → 安装依赖 → 编译 → 启动。打开后点击 🔑 登录，扫码即可开始归档。
+
+### 🌐 网页版
+
+```bash
+./setup.sh            # 首次：安装 + 配置 + 扫码登录
+npm run view          # 之后：启动查看器
+```
 
 <details>
-<summary><b>桌面应用架构说明</b></summary>
+<summary><b>桌面应用架构</b></summary>
 
-- **Tauri v2** 提供原生窗口，内嵌 WKWebView 加载 `http://127.0.0.1:3456`
-- **Sidecar** 模式：用 Bun 把 `viewer-server.js` 编译为 ~60MB 独立二进制，app 启动时自动拉起
-- **登录流程**：点击"🔑 登录"→ Rust 打开微博登录 WebView → 用户扫码 → `cookies_for_url()` 提取所有 Cookie（含 HttpOnly）→ 自动保存
-- **IPC 桥接**：WKWebView 加载 localhost 页面时无法注入 Tauri IPC，改用 HTTP 信号（前端 POST → 服务器缓存 → Rust 轮询）
-- **图片代理**：微博 CDN 检查 Referer，通过 `/api/sinaimg?url=` 本地代理绕过
+- **Tauri v2** 原生窗口 + WKWebView
+- **Sidecar**：Bun 编译 `viewer-server.js` 为 ~60MB 独立二进制，app 启动时自动拉起
+- **登录**：Rust 打开 WebView → 扫码 → `cookies_for_url()` 提取 HttpOnly Cookie → 自动保存
+- **IPC**：WKWebView 不注入 Tauri IPC，改用 HTTP 信号中转
+- **图片**：微博 CDN 检查 Referer，本地 `/api/sinaimg?url=` 代理绕过
 
 </details>
 
