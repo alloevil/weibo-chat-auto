@@ -50,7 +50,7 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
         let _ = existing.destroy();
     }
 
-    let login_url: url::Url = "https://api.weibo.com/chat#/chat"
+    let login_url: url::Url = "https://passport.weibo.com/sso/signin"
         .parse()
         .map_err(|e: url::ParseError| e.to_string())?;
 
@@ -62,38 +62,39 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
         tauri::WebviewUrl::External(login_url),
     )
     .title("微博登录 - 请扫码")
-    .inner_size(420.0, 600.0)
-    .initialization_script(
-        r#"
-        (function() {
-            let detected = false;
-            setInterval(function() {
-                if (detected) return;
-                try {
-                    var text = document.body.innerText || '';
-                    if (!text.includes('扫描登录') && !text.includes('立即注册') && text.length > 500) {
-                        detected = true;
-                        window.location.href = 'http://127.0.0.1:3456/__login_ok__';
-                    }
-                } catch(e) {}
-            }, 2000);
-        })();
-        "#,
-    )
-    .on_navigation(move |url| {
-        if url.path() == "/__login_ok__" {
-            let handle = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = do_extract_cookies(handle).await {
-                    eprintln!("[login] Cookie extraction failed: {}", e);
-                }
-            });
-            return false;
-        }
-        true
-    })
+    .inner_size(480.0, 640.0)
     .build()
     .map_err(|e| e.to_string())?;
+
+    // Poll for the SUB login cookie (definitive "logged in" signal).
+    // Text-based detection is unreliable — it can fire on the QR page
+    // before the scan completes, capturing only anonymous cookies.
+    tauri::async_runtime::spawn(async move {
+        for attempt in 0..150 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            let win = match app_handle.get_webview_window("login") {
+                Some(w) => w,
+                None => {
+                    eprintln!("[login] Login window closed before login completed");
+                    return;
+                }
+            };
+            let logged_in = ["https://weibo.com", "https://api.weibo.com"]
+                .iter()
+                .filter_map(|d| d.parse::<url::Url>().ok())
+                .filter_map(|u| win.cookies_for_url(u).ok())
+                .flatten()
+                .any(|c| c.name() == "SUB");
+            if logged_in {
+                eprintln!("[login] SUB cookie detected (attempt {}), extracting", attempt);
+                if let Err(e) = do_extract_cookies(app_handle.clone()).await {
+                    eprintln!("[login] Cookie extraction failed: {}", e);
+                }
+                return;
+            }
+        }
+        eprintln!("[login] Login timed out after 5 minutes");
+    });
 
     Ok(())
 }
@@ -131,10 +132,24 @@ async fn do_extract_cookies(app: tauri::AppHandle) -> Result<(), String> {
                         continue;
                     }
                     seen.insert(key);
+                    // Prepend a leading dot so puppeteer's setCookie treats
+                    // these as domain cookies (sent to subdomains like
+                    // api.weibo.com), not host-only cookies. WKWebView returns
+                    // bare domains ("weibo.com") but the archiver hits
+                    // api.weibo.com, which needs ".weibo.com" to receive SUB.
+                    let raw_domain = c.domain().unwrap_or("");
+                    let domain = if !raw_domain.is_empty()
+                        && !raw_domain.starts_with('.')
+                        && raw_domain.contains('.')
+                    {
+                        format!(".{}", raw_domain)
+                    } else {
+                        raw_domain.to_string()
+                    };
                     all_cookies.push(CookieEntry {
                         name: c.name().to_string(),
                         value: c.value().to_string(),
-                        domain: c.domain().unwrap_or("").to_string(),
+                        domain,
                         path: c.path().unwrap_or("/").to_string(),
                         http_only: c.http_only().unwrap_or(false),
                         secure: c.secure().unwrap_or(false),

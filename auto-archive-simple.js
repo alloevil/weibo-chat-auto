@@ -82,11 +82,14 @@ async function waitForLogin(page) {
             // 等待页面完全加载
             await delay(3000);
 
-            // 保存完整 Cookie
+            // 保存完整 Cookie —— 仅在确实持有 SUB 登录态时，避免误存匿名 cookie
             const cookies = await page.cookies();
-            fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(cookies, null, 2));
-            console.log(`已保存 ${cookies.length} 个 Cookie 到 cookies.json`);
-            return true;
+            if (cookies.some(c => c.name === 'SUB')) {
+                fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(cookies, null, 2));
+                console.log(`已保存 ${cookies.length} 个 Cookie 到 cookies.json`);
+                return true;
+            }
+            console.log('页面看似已加载但无 SUB 登录态，继续等待真正登录...');
         }
     }
 
@@ -318,6 +321,13 @@ async function main() {
     if (fs.existsSync(CONFIG.cookieFile)) {
         console.log('加载 Cookie...');
         const cookies = JSON.parse(fs.readFileSync(CONFIG.cookieFile, 'utf-8'));
+        // 补前导点：WKWebView 导出的域名是 "weibo.com"，没有前导点会被设成
+        // host-only cookie，不会发给 api.weibo.com 子域，导致鉴权失败。
+        cookies.forEach(c => {
+            if (c.domain && !c.domain.startsWith('.') && c.domain.includes('.')) {
+                c.domain = '.' + c.domain;
+            }
+        });
         if (cookies.length > 0) {
             await page.setCookie(...cookies);
             console.log(`已加载 ${cookies.length} 个 Cookie`);
@@ -387,10 +397,15 @@ async function main() {
     } else {
         console.log('登录状态正常');
 
-        // 每次运行成功后也更新 Cookie
+        // 每次运行成功后也更新 Cookie —— 但仅在仍持有登录态(SUB)时，
+        // 避免用匿名 cookie 覆盖掉有效的登录 cookie。
         const cookies = await page.cookies();
-        fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(cookies, null, 2));
-        console.log(`Cookie 已更新 (${cookies.length} 个)`);
+        if (cookies.some(c => c.name === 'SUB')) {
+            fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(cookies, null, 2));
+            console.log(`Cookie 已更新 (${cookies.length} 个)`);
+        } else {
+            console.log('当前页面无 SUB 登录态，跳过 Cookie 更新以保护现有登录');
+        }
     }
 
     // 注入归档脚本（在点击群聊之前，这样可以捕获所有 API 响应）
@@ -880,11 +895,15 @@ async function main() {
 
     } // end for each group
 
-    // 保存 Cookie
+    // 保存 Cookie —— 仅在仍持有登录态(SUB)时更新，避免覆盖有效登录
     const finalCookies = await page.cookies();
-    fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(finalCookies, null, 2));
-    console.log(`Cookie 已更新 (${finalCookies.length} 个)`);
-    console.log('下次运行将自动使用已保存的登录状态');
+    if (finalCookies.some(c => c.name === 'SUB')) {
+        fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(finalCookies, null, 2));
+        console.log(`Cookie 已更新 (${finalCookies.length} 个)`);
+        console.log('下次运行将自动使用已保存的登录状态');
+    } else {
+        console.log('当前页面无 SUB 登录态，跳过 Cookie 更新以保护现有登录');
+    }
 
     // 关闭浏览器
     } finally {

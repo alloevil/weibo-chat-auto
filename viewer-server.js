@@ -837,7 +837,7 @@ const server = http.createServer((req, res) => {
                                 }
                                 callSummary();
                             }
-                        }, (err) => {
+                        }, (_err) => {
                             descriptions[idx] = null;
                             described++;
                             if (described === validImages.length) {

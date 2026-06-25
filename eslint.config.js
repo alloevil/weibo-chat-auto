@@ -5,7 +5,7 @@ const js = require('@eslint/js');
 const prettier = require('eslint-config-prettier');
 
 module.exports = [
-    { ignores: ['node_modules/**', 'output/**', 'cache/**', 'docs/**', '.archiver-script.js', '.*.js'] },
+    { ignores: ['node_modules/**', 'output/**', 'cache/**', 'docs/**', 'src-tauri/**', 'sidecar/dist/**', '.archiver-script.js', '.*.js'] },
     js.configs.recommended,
     prettier,
     // 通用 Node 脚本
@@ -35,6 +35,31 @@ module.exports = [
             // 表情匹配正则有意包含 surrogate pair / 组合字符，关闭该规则
             'no-misleading-character-class': 'off',
             // 中文场景下「　」(全角空格) 等被判为 irregular whitespace，属正常字符
+            'no-irregular-whitespace': 'off',
+        },
+    },
+    // ES module 脚本（.mjs）：qa-agent.mjs / benchmark-qa.mjs / sidecar/build.mjs
+    {
+        files: ['**/*.mjs'],
+        languageOptions: {
+            ecmaVersion: 2023,
+            sourceType: 'module',
+            globals: {
+                process: 'readonly',
+                console: 'readonly',
+                Buffer: 'readonly',
+                setTimeout: 'readonly',
+                clearTimeout: 'readonly',
+                globalThis: 'readonly',
+                URL: 'readonly',
+                fetch: 'readonly',
+            },
+        },
+        rules: {
+            'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+            'no-undef': 'error',
+            'no-empty': ['error', { allowEmptyCatch: true }],
+            'no-misleading-character-class': 'off',
             'no-irregular-whitespace': 'off',
         },
     },
