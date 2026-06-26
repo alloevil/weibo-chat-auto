@@ -4,8 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const { execFile, exec } = require('child_process');
 
-const PORT = 3456;
-const OUTPUT_DIR = path.join(__dirname, 'output');
+const PORT = process.env.WEIBO_PORT ? Number(process.env.WEIBO_PORT) : 3456;
+const OUTPUT_DIR = process.env.WEIBO_OUTPUT_DIR
+    ? path.resolve(process.env.WEIBO_OUTPUT_DIR)
+    : path.join(__dirname, 'output');
 
 process.on('uncaughtException', (err) => {
     console.error('[uncaughtException]', err.message);
