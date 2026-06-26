@@ -32,8 +32,11 @@ const lines = [
 const day = '2026-06-20';
 const base = new Date(day + 'T09:00:00+08:00').getTime();
 const msgs = [];
+const weights = [12, 9, 7, 5, 3, 2];
+const pool = [];
+users.forEach((u, i) => { for (let k = 0; k < weights[i]; k++) pool.push(u); });
 for (let i = 0; i < 60; i++) {
-    const u = users[(i * 7 + 3) % users.length];
+    const u = pool[(i * 13 + 5) % pool.length];
     const ts = base + i * (1000 * 60 * (8 + (i % 5) * 6));
     const d = new Date(ts);
     msgs.push({

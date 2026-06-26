@@ -39,8 +39,12 @@ const lines = [
 const day = '2026-06-20';
 const base = new Date(day + 'T09:00:00+08:00').getTime();
 const msgs = [];
+// 长尾活跃度分布（少数人话多），让排名角标和活跃度条有区分度
+const weights = [12, 9, 7, 5, 3, 2];
+const pool = [];
+users.forEach((u, i) => { for (let k = 0; k < weights[i]; k++) pool.push(u); });
 for (let i = 0; i < 48; i++) {
-    const u = users[Math.floor((i * 7 + 3) % users.length)];
+    const u = pool[(i * 13 + 5) % pool.length];
     const ts = base + i * (1000 * 60 * (8 + (i % 5) * 6)); // 分散到全天
     const d = new Date(ts);
     msgs.push({

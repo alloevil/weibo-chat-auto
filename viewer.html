@@ -158,11 +158,21 @@ button, select, input { font-family: inherit; }
 .user-item { display: flex; align-items: center; padding: 10px 16px; cursor: pointer; transition: background .15s; gap: 12px; border-left: 2px solid transparent; }
 .user-item:hover { background: var(--surface-1); }
 .user-item.active { background: var(--surface-2); border-left-color: var(--primary); }
-.user-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
+.user-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex-shrink: 0; overflow: hidden; position: relative; }
 .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* 排名角标（活跃度前 3）*/
+.user-rank { position: absolute; right: -2px; bottom: -2px; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--canvas); color: #fff; line-height: 1; }
+.user-item:hover .user-rank { border-color: var(--surface-1); }
+.user-item.active .user-rank { border-color: var(--surface-2); }
+.user-rank.r1 { background: #d4a72c; color: #1a1a1a; }
+.user-rank.r2 { background: #9aa0aa; color: #1a1a1a; }
+.user-rank.r3 { background: #b06a3a; }
 .user-info { flex: 1; min-width: 0; }
 .user-name { font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-count { font-size: 13px; color: var(--ink-subtle); }
+.user-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.user-count { font-size: 11px; color: var(--ink-muted); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 9999px; padding: 1px 8px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.user-actbar { flex: 1; height: 3px; border-radius: 2px; background: var(--surface-3); overflow: hidden; min-width: 24px; }
+.user-actbar-fill { height: 100%; border-radius: 2px; background: var(--primary); opacity: .85; }
 .user-clear { padding: 12px 16px; border-top: 1px solid var(--hairline); }
 .user-clear button { width: 100%; padding: 8px 0; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink); transition: all .15s; }
 .user-clear button:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
@@ -1418,17 +1428,23 @@ function renderUserList() {
     });
 
     const sorted = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
+    const maxCount = sorted.length ? sorted[0][1] : 1;
     const el = document.getElementById('userList');
-    el.innerHTML = sorted.map(([user, count]) => {
+    el.innerHTML = sorted.map(([user, count], idx) => {
         const active = selectedUsers.has(user) ? 'active' : '';
         const av = 'av-' + getUserColor(user);
         const initial = user.charAt(0);
         const avatarImg = userAvatars[user] ? `<img src="${avatarSrc(userAvatars[user])}" onerror="this.parentElement.innerHTML='${initial}'">` : initial;
+        const rank = idx < 3 ? `<span class="user-rank r${idx + 1}">${idx + 1}</span>` : '';
+        const pct = Math.max(6, Math.round((count / maxCount) * 100));
         return `<div class="user-item ${active}" onclick="toggleUser(this.dataset.user)" data-user="${escapeAttr(user)}">
-            <div class="user-avatar ${av}">${avatarImg}</div>
+            <div class="user-avatar ${av}">${avatarImg}${rank}</div>
             <div class="user-info">
                 <div class="user-name">${escapeHtml(user)}</div>
-                <div class="user-count">${count} msgs</div>
+                <div class="user-meta">
+                    <span class="user-count">${count}</span>
+                    <span class="user-actbar"><span class="user-actbar-fill" style="width:${pct}%"></span></span>
+                </div>
             </div>
         </div>`;
     }).join('');
