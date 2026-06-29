@@ -48,8 +48,9 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 button, select, input { font-family: inherit; }
 
 /* Top nav */
-.nav { border-bottom: 1px solid var(--hairline); flex-shrink: 0; background: var(--canvas); }
-.nav-top { display: flex; align-items: center; padding: 0 16px; height: 56px; gap: 10px; overflow-x: auto; }
+.nav { border-bottom: 1px solid var(--hairline); flex-shrink: 0; background: var(--canvas); position: relative; z-index: 20; }
+.nav-top { display: flex; align-items: center; padding: 0 16px; height: 56px; gap: 10px; }
+.nav-top > * { flex-shrink: 0; white-space: nowrap; }
 .nav-title { font-size: 17px; font-weight: 600; letter-spacing: -0.4px; display: flex; align-items: center; gap: 8px; white-space: nowrap; margin-right: 4px; }
 .nav-title::before { content: ''; width: 16px; height: 16px; border-radius: 5px; background: linear-gradient(135deg, var(--primary-hover), var(--primary)); box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset; flex-shrink: 0; }
 .nav-date { height: 32px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; }
@@ -237,6 +238,8 @@ button, select, input { font-family: inherit; }
 [data-tooltip]::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 6px; background: var(--surface-3); color: var(--ink); border: 1px solid var(--hairline-strong); font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 100; }
 [data-tooltip]:hover::after { opacity: 1; }
 .heatmap-title[data-tooltip]::after { left: 0; transform: none; }
+/* 顶部导航的提示框朝下弹出，避免被窗口上边缘裁切 */
+.nav-top [data-tooltip]::after, .sidebar-header[data-tooltip]::after { bottom: auto; top: calc(100% + 6px); }
 
 /* Filter status */
 .filter-bar { padding: 0 16px; height: 0; overflow: hidden; transition: height .2s; font-size: 13px; color: var(--ink-subtle); display: flex; align-items: center; }
@@ -1218,7 +1221,9 @@ function selectDate(d) {
     searchQuery = '';
     const si = document.getElementById('searchInput'); if (si) si.value = '';
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
+    calendarOpen = false;      // 选完日期自动收起日历
     renderCalendar();
+    updateDateToggle();
     loadMessages();
     // Reset summary panel
     const sc2 = document.getElementById('summaryContent');
