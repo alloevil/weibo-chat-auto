@@ -1,6 +1,6 @@
 {
   "name": "weibo-group-chat-archiver",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "description": "Weibo Group Chat Archiver - 微博群聊消息自动归档工具",
   "main": "auto-archive-simple.js",
   "scripts": {
