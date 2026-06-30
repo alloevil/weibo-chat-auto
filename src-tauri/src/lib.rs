@@ -48,6 +48,14 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window("login") {
         eprintln!("[login] Destroying old login window");
         let _ = existing.destroy();
+        // destroy() is async — wait until the window is actually gone before
+        // rebuilding, otherwise build() fails with "label already exists".
+        for _ in 0..50 {
+            if app.get_webview_window("login").is_none() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        }
     }
 
     let login_url: url::Url = "https://passport.weibo.com/sso/signin"
