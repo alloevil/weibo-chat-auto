@@ -58,9 +58,13 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
-    // Open the real chat page. If the session is valid the page lands on the
-    // chat UI (URL stays on *.weibo.com); if expired, Weibo redirects to the
-    // login/passport page and the window stays open showing the QR code.
+    // Open the real chat page. Detection is DOM-based (not URL/cookie): the
+    // page is only considered "logged in" when the chat list is actually
+    // rendered AND no QR/scan-login prompt is present. A *stale* SUB cookie
+    // makes api.weibo.com/chat show an in-page login (URL stays on
+    // api.weibo.com), so URL/cookie checks would falsely close the window
+    // before the user scans. The injected script navigates to a sentinel URL
+    // only once the logged-in chat UI is genuinely present.
     let login_url: url::Url = "https://api.weibo.com/chat"
         .parse()
         .map_err(|e: url::ParseError| e.to_string())?;
@@ -74,47 +78,51 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
     )
     .title("微博登录 - 请扫码")
     .inner_size(480.0, 640.0)
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    // Success = the window actually reached the chat page (URL not on a
-    // login/passport/sso page) AND a SUB cookie is present. Checking the URL
-    // avoids the false positive where a *stale* SUB lingers in the cookie
-    // store: with an expired session Weibo redirects to the login page, so we
-    // keep the window open for the user to scan instead of closing instantly.
-    tauri::async_runtime::spawn(async move {
-        for attempt in 0..150 {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            let win = match app_handle.get_webview_window("login") {
-                Some(w) => w,
-                None => {
-                    eprintln!("[login] Login window closed before login completed");
-                    return;
+    .initialization_script(
+        r#"
+        (function () {
+            let done = false;
+            function looksLoggedIn() {
+                var t = (document.body && document.body.innerText) || '';
+                // 出现扫码/登录提示 → 未登录，保持窗口等待扫码
+                if (t.indexOf('扫描登录') >= 0 || t.indexOf('扫码') >= 0 ||
+                    t.indexOf('二维码') >= 0 || t.indexOf('立即注册') >= 0 ||
+                    t.indexOf('登录微博') >= 0 || t.indexOf('安全登录') >= 0) {
+                    return false;
                 }
-            };
-            let on_login_page = win
-                .url()
-                .map(|u| {
-                    let s = u.as_str();
-                    s.contains("passport.") || s.contains("/login") || s.contains("/sso")
-                })
-                .unwrap_or(true);
-            let has_sub = ["https://weibo.com", "https://api.weibo.com"]
-                .iter()
-                .filter_map(|d| d.parse::<url::Url>().ok())
-                .filter_map(|u| win.cookies_for_url(u).ok())
-                .flatten()
-                .any(|c| c.name() == "SUB");
-            if has_sub && !on_login_page {
-                eprintln!("[login] Logged in (attempt {}), extracting", attempt);
-                if let Err(e) = do_extract_cookies(app_handle.clone()).await {
+                // 聊天界面特征：会话列表 DOM，或足够多的实际内容
+                var hasChat = document.querySelector('[class*="session"], [class*="Session"], [class*="chat-list"], [class*="ChatList"], [class*="conversation"]');
+                return !!hasChat || t.length > 800;
+            }
+            var timer = setInterval(function () {
+                if (done) return;
+                try {
+                    if (looksLoggedIn()) {
+                        done = true;
+                        clearInterval(timer);
+                        location.href = 'https://api.weibo.com/__login_ok__';
+                    }
+                } catch (e) {}
+            }, 1500);
+        })();
+        "#,
+    )
+    .on_navigation(move |url| {
+        if url.path() == "/__login_ok__" {
+            let handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                // 给页面/网络层一点时间把认证 cookie 落地
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                if let Err(e) = do_extract_cookies(handle).await {
                     eprintln!("[login] Cookie extraction failed: {}", e);
                 }
-                return;
-            }
+            });
+            return false; // 取消导航，不真的跳到哨兵地址
         }
-        eprintln!("[login] Login timed out after 5 minutes");
-    });
+        true
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
