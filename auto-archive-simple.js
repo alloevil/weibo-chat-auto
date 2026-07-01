@@ -39,6 +39,14 @@ async function checkLoginRequired(page) {
         // 检查页面标题
         const title = document.title || '';
         if (title.includes('登录') || title.includes('login')) return true;
+        // 检查页面内容：api.weibo.com/chat 用失效 Cookie 打开时 URL/标题不变，
+        // 但页面内会显示扫码登录二维码 —— 只看 URL/标题会误判为已登录。
+        const text = (document.body && document.body.innerText) || '';
+        if (text.includes('扫描登录') || text.includes('扫码') ||
+            text.includes('二维码') || text.includes('立即注册') ||
+            text.includes('用微博手机版扫描')) {
+            return true;
+        }
         return false;
     });
 }
