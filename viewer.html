@@ -929,17 +929,38 @@ function openAiSettings() {
 }
 
 async function doLogin() {
+    // 浏览器版：请求服务器用 Puppeteer 开可见 Chrome 扫码，成功后自动存 Cookie
+    if (!window.__WEIBO_DESKTOP) {
+        const btn = document.getElementById('loginBtn');
+        showToast('正在打开扫码窗口，请在弹出的浏览器中用微博 App 扫码…', 'success', 6000);
+        if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+        try {
+            const r = await fetch('/api/browser-login', { method: 'POST' });
+            const d = await r.json();
+            if (d.ok) showToast('✓ 登录成功，已保存 ' + d.count + ' 个 Cookie', 'success', 4000);
+            else showToast('登录失败：' + (d.error || '未知错误'), 'error', 5000);
+        } catch (e) {
+            showToast('登录失败：' + e.message, 'error', 5000);
+        } finally {
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+        }
+        return;
+    }
     try {
         const r = await fetch('/api/request-login', { method: 'POST' });
         const d = await r.json();
-        if (!d.ok) alert('请求失败');
+        if (d.ok) {
+            showToast('已打开登录窗口，请扫码（已登录则会自动刷新）', 'success', 3000);
+        } else {
+            showToast('登录请求失败', 'error');
+        }
     } catch (e) {
-        alert('请求失败: ' + e.message);
+        showToast('登录请求失败: ' + e.message, 'error');
     }
 }
 window.addEventListener('cookies-saved', (e) => {
-    const count = e.detail && e.detail.count;
-    alert('Cookie 已保存 (' + count + ' 个)，归档功能已就绪！');
+    const count = (e.detail && e.detail.count) || 0;
+    showToast('✓ 登录态已刷新（' + count + ' 个 Cookie），可以同步了', 'success', 4000);
 });
 
 function closeAiSettings() {

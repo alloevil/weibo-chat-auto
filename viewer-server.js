@@ -881,6 +881,24 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ action }));
         return;
     }
+    // 浏览器版登录：用 Puppeteer 开可见 Chrome 扫码，成功后自动存 cookies.json。
+    // 用运行时拼接路径 require，避免 Bun --compile（桌面 sidecar）静态打包
+    // puppeteer 依赖链（cosmiconfig → 可选 typescript）导致编译失败；桌面应用
+    // 走 Rust 原生登录窗口，本分支只在浏览器版（系统 node 运行）用到。
+    if (url.pathname === '/api/browser-login' && req.method === 'POST') {
+        const reply = (result) => {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(result));
+        };
+        try {
+            const modPath = require('path').join(__dirname, 'lib', 'browser-login.js');
+            const { browserLogin } = require(modPath);
+            browserLogin().then(reply).catch(e => reply({ ok: false, error: e.message }));
+        } catch (e) {
+            reply({ ok: false, error: '浏览器登录不可用：' + e.message });
+        }
+        return;
+    }
 
     // --- Q&A Endpoint (Agentic RAG) ---
     if (url.pathname === '/api/qa' && req.method === 'POST') {
@@ -921,7 +939,11 @@ const server = http.createServer((req, res) => {
 
     // Static page
     if (url.pathname === '/' || url.pathname === '/index.html') {
-        const html = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8');
+        let html = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8');
+        // Tell the page whether it's running inside the desktop app (sidecar
+        // gets WEIBO_DESKTOP=1) so the login button can pick the right flow.
+        const desktopFlag = process.env.WEIBO_DESKTOP === '1' ? 'true' : 'false';
+        html = html.replace('<head>', `<head><script>window.__WEIBO_DESKTOP=${desktopFlag};</script>`);
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-cache, no-store, must-revalidate',

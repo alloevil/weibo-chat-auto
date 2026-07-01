@@ -58,7 +58,10 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
-    let login_url: url::Url = "https://passport.weibo.com/sso/signin"
+    // Open the real chat page. If the session is valid the page lands on the
+    // chat UI (URL stays on *.weibo.com); if expired, Weibo redirects to the
+    // login/passport page and the window stays open showing the QR code.
+    let login_url: url::Url = "https://api.weibo.com/chat"
         .parse()
         .map_err(|e: url::ParseError| e.to_string())?;
 
@@ -74,9 +77,11 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
     .build()
     .map_err(|e| e.to_string())?;
 
-    // Poll for the SUB login cookie (definitive "logged in" signal).
-    // Text-based detection is unreliable — it can fire on the QR page
-    // before the scan completes, capturing only anonymous cookies.
+    // Success = the window actually reached the chat page (URL not on a
+    // login/passport/sso page) AND a SUB cookie is present. Checking the URL
+    // avoids the false positive where a *stale* SUB lingers in the cookie
+    // store: with an expired session Weibo redirects to the login page, so we
+    // keep the window open for the user to scan instead of closing instantly.
     tauri::async_runtime::spawn(async move {
         for attempt in 0..150 {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -87,14 +92,21 @@ async fn do_open_login_window(app: tauri::AppHandle) -> Result<(), String> {
                     return;
                 }
             };
-            let logged_in = ["https://weibo.com", "https://api.weibo.com"]
+            let on_login_page = win
+                .url()
+                .map(|u| {
+                    let s = u.as_str();
+                    s.contains("passport.") || s.contains("/login") || s.contains("/sso")
+                })
+                .unwrap_or(true);
+            let has_sub = ["https://weibo.com", "https://api.weibo.com"]
                 .iter()
                 .filter_map(|d| d.parse::<url::Url>().ok())
                 .filter_map(|u| win.cookies_for_url(u).ok())
                 .flatten()
                 .any(|c| c.name() == "SUB");
-            if logged_in {
-                eprintln!("[login] SUB cookie detected (attempt {}), extracting", attempt);
+            if has_sub && !on_login_page {
+                eprintln!("[login] Logged in (attempt {}), extracting", attempt);
                 if let Err(e) = do_extract_cookies(app_handle.clone()).await {
                     eprintln!("[login] Cookie extraction failed: {}", e);
                 }
@@ -226,7 +238,8 @@ pub fn run() {
             let sidecar_command = app
                 .shell()
                 .sidecar("viewer-server")
-                .expect("failed to create sidecar command");
+                .expect("failed to create sidecar command")
+                .env("WEIBO_DESKTOP", "1");
 
             let (mut rx, child) = sidecar_command
                 .spawn()

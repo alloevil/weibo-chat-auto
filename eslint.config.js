@@ -66,7 +66,7 @@ module.exports = [
     // save-cookies.js / auto-archive-simple.js 含 puppeteer page.evaluate 回调，
     // 这些回调在浏览器上下文执行，DOM 全局是合法的
     {
-        files: ['save-cookies.js', 'auto-archive-simple.js'],
+        files: ['save-cookies.js', 'auto-archive-simple.js', 'lib/browser-login.js'],
         languageOptions: {
             globals: {
                 document: 'readonly',
