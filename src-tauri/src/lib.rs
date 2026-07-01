@@ -238,8 +238,7 @@ pub fn run() {
             let sidecar_command = app
                 .shell()
                 .sidecar("viewer-server")
-                .expect("failed to create sidecar command")
-                .env("WEIBO_DESKTOP", "1");
+                .expect("failed to create sidecar command");
 
             let (mut rx, child) = sidecar_command
                 .spawn()

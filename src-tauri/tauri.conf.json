@@ -25,7 +25,8 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "url": "about:blank"
+        "url": "about:blank",
+        "userAgent": "WeiboChatDesktop/1.0 (Tauri) AppleWebKit/605.1.15"
       }
     ],
     "security": {

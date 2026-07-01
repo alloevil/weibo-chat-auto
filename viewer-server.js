@@ -940,10 +940,12 @@ const server = http.createServer((req, res) => {
     // Static page
     if (url.pathname === '/' || url.pathname === '/index.html') {
         let html = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8');
-        // Tell the page whether it's running inside the desktop app (sidecar
-        // gets WEIBO_DESKTOP=1) so the login button can pick the right flow.
-        const desktopFlag = process.env.WEIBO_DESKTOP === '1' ? 'true' : 'false';
-        html = html.replace('<head>', `<head><script>window.__WEIBO_DESKTOP=${desktopFlag};</script>`);
+        // 按请求的 User-Agent 判断是否桌面应用的 WebView（它带自定义 UA
+        // 标识 "WeiboChatDesktop"）。这样同一个端口既能服务桌面 app（登录走
+        // Rust 原生扫码窗），也能服务普通浏览器（登录走 Puppeteer 扫码）。
+        const ua = req.headers['user-agent'] || '';
+        const isDesktop = ua.includes('WeiboChatDesktop');
+        html = html.replace('<head>', `<head><script>window.__WEIBO_DESKTOP=${isDesktop};</script>`);
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
