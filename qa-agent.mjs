@@ -172,6 +172,40 @@ const TOOLS = [
   },
 ];
 
+// ─── LLM reranker ──────────────────────────────────────────────────────
+// BM25 是词面匹配，跨不过词汇鸿沟（"卖掉半导体"与"投资"无共享词）。
+// 网关无 embedding 模型可用，改用一次轻量 LLM 调用对候选做语义精排：
+// 给出问题 + 编号候选列表，让模型返回真正相关的编号（按相关度排序）。
+// 失败时静默降级为原始 BM25 排序，不影响可用性。
+async function rerankByLLM(config, question, candidates) {
+  const list = candidates.map((c, i) => `${i}. ${c.text.slice(0, 120)}`).join('\n');
+  const prompt = `用户问题：${question}
+
+以下是候选聊天消息（编号. 内容）：
+${list}
+
+请判断哪些消息与用户问题真正相关（语义相关即可，不要求字面匹配；如消息谈论的具体事物属于问题所问的范畴，也算相关）。
+只输出 JSON 数组（相关消息的编号，按相关度从高到低），不要其他文字。例如：[3,0,12]`;
+
+  const resp = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+    body: JSON.stringify({
+      model: config.model,
+      messages: [{ role: 'user', content: prompt }],
+      stream: false,
+    }),
+  });
+  if (!resp.ok) throw new Error(`rerank API ${resp.status}`);
+  const data = await resp.json();
+  const text = data.choices?.[0]?.message?.content || '';
+  const m = text.match(/\[[\d,\s]*\]/);
+  if (!m) throw new Error('rerank: no JSON array in response');
+  const order = JSON.parse(m[0]).filter(i => Number.isInteger(i) && i >= 0 && i < candidates.length);
+  if (!order.length) throw new Error('rerank: empty result');
+  return order;
+}
+
 // ─── Tool execution ────────────────────────────────────────────────────
 // 动态上下文窗口：从命中点向前后扩展，直到出现时间断层（>30 分钟，通常意味
 // 着话题切换）或达到上限。替代固定 ±3 条——群聊话题绵延时不再掐头去尾。
@@ -190,7 +224,7 @@ function expandContext(msgs, hitIdx, { gapMs = 30 * 60 * 1000, maxSpan = 12 } = 
   return [start, end + 1]; // [start, end)
 }
 
-function executeTool(name, args, allMessages, ledger) {
+async function executeTool(name, args, allMessages, ledger, config, question) {
   if (name === 'search_messages') {
     const { keywords = [], person, dateFrom, dateTo } = args;
     let msgs = allMessages;
@@ -227,7 +261,27 @@ function executeTool(name, args, allMessages, ledger) {
         return { ...h, score: h.score * Math.pow(0.5, age / HALF_LIFE) };
       }).sort((a, b) => b.score - a.score);
     }
-    hits = hits.slice(0, 20);
+    hits = hits.slice(0, 40);
+
+    // LLM 语义精排：跨过词汇鸿沟（BM25 只认字面）。
+    // 注意：reranker 只做「相关性过滤」，最终顺序仍按时间衰减分——否则
+    // 语义排序会覆盖新近度偏好，几天前的高相关长讨论再次淹没今天的消息。
+    let reranked = false;
+    if (config && question && hits.length > 3) {
+      try {
+        const candidates = hits.map(h => ({ idx: h.idx, text: docs[h.idx] }));
+        const order = await withTimeout(rerankByLLM(config, question, candidates), 20000);
+        const keep = new Set(order);
+        const filtered = hits.filter((_, i) => keep.has(i));
+        if (filtered.length) {
+          hits = filtered; // 已是时间衰减分降序，过滤不改变顺序
+          reranked = true;
+        }
+      } catch (e) {
+        console.error('[qa] rerank 降级为 BM25:', e.message);
+      }
+    }
+    hits = hits.slice(0, 15);
 
     // 命中点 → 动态上下文片段（合并重叠区间）
     const ranges = hits
@@ -261,6 +315,7 @@ function executeTool(name, args, allMessages, ledger) {
     return {
       matchCount: hits.length,
       totalInRange: msgs.length,
+      reranked,
       dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
       snippets: chunks,
     };
@@ -404,7 +459,7 @@ async function conversationLoop(question, allMessages, config) {
     // Execute tool calls
     for (const tc of assistantMsg.tool_calls) {
       const args = JSON.parse(tc.function.arguments || '{}');
-      const result = executeTool(tc.function.name, args, allMessages, ledger);
+      const result = await executeTool(tc.function.name, args, allMessages, ledger, config, question);
 
       state.recordStep({ type: 'tool_call', tool: tc.function.name, args });
       toolCallLog.push({ tool: tc.function.name, ...args, matchCount: result.matchCount, returned: result.returned, total: result.total });
