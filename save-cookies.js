@@ -42,25 +42,9 @@ async function saveCookies() {
         console.log('✓ 已检测到登录状态');
     }
 
-    // 从所有相关域名收集 Cookie（认证 Cookie 分散在多个域名）
-    const domains = [
-        'https://api.weibo.com',
-        'https://weibo.com',
-        'https://passport.weibo.com',
-        'https://login.sina.com.cn',
-    ];
-    let allCookies = [];
-    for (const d of domains) {
-        try { allCookies.push(...await page.cookies(d)); } catch {}
-    }
-    // 去重（domain + name）
-    const seen = new Set();
-    const cookies = allCookies.filter(c => {
-        const key = c.domain + '|' + c.name;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    // browser.cookies() 取全量（含 HttpOnly），过滤微博相关域并去重
+    // （page.cookies(url) 在 puppeteer 24 已弃用）
+    const cookies = cookieStore.filterWeiboCookies(await browser.cookies());
 
     // cookie-store 统一校验 SUB + 域名补前导点
     const saved = cookieStore.saveCookies(cookies, '手动扫码');

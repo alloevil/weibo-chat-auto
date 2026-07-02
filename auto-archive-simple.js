@@ -106,7 +106,7 @@ async function waitForLogin(page) {
             await delay(3000);
 
             // 保存完整 Cookie（cookie-store 会校验 SUB，无登录态时拒绝写入）
-            const cookies = await page.cookies();
+            const cookies = cookieStore.filterWeiboCookies(await page.browser().cookies());
             if (cookieStore.saveCookies(cookies, '扫码登录').ok) {
                 return true;
             }
@@ -337,12 +337,13 @@ async function main() {
         }
     });
 
-    // 加载 Cookie（cookie-store 统一处理域名补点等规范化）
+    // 加载 Cookie（cookie-store 统一处理域名补点等规范化；
+    // browser.setCookie 是 page.setCookie 的非弃用替代）
     let cookieLoaded = false;
     {
         const cookies = cookieStore.normalizeDomains(cookieStore.loadCookies());
         if (cookies.length > 0) {
-            await page.setCookie(...cookies);
+            await browser.setCookie(...cookies);
             console.log(`已加载 ${cookies.length} 个 Cookie`);
             cookieLoaded = true;
         }
@@ -411,7 +412,7 @@ async function main() {
         console.log('登录状态正常');
 
         // 每次运行成功后也更新 Cookie（cookie-store 校验 SUB，失效会话不会覆盖）
-        cookieStore.saveCookies(await page.cookies(), '归档运行续期');
+        cookieStore.saveCookies(cookieStore.filterWeiboCookies(await browser.cookies()), '归档运行续期');
     }
 
     // 注入归档脚本（在点击群聊之前，这样可以捕获所有 API 响应）
@@ -605,8 +606,8 @@ async function main() {
     console.log(`截止时间戳: ${stopTimestamp}`);
 
     // 从浏览器获取 cookies，用于 Node.js 端 HTTP 请求
-    const browserCookies = await page.cookies('https://api.weibo.com');
-    const cookieHeader = browserCookies.map(c => `${c.name}=${c.value}`).join('; ');
+    const browserCookies = cookieStore.filterWeiboCookies(await browser.cookies());
+    const cookieHeader = cookieStore.cookieHeader(browserCookies);
 
     // Node.js 端 HTTP 请求函数
     function httpsGet(url) {
@@ -902,7 +903,7 @@ async function main() {
     } // end for each group
 
     // 保存 Cookie（cookie-store 校验 SUB，失效会话不会覆盖有效登录）
-    if (cookieStore.saveCookies(await page.cookies(), '归档完成续期').ok) {
+    if (cookieStore.saveCookies(cookieStore.filterWeiboCookies(await browser.cookies()), '归档完成续期').ok) {
         console.log('下次运行将自动使用已保存的登录状态');
     }
 

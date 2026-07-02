@@ -349,7 +349,8 @@ button, select, input { font-family: inherit; }
 }
 
 /* Empty state */
-.empty { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--ink-subtle); font-size: 15px; padding: 40px; }
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: var(--ink-subtle); font-size: 14px; padding: 40px; gap: 10px; }
+.empty::before { content: '◌'; font-size: 34px; color: var(--ink-tertiary); line-height: 1; }
 
 /* Avatar colors — distinct hues tuned for the dark canvas (functional user differentiation) */
 .av-0 { background: #5e6ad2; color: #fff; }
@@ -840,6 +841,15 @@ async function syncNow() {
     btn.textContent = 'Syncing...';
     btn.classList.add('syncing');
     btn.disabled = true;
+
+    // 同步期间每 2s 轮询进度，把「正在归档 X（2/3）」显示在按钮上
+    const progressTimer = setInterval(async () => {
+        try {
+            const p = await (await fetch('/api/sync-progress')).json();
+            if (p.running && p.stage) btn.textContent = p.stage;
+        } catch {}
+    }, 2000);
+
     try {
         const resp = await fetch('/api/sync', { method: 'POST' });
         const data = await resp.json();
@@ -849,13 +859,14 @@ async function syncNow() {
             const pad = n => String(n).padStart(2, '0');
             document.getElementById('lastArchived').textContent = `Synced: ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
             const skipNote = data.skipped ? `（${data.skipped} 个群跳过）` : '';
-            showToast(`✓ 同步完成${skipNote}`, 'success');
+            showToast(`✓ 同步完成，归档 ${data.archived} 个群${skipNote}`, 'success');
         } else {
             showToast('同步失败：' + (data.error || '未知错误'), 'error', 8000);
         }
     } catch (e) {
         showToast('同步出错：' + e.message, 'error', 8000);
     }
+    clearInterval(progressTimer);
     btn.textContent = 'Sync Now';
     btn.classList.remove('syncing');
     btn.disabled = false;
@@ -1268,7 +1279,8 @@ function renderHours() {
 
     const maxCount = Math.max(...Object.values(hourCounts), 1);
 
-    const levels = ['#eef1f3', '#c8dae8', '#7eb3d4', '#3d8ec4', '#1d6fa8'];
+    // Linear 薰衣草紫色阶（深色画布：0 级为 surface，向上逐级提高饱和/亮度）
+    const levels = ['#18191a', '#2b2f55', '#3f4587', '#5e6ad2', '#828fff'];
 
     let bars = '';
     for (let h = 0; h < 24; h++) {

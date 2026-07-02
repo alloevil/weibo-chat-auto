@@ -2,7 +2,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const { execFile, exec } = require('child_process');
+const { exec } = require('child_process');
 
 const PORT = process.env.WEIBO_PORT ? Number(process.env.WEIBO_PORT) : 3456;
 const OUTPUT_DIR = process.env.WEIBO_OUTPUT_DIR
@@ -385,22 +385,51 @@ const server = http.createServer((req, res) => {
         for (const key in fileCaches) delete fileCaches[key];
         const isBundled = !process.execPath.endsWith('node') && !process.execPath.endsWith('bun');
         const jsRuntime = isBundled ? 'node' : process.execPath;
-        execFile(jsRuntime, [path.join(__dirname, 'auto-archive-simple.js')], {
-            timeout: 600000,
+
+        // 进度状态：spawn 增量读 stdout，前端轮询 /api/sync-progress 获取
+        const progress = { running: true, stage: '启动归档器…', current: 0, total: 0, startedAt: Date.now() };
+        global.__syncProgress = progress;
+
+        const { spawn } = require('child_process');
+        const child = spawn(jsRuntime, [path.join(__dirname, 'auto-archive-simple.js')], {
             env: { ...process.env, PATH: process.env.PATH },
-        }, (err, stdout, stderr) => {
-            const out = (stdout || '') + (stderr || '');
+        });
+        let out = '';
+        const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
+        const onChunk = (chunk) => {
+            const text = chunk.toString();
+            out += text;
+            // 从归档器输出提取人类可读的进度
+            for (const line of text.split('\n')) {
+                const m = line.match(/--- 归档群聊: (.+?) ---/);
+                if (m) {
+                    progress.current += 1;
+                    progress.stage = `正在归档「${m[1].trim()}」（${progress.current}/${progress.total || '?'}）`;
+                } else if (line.includes('目标群聊:')) {
+                    progress.total = (line.split(':')[1] || '').split(',').length;
+                } else if (line.includes('打开微博聊天页面')) {
+                    progress.stage = '打开微博聊天页…';
+                } else if (line.includes('API 分页获取完成')) {
+                    progress.stage = progress.stage.replace(/（/, '完成（');
+                }
+            }
+        };
+        child.stdout.on('data', onChunk);
+        child.stderr.on('data', onChunk);
+        child.on('close', (code) => {
+            clearTimeout(timer);
+            progress.running = false;
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
 
-            if (err) {
-                console.error('[sync] error:', stderr || err.message);
-                res.end(JSON.stringify({ ok: false, error: stderr || err.message }));
+            if (code !== 0) {
+                console.error('[sync] archiver exited with code', code);
+                res.end(JSON.stringify({ ok: false, error: `归档器异常退出（code ${code}）` }));
                 return;
             }
 
             // 归档器可能 exit 0 但实际失败（Cookie 过期、未找到群聊）
             if (out.includes('需要登录') || out.includes('扫描登录') || out.includes('登录失败')) {
-                res.end(JSON.stringify({ ok: false, error: 'Cookie 已过期，请在终端运行 npm run save-cookies 重新登录' }));
+                res.end(JSON.stringify({ ok: false, error: 'Cookie 已过期，请点击 🔑 登录 重新扫码' }));
                 return;
             }
 
@@ -416,6 +445,19 @@ const server = http.createServer((req, res) => {
             console.log(`[sync] done (archived=${archived}, skipped=${skipped})`);
             res.end(JSON.stringify({ ok: true, archived, skipped }));
         });
+        child.on('error', (err) => {
+            clearTimeout(timer);
+            progress.running = false;
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: err.message }));
+        });
+        return;
+    }
+
+    // 同步进度（前端在 Sync 期间每 2s 轮询）
+    if (url.pathname === '/api/sync-progress') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(global.__syncProgress || { running: false }));
         return;
     }
 
@@ -966,6 +1008,18 @@ const server = http.createServer((req, res) => {
 
     res.writeHead(404);
     res.end('Not Found');
+});
+
+// 端口被占用时给出可操作的提示（最常见原因：桌面应用已在运行）
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`端口 ${PORT} 已被占用 —— 可能「微博群聊」桌面应用正在运行。`);
+        console.error(`  · 直接用浏览器访问 http://localhost:${PORT} 即可（服务是同一个）`);
+        console.error(`  · 或退出桌面应用后重新运行本命令`);
+        console.error(`  · 或换端口：WEIBO_PORT=3457 npm run view`);
+        process.exit(1);
+    }
+    throw err;
 });
 
 server.listen(PORT, () => {

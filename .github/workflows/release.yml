@@ -1,0 +1,53 @@
+name: Release Desktop App
+
+# 打 v* tag 时自动构建 macOS 桌面应用并附到对应 GitHub Release。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build app (tauri build)
+        # .app 打包完成即够用；.dmg 打包脚本在 CI 的无头环境同样可能失败，
+        # 所以只要 .app 存在就继续（与本地行为一致）
+        run: npx tauri build || test -d "src-tauri/target/release/bundle/macos/微博群聊.app"
+
+      - name: Zip .app
+        run: |
+          cd src-tauri/target/release/bundle/macos
+          ditto -c -k --keepParent "微博群聊.app" "weibo-chat_${GITHUB_REF_NAME}_aarch64.app.zip"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "src-tauri/target/release/bundle/macos/weibo-chat_${GITHUB_REF_NAME}_aarch64.app.zip" \
+            --clobber
