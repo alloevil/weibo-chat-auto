@@ -1071,9 +1071,10 @@ async function askQuestion() {
         }
         let html = renderMarkdown(data.answer);
         if (data.sources && data.sources.length) {
-            html += '<div class="qa-sources"><details><summary>来源片段 (' + data.sources.length + ')</summary>';
+            html += '<div class="qa-sources"><details><summary>来源消息 (' + data.sources.length + ')</summary>';
             for (const s of data.sources) {
-                html += `<div class="qa-source-item" onclick="jumpToDate('${s.date}')">${s.date} — ${escapeHtml(s.preview)}</div>`;
+                const who = s.user ? escapeHtml(s.user) + ': ' : '';
+                html += `<div class="qa-source-item" onclick="jumpToSource('${s.date || ''}', '${s.id ?? ''}')">${s.date || ''} ${who}${escapeHtml(s.preview || '')}</div>`;
             }
             html += '</details></div>';
         }
@@ -1100,6 +1101,22 @@ function jumpToDate(date) {
     renderCalendar();
     loadMessages();
     updateSummaryBar();
+}
+
+// Q&A 来源点击：先切到消息所在日期，加载完成后滚动到该消息并高亮
+async function jumpToSource(date, id) {
+    if (date && date !== selectedDate) {
+        selectedDate = date;
+        const month = date.slice(0, 7);
+        if (monthDates[month]) selectedMonth = month;
+        renderCalendar();
+        await loadMessages();
+        updateSummaryBar();
+    }
+    if (id) {
+        // loadMessages 渲染是同步 DOM 更新，稍等一拍再滚动
+        setTimeout(() => jumpToMessage(id), 150);
+    }
 }
 
 function renderMarkdown(md) {

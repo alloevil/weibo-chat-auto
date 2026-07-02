@@ -1,8 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+// BM25 检索层（CJS 模块，bigram 分词，见 lib/search-bm25.js）
+const { search: bm25Search } = require('./lib/search-bm25.js');
 
 function loadAiConfig() {
   const cfgPath = path.join(__dirname, 'ai-config.json');
@@ -122,6 +126,7 @@ function createLedger() {
   return {
     facts: [],
     searchHistory: [],
+    citations: [],       // 真实消息引用（id/date/user/preview），供前端跳转
     totalMatches: 0,
     dateRangeUsed: null,
     confidence: 'low',
@@ -134,11 +139,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_messages',
-      description: '在群聊记录中搜索关键词。返回匹配的消息片段及其上下文。可以多次调用以用不同关键词搜索。',
+      description: '在群聊记录中按关键词检索（BM25 相关性排序，支持中文部分匹配）。适合找"某人说了什么/某话题被谁提过"这类事实检索。返回相关片段（含对话上下文）。可多次调用换关键词。',
       parameters: {
         type: 'object',
         properties: {
-          keywords: { type: 'array', items: { type: 'string' }, description: '搜索关键词列表' },
+          keywords: { type: 'array', items: { type: 'string' }, description: '搜索关键词列表。建议同时给出同义词/相关词（如问"大模型"时加上 LLM、GPT、AI）以提高召回' },
           person: { type: 'string', description: '筛选特定发言人（模糊匹配）' },
           dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD' },
           dateTo: { type: 'string', description: '结束日期 YYYY-MM-DD' },
@@ -152,13 +157,13 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_recent_messages',
-      description: '获取某个时间段内的最新消息（不做关键词筛选，直接返回原始记录）。用于浏览某段时间的聊天内容。',
+      description: '直接读取某时间段的聊天记录（超过 limit 时均匀采样，保证时间覆盖）。适合"大家在聊什么/总结一下/有什么话题"这类总结归纳型问题——这类问题不要用关键词搜索。',
       parameters: {
         type: 'object',
         properties: {
           dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD' },
           dateTo: { type: 'string', description: '结束日期 YYYY-MM-DD' },
-          limit: { type: 'number', description: '最多返回条数，默认30' },
+          limit: { type: 'number', description: '最多返回条数，默认120，上限200' },
         },
         required: ['dateFrom', 'dateTo'],
         additionalProperties: false,
@@ -168,6 +173,23 @@ const TOOLS = [
 ];
 
 // ─── Tool execution ────────────────────────────────────────────────────
+// 动态上下文窗口：从命中点向前后扩展，直到出现时间断层（>30 分钟，通常意味
+// 着话题切换）或达到上限。替代固定 ±3 条——群聊话题绵延时不再掐头去尾。
+function expandContext(msgs, hitIdx, { gapMs = 30 * 60 * 1000, maxSpan = 12 } = {}) {
+  let start = hitIdx, end = hitIdx;
+  while (start > 0 && (hitIdx - start) < maxSpan / 2) {
+    const cur = msgs[start], prev = msgs[start - 1];
+    if (cur.timestamp && prev.timestamp && cur.timestamp - prev.timestamp > gapMs) break;
+    start--;
+  }
+  while (end < msgs.length - 1 && (end - hitIdx) < maxSpan / 2) {
+    const cur = msgs[end], next = msgs[end + 1];
+    if (cur.timestamp && next.timestamp && next.timestamp - cur.timestamp > gapMs) break;
+    end++;
+  }
+  return [start, end + 1]; // [start, end)
+}
+
 function executeTool(name, args, allMessages, ledger) {
   if (name === 'search_messages') {
     const { keywords = [], person, dateFrom, dateTo } = args;
@@ -182,55 +204,58 @@ function executeTool(name, args, allMessages, ledger) {
         return true;
       });
     }
-
-    const scored = [];
-    for (let i = 0; i < msgs.length; i++) {
-      const m = msgs[i];
-      const text = (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
-      let score = 0;
-      if (person && (m.user || '').toLowerCase().includes(person.toLowerCase())) score += 3;
-      for (const kw of keywords) {
-        if (text.toLowerCase().includes(kw.toLowerCase())) score++;
-      }
-      if (score > 0) scored.push({ idx: i, score });
+    if (person) {
+      const p = person.toLowerCase();
+      const byPerson = msgs.filter(m => (m.user || '').toLowerCase().includes(p));
+      // 有匹配者按人筛选；没有则保留全量（人名可能记错，让关键词兜底）
+      if (byPerson.length > 0) msgs = byPerson;
     }
 
-    scored.sort((a, b) => b.score - a.score);
-    const topHits = scored.slice(0, 15);
+    // BM25 检索（bigram 分词，词频/文档长度归一），替代 includes 命中计数
+    const docs = msgs.map(m => (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || ''));
+    const query = keywords.join(' ');
+    const hits = bm25Search(docs, query, { limit: 15 });
 
-    const segments = new Set();
-    const chunks = [];
-    for (const hit of topHits) {
-      const start = Math.max(0, hit.idx - 3);
-      const end = Math.min(msgs.length, hit.idx + 4);
-      const segKey = `${start}-${end}`;
-      if (segments.has(segKey)) continue;
-      let skip = false;
-      for (const existing of segments) {
-        const [es, ee] = existing.split('-').map(Number);
-        if (start >= es && end <= ee) { skip = true; break; }
-      }
-      if (skip) continue;
-      segments.add(segKey);
-      chunks.push(msgs.slice(start, end).map(formatMessage).join('\n'));
+    // 命中点 → 动态上下文片段（合并重叠区间）
+    const ranges = hits
+      .map(h => expandContext(msgs, h.idx))
+      .sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const r of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+      else merged.push([...r]);
     }
+    const chunks = merged.slice(0, 8).map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
 
-    ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: scored.length });
-    ledger.totalMatches += scored.length;
+    // 真实引用：top 命中的消息 id/日期/预览，供最终 sources 使用
+    const citations = hits.slice(0, 8).map(h => {
+      const m = msgs[h.idx];
+      return {
+        id: m.id,
+        date: (m.time || '').split(' ')[0].replace(/\//g, '-'),
+        user: m.user,
+        preview: (m.content || m.share?.title || '').slice(0, 60),
+      };
+    });
+    ledger.citations.push(...citations);
+
+    ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length });
+    ledger.totalMatches += hits.length;
     if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
-    if (scored.length > 5) ledger.confidence = scored.length > 20 ? 'high' : 'medium';
+    if (hits.length > 5) ledger.confidence = hits.length > 12 ? 'high' : 'medium';
 
     return {
-      matchCount: scored.length,
+      matchCount: hits.length,
       totalInRange: msgs.length,
       dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
-      snippets: chunks.slice(0, 8),
+      snippets: chunks,
     };
   }
 
   if (name === 'get_recent_messages') {
     const { dateFrom, dateTo, limit } = args;
-    const maxCount = limit || 30;
+    const maxCount = Math.min(limit || 120, 200);
     const msgs = allMessages.filter(m => {
       const d = (m.time || '').split(' ')[0].replace(/\//g, '-');
       if (!d) return false;
@@ -238,10 +263,28 @@ function executeTool(name, args, allMessages, ledger) {
       if (dateTo && d > dateTo) return false;
       return true;
     });
-    const sample = msgs.slice(-maxCount);
+    // 超出上限时均匀采样而非只取尾部，避免总结型问题的时间偏差
+    let sample;
+    if (msgs.length <= maxCount) {
+      sample = msgs;
+    } else {
+      sample = [];
+      const step = msgs.length / maxCount;
+      for (let i = 0; i < maxCount; i++) sample.push(msgs[Math.floor(i * step)]);
+    }
+    // 浏览到的消息也进引用池（取均匀几条代表）
+    for (let i = 0; i < sample.length; i += Math.ceil(sample.length / 5) || 1) {
+      const m = sample[i];
+      ledger.citations.push({
+        id: m.id,
+        date: (m.time || '').split(' ')[0].replace(/\//g, '-'),
+        user: m.user,
+        preview: (m.content || m.share?.title || '').slice(0, 60),
+      });
+    }
     ledger.searchHistory.push({ browse: true, dateFrom, dateTo, total: msgs.length });
     if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
-    return { total: msgs.length, returned: sample.length, messages: sample.map(formatMessage) };
+    return { total: msgs.length, returned: sample.length, sampled: msgs.length > maxCount, messages: sample.map(formatMessage) };
   }
 
   return { error: `Unknown tool: ${name}` };
@@ -288,18 +331,19 @@ async function conversationLoop(question, allMessages, config) {
   const today = new Date().toISOString().split('T')[0];
   const systemPrompt = `你是一个群聊记录问答助手。今天是 ${today}。
 
-你可以使用工具搜索群聊历史记录来回答用户的问题。使用迭代搜索策略：
+先判断问题类型，选对工具：
 
-策略：
-1. 分析问题 → 确定关键词、人名、时间范围
-2. 执行搜索 → 评估结果是否充分
-3. 如果结果不够 → 换关键词/扩大范围再搜
-4. 获取足够信息后 → 生成回答
+【事实检索型】"X 说了什么"、"谁提到过 Y"、"关于 Z 的讨论"
+→ 用 search_messages。关键词同时给同义词/英文缩写（问"大模型"→ ["大模型","LLM","GPT","AI"]）。
+→ 结果不足时换关键词或扩大日期范围再搜，不要轻易放弃。
+
+【总结归纳型】"大家在聊什么"、"总结一下"、"最近有什么话题"、"聊天氛围如何"
+→ 直接用 get_recent_messages 读取该时间段记录后归纳。不要用关键词搜索——总结不需要检索。
 
 回答要求：
-- 只基于搜索到的聊天记录回答，不要编造
+- 只基于聊天记录回答，不要编造
 - 引用具体发言人和日期
-- 如果找不到相关信息，明确告知
+- 找不到相关信息时明确告知
 - 用中文回答
 
 时间理解：
@@ -385,9 +429,15 @@ export async function askAgent(question, allMessages, aiConfigOverride) {
     const result = await conversationLoop(question, allMessages, aiConfig);
 
     const keywords = [...new Set(result.toolCallLog.flatMap(tc => tc.keywords || []))];
-    const sources = result.toolCallLog
-      .filter(tc => tc.dateFrom || tc.dateTo)
-      .map(tc => ({ date: tc.dateFrom || tc.dateTo || '', preview: `${tc.matchCount ?? tc.total ?? 0} 条匹配` }));
+    // 真实消息引用（按 id 去重，最多 8 条）——前端可据 id 跳转到原消息
+    const seenIds = new Set();
+    const sources = [];
+    for (const c of result.ledger.citations || []) {
+      if (c.id == null || seenIds.has(c.id)) continue;
+      seenIds.add(c.id);
+      sources.push({ id: c.id, date: c.date, user: c.user, preview: c.preview });
+      if (sources.length >= 8) break;
+    }
 
     return {
       ok: true,
