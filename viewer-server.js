@@ -17,11 +17,8 @@ process.on('unhandledRejection', (err) => {
 });
 
 function loadCookies() {
-    const cookieFile = path.join(__dirname, 'cookies.json');
-    try {
-        const cookies = JSON.parse(fs.readFileSync(cookieFile, 'utf-8'));
-        return cookies.map(c => `${c.name}=${c.value}`).join('; ');
-    } catch { return ''; }
+    // cookie-store 是 cookies.json 的唯一读写入口（fs/path 依赖，Bun 可打包）
+    return require('./lib/cookie-store').cookieHeader();
 }
 
 // Per-group message cache

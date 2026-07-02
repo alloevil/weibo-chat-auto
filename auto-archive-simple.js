@@ -4,13 +4,13 @@ const path = require('path');
 const https = require('https');
 const { exec } = require('child_process');
 const { resolveChromePath } = require('./lib/chrome-path');
+const cookieStore = require('./lib/cookie-store');
 
 // 配置
 const CONFIG = {
     chatUrl: 'https://api.weibo.com/chat#/chat',
     outputDir: path.join(__dirname, 'output'),
     chromePath: resolveChromePath((() => { try { return require('./config.json').chromePath; } catch { return ''; } })()),
-    cookieFile: path.join(__dirname, 'cookies.json'),
     launchDelay: 3000,
 };
 
@@ -31,16 +31,31 @@ function getGroupStateFile(groupName) {
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// 检测是否需要登录
+// 检测是否需要登录。
+// 主判据是 API：webim 接口未登录时返回 error_code 21301（"auth by Null spi!"），
+// 登录后即便查询不存在的群也只报业务错误（如 21201 群不存在）。这不依赖页面
+// 文案/DOM 结构，微博改版也不受影响。API 探测失败时退回 URL/标题/文案检测。
 async function checkLoginRequired(page) {
+    // 1) API 判据（在页面上下文 fetch，同源自动带 Cookie）
+    try {
+        const code = await page.evaluate(async () => {
+            const resp = await fetch(
+                '/webim/groupchat/query_messages.json?convert_emoji=1&query_sender=1&count=1&id=0&max_mid=0&source=209678993',
+                { credentials: 'include' }
+            );
+            const data = await resp.json();
+            return data.error_code || 0;
+        });
+        if (code === 21301) return true;   // 未鉴权
+        if (code > 0) return false;        // 其他业务错误码 → 已鉴权
+    } catch { /* API 探测失败，退回启发式 */ }
+
+    // 2) 启发式兜底：URL / 标题 / 页面文案
     return await page.evaluate(() => {
-        // 检查 URL 是否跳转到登录页
         if (location.href.includes('login') || location.href.includes('passport')) return true;
-        // 检查页面标题
         const title = document.title || '';
         if (title.includes('登录') || title.includes('login')) return true;
-        // 检查页面内容：api.weibo.com/chat 用失效 Cookie 打开时 URL/标题不变，
-        // 但页面内会显示扫码登录二维码 —— 只看 URL/标题会误判为已登录。
+        // api.weibo.com/chat 用失效 Cookie 打开时 URL/标题不变，但页面内显示扫码二维码
         const text = (document.body && document.body.innerText) || '';
         if (text.includes('扫描登录') || text.includes('扫码') ||
             text.includes('二维码') || text.includes('立即注册') ||
@@ -90,11 +105,9 @@ async function waitForLogin(page) {
             // 等待页面完全加载
             await delay(3000);
 
-            // 保存完整 Cookie —— 仅在确实持有 SUB 登录态时，避免误存匿名 cookie
+            // 保存完整 Cookie（cookie-store 会校验 SUB，无登录态时拒绝写入）
             const cookies = await page.cookies();
-            if (cookies.some(c => c.name === 'SUB')) {
-                fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(cookies, null, 2));
-                console.log(`已保存 ${cookies.length} 个 Cookie 到 cookies.json`);
+            if (cookieStore.saveCookies(cookies, '扫码登录').ok) {
                 return true;
             }
             console.log('页面看似已加载但无 SUB 登录态，继续等待真正登录...');
@@ -324,18 +337,10 @@ async function main() {
         }
     });
 
-    // 加载 Cookie
+    // 加载 Cookie（cookie-store 统一处理域名补点等规范化）
     let cookieLoaded = false;
-    if (fs.existsSync(CONFIG.cookieFile)) {
-        console.log('加载 Cookie...');
-        const cookies = JSON.parse(fs.readFileSync(CONFIG.cookieFile, 'utf-8'));
-        // 补前导点：WKWebView 导出的域名是 "weibo.com"，没有前导点会被设成
-        // host-only cookie，不会发给 api.weibo.com 子域，导致鉴权失败。
-        cookies.forEach(c => {
-            if (c.domain && !c.domain.startsWith('.') && c.domain.includes('.')) {
-                c.domain = '.' + c.domain;
-            }
-        });
+    {
+        const cookies = cookieStore.normalizeDomains(cookieStore.loadCookies());
         if (cookies.length > 0) {
             await page.setCookie(...cookies);
             console.log(`已加载 ${cookies.length} 个 Cookie`);
@@ -405,15 +410,8 @@ async function main() {
     } else {
         console.log('登录状态正常');
 
-        // 每次运行成功后也更新 Cookie —— 但仅在仍持有登录态(SUB)时，
-        // 避免用匿名 cookie 覆盖掉有效的登录 cookie。
-        const cookies = await page.cookies();
-        if (cookies.some(c => c.name === 'SUB')) {
-            fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(cookies, null, 2));
-            console.log(`Cookie 已更新 (${cookies.length} 个)`);
-        } else {
-            console.log('当前页面无 SUB 登录态，跳过 Cookie 更新以保护现有登录');
-        }
+        // 每次运行成功后也更新 Cookie（cookie-store 校验 SUB，失效会话不会覆盖）
+        cookieStore.saveCookies(await page.cookies(), '归档运行续期');
     }
 
     // 注入归档脚本（在点击群聊之前，这样可以捕获所有 API 响应）
@@ -903,14 +901,9 @@ async function main() {
 
     } // end for each group
 
-    // 保存 Cookie —— 仅在仍持有登录态(SUB)时更新，避免覆盖有效登录
-    const finalCookies = await page.cookies();
-    if (finalCookies.some(c => c.name === 'SUB')) {
-        fs.writeFileSync(CONFIG.cookieFile, JSON.stringify(finalCookies, null, 2));
-        console.log(`Cookie 已更新 (${finalCookies.length} 个)`);
+    // 保存 Cookie（cookie-store 校验 SUB，失效会话不会覆盖有效登录）
+    if (cookieStore.saveCookies(await page.cookies(), '归档完成续期').ok) {
         console.log('下次运行将自动使用已保存的登录状态');
-    } else {
-        console.log('当前页面无 SUB 登录态，跳过 Cookie 更新以保护现有登录');
     }
 
     // 关闭浏览器

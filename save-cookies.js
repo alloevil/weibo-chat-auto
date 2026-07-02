@@ -1,10 +1,8 @@
 const puppeteer = require('puppeteer');
-const fs = require('fs');
-const path = require('path');
 
-const cookieFile = path.join(__dirname, 'cookies.json');
 const chatUrl = 'https://api.weibo.com/chat#/chat';
 const { resolveChromePath } = require('./lib/chrome-path');
+const cookieStore = require('./lib/cookie-store');
 let configChromePath = '';
 try { configChromePath = require('./config.json').chromePath; } catch { /* config 可缺省，靠探测 */ }
 const chromePath = resolveChromePath(configChromePath);
@@ -64,9 +62,14 @@ async function saveCookies() {
         return true;
     });
 
-    fs.writeFileSync(cookieFile, JSON.stringify(cookies, null, 2));
-    console.log(`Cookie 已保存到: ${cookieFile}`);
-    console.log(`共 ${cookies.length} 个 Cookie`);
+    // cookie-store 统一校验 SUB + 域名补前导点
+    const saved = cookieStore.saveCookies(cookies, '手动扫码');
+    if (saved.ok) {
+        console.log(`Cookie 已保存到: ${cookieStore.COOKIE_FILE}`);
+    } else {
+        console.log('保存失败：' + saved.error);
+        process.exitCode = 1;
+    }
 
     await browser.close();
 }
