@@ -214,7 +214,20 @@ function executeTool(name, args, allMessages, ledger) {
     // BM25 检索（bigram 分词，词频/文档长度归一），替代 includes 命中计数
     const docs = msgs.map(m => (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || ''));
     const query = keywords.join(' ');
-    const hits = bm25Search(docs, query, { limit: 15 });
+    let hits = bm25Search(docs, query, { limit: 40 });
+
+    // 时间衰减加权：问"最近"时用户更关心新消息，纯相关性会让几天前的
+    // 高分讨论把今天的对话挤出 top-N。半衰期 2 天，只在范围内相对衰减。
+    const latestTs = msgs.reduce((mx, m) => Math.max(mx, m.timestamp || 0), 0);
+    if (latestTs) {
+      const HALF_LIFE = 2 * 86400000;
+      hits = hits.map(h => {
+        const ts = msgs[h.idx].timestamp || 0;
+        const age = latestTs - ts;
+        return { ...h, score: h.score * Math.pow(0.5, age / HALF_LIFE) };
+      }).sort((a, b) => b.score - a.score);
+    }
+    hits = hits.slice(0, 20);
 
     // 命中点 → 动态上下文片段（合并重叠区间）
     const ranges = hits
