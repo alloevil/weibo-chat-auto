@@ -9,6 +9,21 @@ const OUTPUT_DIR = process.env.WEIBO_OUTPUT_DIR
     ? path.resolve(process.env.WEIBO_OUTPUT_DIR)
     : path.join(__dirname, 'output');
 
+// localhost 认证 token（首次启动时自动生成，写入 .viewer-token 文件）
+// 敏感操作（同步、登录、AI 配置写入）需携带 Authorization: Bearer <token>
+const AUTH_TOKEN = (() => {
+    const tokenFile = path.join(__dirname, '.viewer-token');
+    try {
+        return fs.readFileSync(tokenFile, 'utf-8').trim();
+    } catch {
+        const crypto = require('crypto');
+        const token = crypto.randomBytes(16).toString('hex');
+        try { fs.writeFileSync(tokenFile, token + '\n'); } catch {}
+        console.log(`[auth] 已生成访问令牌，保存在 .viewer-token`);
+        return token;
+    }
+})();
+
 process.on('uncaughtException', (err) => {
     console.error('[uncaughtException]', err.message);
 });
@@ -24,10 +39,39 @@ function loadCookies() {
 // Per-group message cache
 const messageCaches = {};
 
+/**
+ * 校验 group 参数解析后的路径是否在 OUTPUT_DIR 内（防路径遍历）。
+ * @param {string} groupName
+ * @returns {string} 校验后的绝对路径
+ * @throws {Error} 路径越界
+ */
 function getGroupDir(groupName) {
     if (!groupName) return OUTPUT_DIR;
     const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-    return path.join(OUTPUT_DIR, safe);
+    const resolved = path.resolve(OUTPUT_DIR, safe);
+    if (!resolved.startsWith(path.resolve(OUTPUT_DIR) + path.sep) && resolved !== path.resolve(OUTPUT_DIR)) {
+        throw new Error(`路径越界: ${groupName}`);
+    }
+    return resolved;
+}
+
+/**
+ * 校验请求是否携带有效 token（用于敏感操作）。
+ * @param {http.IncomingMessage} req
+ * @returns {boolean}
+ */
+function isAuthorized(req) {
+    const auth = req.headers['authorization'] || '';
+    const match = auth.match(/^Bearer\s+(.+)$/i);
+    return match && match[1] === AUTH_TOKEN;
+}
+
+/**
+ * 返回 401 响应。
+ */
+function respondUnauthorized(res) {
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, error: '未授权，请在设置中输入访问令牌' }));
 }
 
 function loadMessages(groupName = '') {
@@ -380,6 +424,7 @@ const server = http.createServer((req, res) => {
 
     // Sync: trigger archiver
     if (url.pathname === '/api/sync' && req.method === 'POST') {
+        if (!isAuthorized(req)) { respondUnauthorized(res); return; }
         // Invalidate all message caches
         for (const key in messageCaches) delete messageCaches[key];
         for (const key in fileCaches) delete fileCaches[key];
@@ -621,6 +666,7 @@ const server = http.createServer((req, res) => {
         const AI_CONFIG_PATH = path.join(__dirname, 'ai-config.json');
 
         if (req.method === 'GET') {
+            // GET 不需要认证（读取脱敏后的配置）
             try {
                 const cfg = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
                 const masked = { ...cfg };
@@ -638,6 +684,7 @@ const server = http.createServer((req, res) => {
         }
 
         if (req.method === 'POST') {
+            if (!isAuthorized(req)) { respondUnauthorized(res); return; }
             let body = '';
             req.on('data', chunk => { body += chunk; });
             req.on('end', () => {
@@ -925,6 +972,7 @@ const server = http.createServer((req, res) => {
     // puppeteer 依赖链（cosmiconfig → 可选 typescript）导致编译失败；桌面应用
     // 走 Rust 原生登录窗口，本分支只在浏览器版（系统 node 运行）用到。
     if (url.pathname === '/api/browser-login' && req.method === 'POST') {
+        if (!isAuthorized(req)) { respondUnauthorized(res); return; }
         const reply = (result) => {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify(result));
@@ -984,7 +1032,7 @@ const server = http.createServer((req, res) => {
         // Rust 原生扫码窗），也能服务普通浏览器（登录走 Puppeteer 扫码）。
         const ua = req.headers['user-agent'] || '';
         const isDesktop = ua.includes('WeiboChatDesktop');
-        html = html.replace('<head>', `<head><script>window.__WEIBO_DESKTOP=${isDesktop};</script>`);
+        html = html.replace('<head>', `<head><script>window.__WEIBO_DESKTOP=${isDesktop};window.__AUTH_TOKEN='${AUTH_TOKEN}';</script>`);
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
