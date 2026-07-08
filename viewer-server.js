@@ -73,7 +73,6 @@ function respondUnauthorized(res) {
     res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: '未授权，请在设置中输入访问令牌' }));
 }
-}
 
 function loadMessages(groupName = '') {
     const dir = getGroupDir(groupName);
