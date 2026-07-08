@@ -187,23 +187,30 @@ ${list}
 请判断哪些消息与用户问题真正相关（语义相关即可，不要求字面匹配；如消息谈论的具体事物属于问题所问的范畴，也算相关）。
 只输出 JSON 数组（相关消息的编号，按相关度从高到低），不要其他文字。例如：[3,0,12]`;
 
-  const resp = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [{ role: 'user', content: prompt }],
-      stream: false,
-    }),
-  });
-  if (!resp.ok) throw new Error(`rerank API ${resp.status}`);
-  const data = await resp.json();
-  const text = data.choices?.[0]?.message?.content || '';
-  const m = text.match(/\[[\d,\s]*\]/);
-  if (!m) throw new Error('rerank: no JSON array in response');
-  const order = JSON.parse(m[0]).filter(i => Number.isInteger(i) && i >= 0 && i < candidates.length);
-  if (!order.length) throw new Error('rerank: empty result');
-  return order;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const resp = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [{ role: 'user', content: prompt }],
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) throw new Error(`rerank API ${resp.status}`);
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    const m = text.match(/\[[\d,\s]*\]/);
+    if (!m) throw new Error('rerank: no JSON array in response');
+    const order = JSON.parse(m[0]).filter(i => Number.isInteger(i) && i >= 0 && i < candidates.length);
+    if (!order.length) throw new Error('rerank: empty result');
+    return order;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ─── Tool execution ────────────────────────────────────────────────────
@@ -360,27 +367,34 @@ async function executeTool(name, args, allMessages, ledger, config, question) {
 
 // ─── LLM call ──────────────────────────────────────────────────────────
 async function callLLM(config, messages) {
-  const resp = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      tools: TOOLS,
-      stream: false,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 28000); // 略小于外层 withTimeout(30s)
+  try {
+    const resp = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        tools: TOOLS,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
 
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`LLM API ${resp.status}: ${text.slice(0, 200)}`);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`LLM API ${resp.status}: ${text.slice(0, 200)}`);
+    }
+
+    const data = await resp.json();
+    return data.choices?.[0]?.message;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = await resp.json();
-  return data.choices?.[0]?.message;
 }
 
 // ─── Agent conversation loop ───────────────────────────────────────────
