@@ -32,86 +32,19 @@ function absorbSetCookies(proxyRes, requestUrl) {
     }
 }
 
-// Per-group message cache
-const messageCaches = {};
+// 消息加载与缓存统一走 lib/load-messages（eval/索引脚本共用同一实现）
+const messageStore = require('./lib/load-messages');
 
 function getGroupDir(groupName) {
-    if (!groupName) return OUTPUT_DIR;
-    const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-    return path.join(OUTPUT_DIR, safe);
+    return messageStore.getGroupDir(OUTPUT_DIR, groupName);
 }
 
 function loadMessages(groupName = '') {
-    const dir = getGroupDir(groupName);
-    if (!fs.existsSync(dir)) return [];
-
-    if (!messageCaches[groupName]) messageCaches[groupName] = {};
-    const cache = messageCaches[groupName];
-
-    const files = fs.readdirSync(dir)
-        .filter(f => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
-
-    let changed = false;
-    const currentMtimes = {};
-    for (const f of files) {
-        const mt = fs.statSync(path.join(dir, f)).mtimeMs;
-        currentMtimes[f] = mt;
-        if (!cache[f] || cache[f].mtime !== mt) changed = true;
-    }
-    if (!changed && Object.keys(cache).length === files.length) {
-        // Return merged cache
-        const all = [];
-        for (const f of files) all.push(...cache[f].messages);
-        all.sort((a, b) => a.timestamp - b.timestamp);
-        return all;
-    }
-
-    const allMessages = [];
-    for (const file of files) {
-        const mt = currentMtimes[file];
-        if (cache[file] && cache[file].mtime === mt) {
-            allMessages.push(...cache[file].messages);
-        } else {
-            try {
-                const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
-                const msgs = data.messages || data;
-                if (Array.isArray(msgs)) {
-                    cache[file] = { mtime: mt, messages: msgs };
-                    allMessages.push(...msgs);
-                }
-            } catch {}
-        }
-    }
-
-    allMessages.sort((a, b) => a.timestamp - b.timestamp);
-    return allMessages;
+    return messageStore.loadMessages(OUTPUT_DIR, groupName);
 }
 
-// Per-file cache for loadMessagesByDate
-const fileCaches = {};
-
 function loadMessagesByDate(groupName = '', date = '') {
-    const dir = getGroupDir(groupName);
-    if (!fs.existsSync(dir)) return [];
-
-    const filePath = path.join(dir, `weibo_chat_${date}.json`);
-    if (!fs.existsSync(filePath)) return [];
-
-    try {
-        const mt = fs.statSync(filePath).mtimeMs;
-        const cacheKey = filePath;
-        if (fileCaches[cacheKey] && fileCaches[cacheKey].mtime === mt) {
-            return fileCaches[cacheKey].messages;
-        }
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        const msgs = data.messages || data;
-        if (!Array.isArray(msgs)) return [];
-        msgs.sort((a, b) => a.timestamp - b.timestamp);
-        fileCaches[cacheKey] = { mtime: mt, messages: msgs };
-        return msgs;
-    } catch {
-        return [];
-    }
+    return messageStore.loadMessagesByDate(OUTPUT_DIR, groupName, date);
 }
 
 function rewriteImageUrls(messages) {
@@ -392,8 +325,7 @@ const server = http.createServer((req, res) => {
     // Sync: trigger archiver
     if (url.pathname === '/api/sync' && req.method === 'POST') {
         // Invalidate all message caches
-        for (const key in messageCaches) delete messageCaches[key];
-        for (const key in fileCaches) delete fileCaches[key];
+        messageStore.clearCaches();
         const isBundled = !process.execPath.endsWith('node') && !process.execPath.endsWith('bun');
         const jsRuntime = isBundled ? 'node' : process.execPath;
 
