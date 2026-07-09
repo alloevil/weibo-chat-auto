@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const { resolveChromePath } = require('./lib/chrome-path');
 const cookieStore = require('./lib/cookie-store');
 
@@ -898,6 +898,20 @@ async function main() {
         };
         fs.writeFileSync(stateFile, JSON.stringify(newState, null, 2));
         console.log(`归档状态已保存 (截止: ${new Date(newState.lastTimestamp).toLocaleString('zh-CN')})`);
+
+        // 后台更新 QA 话题块索引(fire-and-forget:失败只警告,不影响归档;
+        // 没跑成也无妨——qa-agent 检测到索引过期会自动降级为即时切块)
+        try {
+            const updatedDates = Object.keys(groups).join(',');
+            spawn(process.execPath, [
+                path.join(__dirname, 'scripts', 'build-qa-index.mjs'),
+                '--group', currentGroupName,
+                '--dates', updatedDates,
+            ], { detached: true, stdio: 'ignore' }).unref();
+            console.log(`已触发 QA 索引更新 (${Object.keys(groups).length} 天)`);
+        } catch (e) {
+            console.warn('QA 索引更新触发失败(不影响归档):', e.message);
+        }
     }
 
     } // end for each group

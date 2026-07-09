@@ -1,14 +1,18 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
+// lib/ 是 CJS,这里用静态 ESM import(Node 的 CJS interop 支持解构)。
+// 不要换成 createRequire:bundler(Bun sidecar 编译)无法静态分析 createRequire,
+// 会导致 lib 模块不进 bundle,桌面版运行时报 Cannot find module。
+// BM25 检索层(bigram 分词,见 lib/search-bm25.js)
+import searchBm25 from './lib/search-bm25.js';
+// 话题块索引:离线标注(qa-index/)优先,缺失/过期时即时切块降级
+import chunkIndex from './lib/chunk-index.js';
+
+const { search: bm25Search } = searchBm25;
+const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-// BM25 检索层（CJS 模块，bigram 分词，见 lib/search-bm25.js）
-const { search: bm25Search } = require('./lib/search-bm25.js');
-// 话题块索引:离线标注(qa-index/)优先,缺失/过期时即时切块降级
-const { loadChunkIndex, buildChunksForMessages } = require('./lib/chunk-index.js');
 
 function loadAiConfig() {
   const cfgPath = path.join(__dirname, 'ai-config.json');
