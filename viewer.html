@@ -113,8 +113,9 @@ button, select, input { font-family: inherit; }
 .qa-send:hover { background: var(--primary-hover); }
 .qa-send:disabled { opacity: .5; cursor: wait; }
 .noise-toggle { flex-shrink: 0; }
-.qa-answer-wrap { padding: 0 16px 8px; border-bottom: 1px solid var(--hairline); }
-.qa-answer { padding: 14px; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px; font-size: 14px; line-height: 1.7; color: var(--ink-muted); }
+.qa-answer-wrap { padding: 0 16px 8px; border-bottom: 1px solid var(--hairline); display: flex; flex-direction: column; max-height: 45vh; flex-shrink: 0; }
+.qa-answer-head { display: flex; justify-content: flex-end; padding: 6px 0 2px; flex-shrink: 0; }
+.qa-answer { padding: 14px; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px; font-size: 14px; line-height: 1.7; color: var(--ink-muted); overflow-y: auto; }
 .qa-answer h2 { font-size: 14px; font-weight: 600; margin: 10px 0 4px; color: var(--ink); }
 .qa-answer h2:first-child { margin-top: 0; }
 .qa-answer p { margin: 4px 0; }
@@ -489,6 +490,7 @@ button, select, input { font-family: inherit; }
             <div class="summary-content" id="summaryContent"></div>
         </div>
         <div class="qa-answer-wrap" id="qaAnswerWrap" style="display:none">
+            <div class="qa-answer-head"><button class="summary-collapse" onclick="closeQaAnswer()">✕ 收起回答</button></div>
             <div class="qa-answer show" id="qaAnswer"></div>
         </div>
         <div class="messages" id="messages"></div>
@@ -1045,6 +1047,10 @@ function toggleSummary() {
 
 // --- Q&A ---
 function updateQaBar() {}
+
+function closeQaAnswer() {
+    document.getElementById('qaAnswerWrap').style.display = 'none';
+}
 
 async function askQuestion() {
     const input = document.getElementById('qaInput');
