@@ -26,3 +26,4 @@ sidecar/dist/
 # Third-party design reference (clone from github.com/voltagent/awesome-design-md)
 design-md/
 .codex/
+eval/results/

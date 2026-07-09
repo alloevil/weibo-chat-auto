@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "group": "茧房建筑师协会",
+  "note": "golden facts 起草自 output/<group>/summary_<date>.json 的 AI 日摘要,notes 标注来源日期。摘要本身可能有误,发现与原始聊天记录不符时应修正此文件。",
+  "questions": [
+    {
+      "id": "q01",
+      "category": "fact",
+      "question": "tk 对半导体行情最近的判断是什么?",
+      "goldenFacts": ["tombkeeper 认为半导体还没跌到位(2026-07-03 凌晨发出)"],
+      "mustMention": ["半导体"],
+      "notes": "summary_2026-07-03 话题一"
+    },
+    {
+      "id": "q02",
+      "category": "fact",
+      "question": "胡锡进被发现用什么工具翻墙?怎么被发现的?",
+      "goldenFacts": ["胡锡进被发现用小蓝猫(VPN 工具)翻墙", "网友通过微博编辑记录看到原图未裁切露出痕迹"],
+      "mustMention": ["小蓝猫"],
+      "notes": "summary_2026-05-01 话题一"
+    },
+    {
+      "id": "q03",
+      "category": "fact",
+      "question": "群里讨论冲牙器的时候都推荐了什么牌子?",
+      "goldenFacts": ["陈陈想吃西瓜推荐博皓(USB-C 接口),并提醒别买小米的", "霍呀推荐松下"],
+      "notes": "summary_2026-06-22 话题四"
+    },
+    {
+      "id": "q04",
+      "category": "fact",
+      "question": "关于 Herman Miller 的椅子,tk 是怎么评价的?",
+      "goldenFacts": ["tombkeeper 认为其主要优点是无纺织物易清理,舒适度并非最好", "无序列号最低配可买到 3800"],
+      "notes": "summary_2026-07-03 话题五"
+    },
+    {
+      "id": "q05",
+      "category": "fact",
+      "question": "中青报那篇劝人别躺平的文章,素材源头被考证到哪里了?",
+      "goldenFacts": ["臭鱼李罗一考证出素材源头可追溯至《人民文摘》2006 年的故事", "中青报系 2020 年转载版本引用了武志红的文章"],
+      "notes": "summary_2026-05-01 话题二"
+    },
+    {
+      "id": "q06",
+      "category": "fact",
+      "question": "群里怎么分析黄金近年大涨的主要原因?",
+      "goldenFacts": ["等下就去吃饭指出近年黄金大涨主因是央行增持,一旦增持放缓与市场利率关系不大"],
+      "notes": "summary_2026-06-22 话题二"
+    },
+    {
+      "id": "q07",
+      "category": "fact",
+      "question": "Hop4eva 跟买长赢组合是怎么控制成本的?",
+      "goldenFacts": ["每个品种只投 1 元,跌了再用其他账户抄底", "成本比 E 大低约 20%"],
+      "mustMention": ["长赢"],
+      "notes": "summary_2026-05-01 话题四"
+    },
+    {
+      "id": "q08",
+      "category": "fact",
+      "question": "关于 Meta 出租过剩 AI 算力,群里有什么解读?",
+      "goldenFacts": ["晒宁死大提出这可能意味着科技巨头认输 AI 自研无利可图,或成为本轮算力硬件行情的转折点"],
+      "notes": "summary_2026-07-03 话题一"
+    },
+    {
+      "id": "q09",
+      "category": "person",
+      "question": "狮子君(梦星河200602)的主业是做什么的?",
+      "goldenFacts": ["自称是做云容器运维的,不是金融从业者"],
+      "notes": "summary_2026-05-01 话题五"
+    },
+    {
+      "id": "q10",
+      "category": "person",
+      "question": "tombkeeper 怎么看'大多数人能否走出愚昧之巅'这个问题?",
+      "goldenFacts": ["互联网让所有人能以接近零的成本访问知识,但人们并没有选择用互联网获取知识", "大多数人进入愚昧之巅后只会一直愚昧到死,能进入开悟之坡的只可能是少数人"],
+      "notes": "summary_2026-06-22 话题一"
+    },
+    {
+      "id": "q11",
+      "category": "person",
+      "question": "叫我小鸡君吧为什么被 tk 当场纠正?",
+      "goldenFacts": ["他断章取义引用了 tombkeeper 关于'感动'的言论('如果确实很喜欢感动,尽量每天不超过一次')", "tombkeeper 回应:我那个话是有上下文的,你不要乱用啊"],
+      "notes": "summary_2026-07-03 话题四"
+    },
+    {
+      "id": "q12",
+      "category": "person",
+      "question": "梦星河200602 重点提示过哪个美股标的?理由是什么?",
+      "goldenFacts": ["Coherent Corp(COHR,光子学/InP 方向)", "理由包括 CEO 随特朗普访华、黄仁勋出席其德州工厂开工仪式"],
+      "notes": "summary_2026-06-22 话题三"
+    },
+    {
+      "id": "q13",
+      "category": "summary",
+      "question": "2026年7月3日群里主要聊了哪些话题?",
+      "notes": "对照 summary_2026-07-03:半导体行情/黄金/tk文章/感动风波/椅子/疤痕护理"
+    },
+    {
+      "id": "q14",
+      "category": "summary",
+      "question": "最近一周群里大家都在聊什么?",
+      "notes": "无标准答案,评 groundedness"
+    },
+    {
+      "id": "q15",
+      "category": "summary",
+      "question": "群里聊投资的氛围是什么样的?大家一般怎么交流?",
+      "notes": "无标准答案,评 groundedness"
+    },
+    {
+      "id": "q16",
+      "category": "temporal",
+      "question": "2026年6月22日那天 A 股行情如何?群里都提到了哪些标的?",
+      "goldenFacts": ["当日 A 股大幅上涨", "提到的标的包括巨化股份(涨停)、中钨高新/六氟化钨、比亚迪、长飞光纤、中粮糖业(提到部分即可)"],
+      "notes": "summary_2026-06-22 话题二"
+    },
+    {
+      "id": "q17",
+      "category": "temporal",
+      "question": "巨化股份涨停是哪天讨论的?当时说了什么?",
+      "goldenFacts": ["2026-06-22 讨论,上周推荐今日涨停", "等下就去吃饭被称赏饭有功,蓦回溯光 4 个点卖飞后悔"],
+      "mustMention": ["巨化"],
+      "notes": "summary_2026-06-22 话题二"
+    },
+    {
+      "id": "q18",
+      "category": "temporal",
+      "question": "tk 说'秋天可能还会有一波大的回撤'是什么时候说的?针对什么?",
+      "goldenFacts": ["2026-06-22 说的,针对 A 股行情", "随后补充该推测不一定准确,影响因素较多"],
+      "notes": "summary_2026-06-22 话题二"
+    },
+    {
+      "id": "q19",
+      "category": "link",
+      "question": "元宇宙射线分享的图片转文档工具叫什么?有什么特点?",
+      "goldenFacts": ["KayingCodex", "OCR 用 paddleOCR,文档模块用 Rust 编写,支持 markdown 转 Excel/PPT/PDF,可免 Token 单机运行"],
+      "mustMention": ["KayingCodex"],
+      "notes": "summary_2026-06-22 话题五"
+    },
+    {
+      "id": "q20",
+      "category": "link",
+      "question": "群里出现过的估值看板是谁做的?数据源是什么?",
+      "goldenFacts": ["复数枝桠参考狮子君思路用本地 qwen3 模型和 GPT-5.5 辅助编写了一个", "梦星河200602 分享了自己 vibe coding 的估值看板,数据源来自 TradingView(Macrotrends/SIMPLYWALL.ST 等),黄金等数据可用美联储 FRED API"],
+      "notes": "summary_2026-05-01 话题五"
+    }
+  ]
+}
