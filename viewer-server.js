@@ -910,7 +910,8 @@ const server = http.createServer((req, res) => {
                 reply({ ok: false, error: 'AI 未配置' }); return;
             }
             import('./qa-agent.mjs').then(({ askAgent }) => {
-                askAgent(question, allMessages, aiConfig).then(reply).catch(e => {
+                // groupDir 供块级检索读取 qa-index/ 离线标注(缺失时自动降级)
+                askAgent(question, allMessages, aiConfig, { groupDir: getGroupDir(group) }).then(reply).catch(e => {
                     reply({ ok: false, error: 'Agent 异常: ' + e.message });
                 });
             }).catch(e => {

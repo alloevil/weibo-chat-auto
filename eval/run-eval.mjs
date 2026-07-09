@@ -148,10 +148,12 @@ async function main() {
 
   const spec = JSON.parse(fs.readFileSync(path.join(__dirname, 'questions.json'), 'utf-8'));
   const aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
-  const { loadMessages } = require(path.join(ROOT, 'lib/load-messages.js'));
+  const { loadMessages, getGroupDir } = require(path.join(ROOT, 'lib/load-messages.js'));
   const { askAgent } = await import(pathToFileURL(path.join(ROOT, 'qa-agent.mjs')).href);
 
-  const allMessages = loadMessages(path.join(ROOT, 'output'), spec.group);
+  const outputDir = path.join(ROOT, 'output');
+  const allMessages = loadMessages(outputDir, spec.group);
+  const groupDir = getGroupDir(outputDir, spec.group);
   if (!allMessages.length) {
     console.error(`没有找到群 "${spec.group}" 的归档数据`);
     process.exit(1);
@@ -166,7 +168,7 @@ async function main() {
     const t0 = Date.now();
     let entry = { id: q.id, category: q.category, question: q.question };
     try {
-      const res = await askAgent(q.question, allMessages, aiConfig);
+      const res = await askAgent(q.question, allMessages, aiConfig, { groupDir });
       entry.elapsed = Date.now() - t0;
       if (!res.ok) throw new Error(res.error);
       entry.answer = res.answer;

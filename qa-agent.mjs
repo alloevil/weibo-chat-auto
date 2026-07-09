@@ -7,6 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 // BM25 检索层（CJS 模块，bigram 分词，见 lib/search-bm25.js）
 const { search: bm25Search } = require('./lib/search-bm25.js');
+// 话题块索引:离线标注(qa-index/)优先,缺失/过期时即时切块降级
+const { loadChunkIndex, buildChunksForMessages } = require('./lib/chunk-index.js');
 
 function loadAiConfig() {
   const cfgPath = path.join(__dirname, 'ai-config.json');
@@ -297,7 +299,192 @@ function dateSpanOf(msgs) {
   return { first: msgDate(msgs[0]), last: msgDate(msgs[msgs.length - 1]) };
 }
 
-async function executeTool(name, args, allMessages, ledger, config, question) {
+// ─── 检索流水线共用件 ──────────────────────────────────────────────────
+const HALF_LIFE_MS = 2 * 86400000;
+
+function msgText(m) {
+  return (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
+}
+
+// 时间衰减加权:问"最近"时用户更关心新消息,纯相关性会让几天前的
+// 高分讨论把今天的对话挤出 top-N。半衰期 2 天,只在范围内相对衰减。
+function applyTimeDecay(hits, tsOf) {
+  const latestTs = hits.reduce((mx, h) => Math.max(mx, tsOf(h.idx) || 0), 0);
+  if (!latestTs) return hits;
+  return hits
+    .map(h => ({ ...h, score: h.score * Math.pow(0.5, (latestTs - (tsOf(h.idx) || 0)) / HALF_LIFE_MS) }))
+    .sort((a, b) => b.score - a.score);
+}
+
+// LLM 语义精排:跨过词汇鸿沟(BM25 只认字面)。只做「相关性过滤」,
+// 最终顺序仍按时间衰减分——否则语义排序会覆盖新近度偏好。
+// 失败静默降级,返回原 hits。
+async function rerankFilter(hits, textOf, config, question) {
+  if (!config || !question || hits.length <= 3) return { hits, reranked: false };
+  try {
+    const candidates = hits.map(h => ({ idx: h.idx, text: textOf(h.idx) }));
+    const order = await withTimeout(rerankByLLM(config, question, candidates), 20000);
+    const keep = new Set(order);
+    const filtered = hits.filter((_, i) => keep.has(i));
+    if (filtered.length) return { hits: filtered, reranked: true };
+  } catch (e) {
+    console.error('[qa] rerank 降级为 BM25:', e.message);
+  }
+  return { hits, reranked: false };
+}
+
+function makeCitation(m) {
+  return {
+    id: m.id,
+    date: msgDate(m),
+    user: m.user,
+    preview: (m.content || m.share?.title || '').slice(0, 60),
+  };
+}
+
+const ZERO_HIT_HINT = (n) =>
+  `范围内有 ${n} 条消息但关键词无命中。建议:1) 把长关键词拆成 2 字短词 2) 补充同义词/英文缩写 3) 用 count_messages 换关键词探测话题分布在哪些日期`;
+
+// ─── 块级检索(主路径) ────────────────────────────────────────────────
+// 检索单元是话题块(时间断层切分,见 lib/chat-chunks.js)而非单条短消息。
+// 有 groupDir 且离线索引新鲜时,块文本前置 LLM 标注(主题/参与者/结论),
+// BM25 与 rerank 都吃到语义信息;索引缺失/过期时即时切块(无标注)。
+// 返回 null 表示应降级到单条路径(语料太小或块级零命中)。
+async function searchByChunks({ msgs, keywords, query, config, question, ledger, personNote, dateFrom, dateTo, person, groupDir }) {
+  const msgById = new Map(msgs.map(m => [String(m.id), m]));
+  const toChunk = (msgIds, annotation, endTs) => {
+    const present = msgIds.map(id => msgById.get(String(id))).filter(Boolean);
+    return present.length ? { msgs: present, annotation, endTs: endTs || present[present.length - 1].timestamp || 0 } : null;
+  };
+
+  let chunks = [];
+  if (groupDir) {
+    const byDate = new Map();
+    for (const m of msgs) {
+      const d = msgDate(m);
+      if (!d) continue;
+      if (!byDate.has(d)) byDate.set(d, []);
+      byDate.get(d).push(m);
+    }
+    const dates = [...byDate.keys()].sort();
+    const { byDate: index } = loadChunkIndex(groupDir, dates);
+    for (const d of dates) {
+      const entry = index.get(d);
+      const raw = entry?.chunks?.length
+        ? entry.chunks.map(c => toChunk(c.msgIds, c.annotation || null, c.endTs))
+        : buildChunksForMessages(byDate.get(d)).map(c => toChunk(c.msgIds, null, c.endTs));
+      chunks.push(...raw.filter(Boolean));
+    }
+  } else {
+    chunks = buildChunksForMessages(msgs).map(c => toChunk(c.msgIds, null, c.endTs)).filter(Boolean);
+  }
+
+  if (chunks.length < 2) return null; // 语料太小,块级检索无意义
+
+  const chunkDocs = chunks.map(c => (c.annotation ? c.annotation + '\n' : '') + c.msgs.map(msgText).join('\n'));
+  let hits = bm25Search(chunkDocs, query, { limit: 20 });
+  if (!hits.length) return null;
+
+  hits = applyTimeDecay(hits, i => chunks[i].endTs);
+  // rerank 候选:标注优先(信息密度远高于随机截断);无标注块用块首消息,
+  // 保证降级块在精排中不被系统性歧视
+  const { hits: kept, reranked } = await rerankFilter(
+    hits,
+    i => (chunks[i].annotation || chunks[i].msgs.slice(0, 2).map(msgText).join(' ')).slice(0, 160),
+    config, question
+  );
+  hits = kept.slice(0, 8);
+
+  const snippets = [];
+  const citations = [];
+  for (const h of hits) {
+    const c = chunks[h.idx];
+    // 块内小 BM25 定位真正命中的消息(引用要指向消息,不是块)
+    const inner = bm25Search(c.msgs.map(msgText), query, { limit: 2 });
+    const hitIdxs = inner.length ? inner.map(x => x.idx) : [0];
+    for (const i of hitIdxs.slice(0, 2)) citations.push(makeCitation(c.msgs[i]));
+
+    // 块即上下文;超长块取首个命中 ±8 条,防吃 token
+    let snippetMsgs = c.msgs;
+    if (c.msgs.length > 30) {
+      const center = hitIdxs[0];
+      snippetMsgs = c.msgs.slice(Math.max(0, center - 8), center + 9);
+    }
+    const header = c.annotation ? `【话题标注】${c.annotation}\n` : '';
+    snippets.push(header + snippetMsgs.map(formatMessage).join('\n'));
+  }
+  ledger.citations.push(...citations);
+  ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length, chunked: true });
+  ledger.totalMatches += hits.length;
+  if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
+  if (hits.length > 3) ledger.confidence = hits.length > 6 ? 'high' : 'medium';
+
+  return {
+    matchCount: hits.length,
+    matchUnit: 'topic_chunk',
+    totalInRange: msgs.length,
+    reranked,
+    dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
+    hitIds: citations.slice(0, 8),
+    snippets,
+    ...(personNote ? { personNote } : {}),
+  };
+}
+
+// ─── 单条消息检索(兜底路径) ──────────────────────────────────────────
+async function searchFlat({ msgs, keywords, query, config, question, ledger, personNote, dateFrom, dateTo, person }) {
+  const docs = msgs.map(msgText);
+  let hits = bm25Search(docs, query, { limit: 40 });
+
+  if (hits.length === 0) {
+    ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
+    return {
+      matchCount: 0,
+      totalInRange: msgs.length,
+      hint: ZERO_HIT_HINT(msgs.length),
+      ...(personNote ? { personNote } : {}),
+    };
+  }
+
+  hits = applyTimeDecay(hits, i => msgs[i].timestamp).slice(0, 40);
+  const { hits: kept, reranked } = await rerankFilter(hits, i => docs[i].slice(0, 160), config, question);
+  hits = kept.slice(0, 15);
+
+  // 命中点 → 动态上下文片段(合并重叠区间)
+  const ranges = hits
+    .map(h => expandContext(msgs, h.idx))
+    .sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([...r]);
+  }
+  const snippets = merged.slice(0, 8).map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
+
+  // 真实引用:top 命中的消息 id/日期/预览。同时作为 hitIds 回给模型,
+  // 供 get_context 按 id 下钻——模型无法从纯文本 snippets 得知消息 id。
+  const citations = hits.slice(0, 8).map(h => makeCitation(msgs[h.idx]));
+  ledger.citations.push(...citations);
+
+  ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length });
+  ledger.totalMatches += hits.length;
+  if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
+  if (hits.length > 5) ledger.confidence = hits.length > 12 ? 'high' : 'medium';
+
+  return {
+    matchCount: hits.length,
+    matchUnit: 'message',
+    totalInRange: msgs.length,
+    reranked,
+    dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
+    hitIds: citations,
+    snippets,
+    ...(personNote ? { personNote } : {}),
+  };
+}
+
+async function executeTool(name, args, allMessages, ledger, config, question, opts) {
   if (name === 'count_messages') {
     const { person, dateFrom, dateTo } = args;
     const keywords = normalizeKeywords(args.keywords);
@@ -392,93 +579,16 @@ async function executeTool(name, args, allMessages, ledger, config, question) {
       };
     }
 
-    // BM25 检索（bigram 分词，词频/文档长度归一），替代 includes 命中计数
-    const docs = msgs.map(m => (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || ''));
     const query = keywords.join(' ');
-    let hits = bm25Search(docs, query, { limit: 40 });
+    const common = { msgs, keywords, query, config, question, ledger, personNote, dateFrom, dateTo, person };
 
-    if (hits.length === 0) {
-      ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
-      return {
-        matchCount: 0,
-        totalInRange: msgs.length,
-        hint: `范围内有 ${msgs.length} 条消息但关键词无命中。建议:1) 把长关键词拆成 2 字短词 2) 补充同义词/英文缩写 3) 用 count_messages 换关键词探测话题分布在哪些日期`,
-        ...(personNote ? { personNote } : {}),
-      };
-    }
+    // 话题块级检索优先(检索单元是话题串而非单条短消息,BM25 更稳;
+    // 有离线标注时块文本还带 LLM 生成的主题/结论,跨过词汇鸿沟)
+    const chunkResult = await searchByChunks({ ...common, groupDir: opts?.groupDir });
+    if (chunkResult) return chunkResult;
 
-    // 时间衰减加权：问"最近"时用户更关心新消息，纯相关性会让几天前的
-    // 高分讨论把今天的对话挤出 top-N。半衰期 2 天，只在范围内相对衰减。
-    const latestTs = msgs.reduce((mx, m) => Math.max(mx, m.timestamp || 0), 0);
-    if (latestTs) {
-      const HALF_LIFE = 2 * 86400000;
-      hits = hits.map(h => {
-        const ts = msgs[h.idx].timestamp || 0;
-        const age = latestTs - ts;
-        return { ...h, score: h.score * Math.pow(0.5, age / HALF_LIFE) };
-      }).sort((a, b) => b.score - a.score);
-    }
-    hits = hits.slice(0, 40);
-
-    // LLM 语义精排：跨过词汇鸿沟（BM25 只认字面）。
-    // 注意：reranker 只做「相关性过滤」，最终顺序仍按时间衰减分——否则
-    // 语义排序会覆盖新近度偏好，几天前的高相关长讨论再次淹没今天的消息。
-    let reranked = false;
-    if (config && question && hits.length > 3) {
-      try {
-        const candidates = hits.map(h => ({ idx: h.idx, text: docs[h.idx] }));
-        const order = await withTimeout(rerankByLLM(config, question, candidates), 20000);
-        const keep = new Set(order);
-        const filtered = hits.filter((_, i) => keep.has(i));
-        if (filtered.length) {
-          hits = filtered; // 已是时间衰减分降序，过滤不改变顺序
-          reranked = true;
-        }
-      } catch (e) {
-        console.error('[qa] rerank 降级为 BM25:', e.message);
-      }
-    }
-    hits = hits.slice(0, 15);
-
-    // 命中点 → 动态上下文片段（合并重叠区间）
-    const ranges = hits
-      .map(h => expandContext(msgs, h.idx))
-      .sort((a, b) => a[0] - b[0]);
-    const merged = [];
-    for (const r of ranges) {
-      const last = merged[merged.length - 1];
-      if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
-      else merged.push([...r]);
-    }
-    const chunks = merged.slice(0, 8).map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
-
-    // 真实引用：top 命中的消息 id/日期/预览。同时作为 hitIds 回给模型,
-    // 供 get_context 按 id 下钻——模型无法从纯文本 snippets 得知消息 id。
-    const citations = hits.slice(0, 8).map(h => {
-      const m = msgs[h.idx];
-      return {
-        id: m.id,
-        date: (m.time || '').split(' ')[0].replace(/\//g, '-'),
-        user: m.user,
-        preview: (m.content || m.share?.title || '').slice(0, 60),
-      };
-    });
-    ledger.citations.push(...citations);
-
-    ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length });
-    ledger.totalMatches += hits.length;
-    if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
-    if (hits.length > 5) ledger.confidence = hits.length > 12 ? 'high' : 'medium';
-
-    return {
-      matchCount: hits.length,
-      totalInRange: msgs.length,
-      reranked,
-      dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
-      hitIds: citations,
-      snippets: chunks,
-      ...(personNote ? { personNote } : {}),
-    };
+    // 兜底:单条消息 BM25(块级零命中或语料太小时)
+    return searchFlat(common);
   }
 
   if (name === 'get_recent_messages') {
@@ -548,7 +658,7 @@ async function callLLM(config, messages) {
 //   - Hermes Agent: IterationBudget + grace call + while-loop with interrupt
 //   - Pi-Multi-Agent: state machine + timeout + retry with backoff
 //   - LedgerAgent: structured state accumulation across iterations
-async function conversationLoop(question, allMessages, config) {
+async function conversationLoop(question, allMessages, config, opts) {
   const budget = new IterationBudget(6);
   const state = new AgentState();
   const ledger = createLedger();
@@ -626,7 +736,7 @@ async function conversationLoop(question, allMessages, config) {
     // Execute tool calls
     for (const tc of assistantMsg.tool_calls) {
       const args = JSON.parse(tc.function.arguments || '{}');
-      const result = await executeTool(tc.function.name, args, allMessages, ledger, config, question);
+      const result = await executeTool(tc.function.name, args, allMessages, ledger, config, question, opts);
 
       state.recordStep({ type: 'tool_call', tool: tc.function.name, args });
       toolCallLog.push({ tool: tc.function.name, ...args, matchCount: result.matchCount, returned: result.returned, total: result.total });
@@ -659,12 +769,12 @@ async function conversationLoop(question, allMessages, config) {
 // executeTool / expandContext 仅为单测导出
 export { executeTool, expandContext };
 
-export async function askAgent(question, allMessages, aiConfigOverride) {
+export async function askAgent(question, allMessages, aiConfigOverride, opts = {}) {
   const aiConfig = aiConfigOverride || loadAiConfig();
   if (!aiConfig) return { ok: false, error: 'AI 未配置' };
 
   try {
-    const result = await conversationLoop(question, allMessages, aiConfig);
+    const result = await conversationLoop(question, allMessages, aiConfig, opts);
 
     const keywords = [...new Set(result.toolCallLog.flatMap(tc => tc.keywords || []))];
     // 真实消息引用（按 id 去重，最多 8 条）——前端可据 id 跳转到原消息

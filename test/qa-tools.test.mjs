@@ -76,10 +76,49 @@ test('search_messages: 命中返回 hitIds(含 id/user/date/preview)', async () 
   const led = ledger();
   const r = await executeTool('search_messages', { keywords: ['半导体'] }, MSGS, led);
   assert.ok(r.matchCount > 0);
+  assert.strictEqual(r.matchUnit, 'topic_chunk'); // 无 groupDir 时即时切块,仍走块级
   assert.ok(Array.isArray(r.hitIds) && r.hitIds.length > 0);
   const hit = r.hitIds[0];
   assert.ok(hit.id != null && hit.user && hit.date && typeof hit.preview === 'string');
+  // 引用指向真正命中的消息(半导体在 id 1/2),而不是块首
+  assert.ok(r.hitIds.every(h => [1, 2].includes(h.id)));
   assert.ok(led.citations.length > 0);
+});
+
+test('search_messages: 离线标注跨过词汇鸿沟(annotation 参与 BM25)', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { chunkKey } = await import('../lib/chat-chunks.js').then(m => m.default || m);
+  const { clearIndexCache } = await import('../lib/chunk-index.js').then(m => m.default || m);
+
+  clearIndexCache();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chunk-search-'));
+  fs.mkdirSync(path.join(dir, 'qa-index'));
+  const day1 = MSGS.filter(m => m.time.startsWith('2026/07/01'));
+  const dayPath = path.join(dir, 'weibo_chat_2026-07-01.json');
+  fs.writeFileSync(dayPath, JSON.stringify(day1));
+  const mtime = fs.statSync(dayPath).mtimeMs;
+  const mkChunk = (seq, msgIds, annotation) => ({
+    seq, msgIds, annotation,
+    key: chunkKey({ msgIds }),
+    startTs: 0, endTs: MSGS.find(m => m.id === msgIds[msgIds.length - 1]).timestamp,
+    users: [],
+  });
+  fs.writeFileSync(path.join(dir, 'qa-index', 'chunks_2026-07-01.json'), JSON.stringify({
+    version: 1, date: '2026-07-01', sourceMtime: mtime, sourceCount: day1.length,
+    chunks: [
+      mkChunk(0, [1, 2, 3, 4], null),
+      mkChunk(1, [5, 6], '话题:口腔护理与冲牙器选购推荐。结论:博皓可选,避开小米。'),
+    ],
+  }));
+
+  // "口腔护理"只出现在标注里,消息原文没有——无标注时搜不到
+  const r = await executeTool('search_messages', { keywords: ['口腔护理'] }, MSGS, ledger(), null, null, { groupDir: dir });
+  assert.strictEqual(r.matchUnit, 'topic_chunk');
+  assert.ok(r.matchCount > 0);
+  assert.ok(r.hitIds.some(h => [5, 6].includes(h.id)));
+  assert.ok(r.snippets[0].includes('【话题标注】'));
 });
 
 test('search_messages: 关键词零命中给拆词建议,person 零匹配给 personNote', async () => {
