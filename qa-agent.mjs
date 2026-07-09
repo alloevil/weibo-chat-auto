@@ -138,15 +138,32 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'search_messages',
-      description: '在群聊记录中按关键词检索（BM25 相关性排序，支持中文部分匹配）。适合找"某人说了什么/某话题被谁提过"这类事实检索。返回相关片段（含对话上下文）。可多次调用换关键词。',
+      name: 'count_messages',
+      description: '统计消息在各日期的分布(直方图),不返回消息内容。这是"先宽后窄"的探测工具:在正式搜索前,先用它了解某话题/某人的发言集中在哪些日期,再把 search_messages 的日期范围锁定到热点日期。计算是本地词面匹配,成本极低,可放心多次调用。不带 keywords 时统计纯消息量(如"某人最近活跃吗")。不要用它获取消息内容——它只给数字。',
       parameters: {
         type: 'object',
         properties: {
-          keywords: { type: 'array', items: { type: 'string' }, description: '搜索关键词列表。建议同时给出同义词/相关词（如问"大模型"时加上 LLM、GPT、AI）以提高召回' },
-          person: { type: 'string', description: '筛选特定发言人（模糊匹配）' },
-          dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD' },
-          dateTo: { type: 'string', description: '结束日期 YYYY-MM-DD' },
+          keywords: { type: 'array', items: { type: 'string' }, description: '统计包含任一关键词的消息(词面包含匹配,大小写不敏感)。省略则统计全部消息' },
+          person: { type: 'string', description: '只统计该发言人的消息(模糊匹配)' },
+          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD,如 2026-07-01' },
+          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_messages',
+      description: '按关键词检索聊天记录(BM25 相关性 + 时间新近度排序),返回相关片段(含对话上下文)和命中消息的 id 列表(hitIds)。适合"某人说了什么/某话题谁提过/关于 X 的讨论"这类事实检索。关键词务必同时给同义词和英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"]),单个关键词建议 2-4 字。零命中时返回的 hint 会告诉你怎么调整。不适合总结归纳型问题(用 get_recent_messages)。',
+      parameters: {
+        type: 'object',
+        properties: {
+          keywords: { type: 'array', items: { type: 'string' }, description: '搜索关键词列表,同时给出同义词/相关词/英文缩写以提高召回' },
+          person: { type: 'string', description: '筛选特定发言人(模糊匹配)。注意:人名记不准时宁可不填,靠关键词兜底' },
+          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
+          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
         },
         required: ['keywords'],
         additionalProperties: false,
@@ -156,14 +173,30 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'get_recent_messages',
-      description: '直接读取某时间段的聊天记录（超过 limit 时均匀采样，保证时间覆盖）。适合"大家在聊什么/总结一下/有什么话题"这类总结归纳型问题——这类问题不要用关键词搜索。',
+      name: 'get_context',
+      description: '按消息 id 拉取该消息前后的完整对话(按 30 分钟时间断层自动截断到当前话题)。当 search_messages 的片段不足以回答问题、需要还原某条命中消息的来龙去脉时用。messageId 必须来自 search_messages 返回的 hitIds,不要凭空构造。',
       parameters: {
         type: 'object',
         properties: {
-          dateFrom: { type: 'string', description: '起始日期 YYYY-MM-DD' },
-          dateTo: { type: 'string', description: '结束日期 YYYY-MM-DD' },
-          limit: { type: 'number', description: '最多返回条数，默认120，上限200' },
+          messageId: { type: 'string', description: 'search_messages 返回的 hitIds 中的消息 id' },
+          span: { type: 'number', description: '上下文最大条数,默认 24,上限 60' },
+        },
+        required: ['messageId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_recent_messages',
+      description: '直接读取某时间段的聊天记录(超过 limit 时均匀采样,保证时间覆盖)。适合"大家在聊什么/总结一下/有什么话题/氛围如何"这类总结归纳型问题——这类问题不要用关键词搜索,直接读记录后归纳。不适合找具体某句话(用 search_messages)。',
+      parameters: {
+        type: 'object',
+        properties: {
+          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
+          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+          limit: { type: 'number', description: '最多返回条数,默认120,上限200' },
         },
         required: ['dateFrom', 'dateTo'],
         additionalProperties: false,
@@ -224,31 +257,155 @@ function expandContext(msgs, hitIdx, { gapMs = 30 * 60 * 1000, maxSpan = 12 } = 
   return [start, end + 1]; // [start, end)
 }
 
-async function executeTool(name, args, allMessages, ledger, config, question) {
-  if (name === 'search_messages') {
-    const { keywords = [], person, dateFrom, dateTo } = args;
-    let msgs = allMessages;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-    if (dateFrom || dateTo) {
+/** 模型偶尔把 keywords 传成字符串/数字而非数组,归一成字符串数组。 */
+function normalizeKeywords(keywords) {
+  if (keywords == null) return [];
+  const arr = Array.isArray(keywords) ? keywords : [keywords];
+  return arr.map(k => String(k)).filter(Boolean);
+}
+
+function msgDate(m) {
+  return (m.time || '').split(' ')[0].replace(/\//g, '-');
+}
+
+/** 日期参数格式校验。非法时返回可操作的错误对象(含格式示例),合法返回 null。 */
+function validateDateArgs({ dateFrom, dateTo }) {
+  for (const [k, v] of [['dateFrom', dateFrom], ['dateTo', dateTo]]) {
+    if (v != null && !DATE_RE.test(v)) {
+      return { error: `${k} 格式非法: "${v}"。必须是 YYYY-MM-DD,例如 "2026-07-03"` };
+    }
+  }
+  return null;
+}
+
+function filterByDate(msgs, dateFrom, dateTo) {
+  if (!dateFrom && !dateTo) return msgs;
+  return msgs.filter(m => {
+    const d = msgDate(m);
+    if (!d) return false;
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  });
+}
+
+/** 全量数据的可用日期范围(引导 agent 修正越界的日期参数)。 */
+function dateSpanOf(msgs) {
+  if (!msgs.length) return null;
+  return { first: msgDate(msgs[0]), last: msgDate(msgs[msgs.length - 1]) };
+}
+
+async function executeTool(name, args, allMessages, ledger, config, question) {
+  if (name === 'count_messages') {
+    const { person, dateFrom, dateTo } = args;
+    const keywords = normalizeKeywords(args.keywords);
+    const invalid = validateDateArgs(args);
+    if (invalid) return invalid;
+
+    let msgs = filterByDate(allMessages, dateFrom, dateTo);
+    let personNote;
+    if (person) {
+      const p = String(person).toLowerCase();
+      const byPerson = msgs.filter(m => String(m.user ?? '').toLowerCase().includes(p));
+      if (byPerson.length > 0) msgs = byPerson;
+      else personNote = `未找到发言人 "${person}",统计的是全部发言人`;
+    }
+    // 词面包含匹配(any-of):计数要可预测、可解释,不做相关性打分
+    const kws = keywords.map(k => String(k).toLowerCase()).filter(Boolean);
+    if (kws.length) {
       msgs = msgs.filter(m => {
-        const d = (m.time || '').split(' ')[0].replace(/\//g, '-');
-        if (!d) return false;
-        if (dateFrom && d < dateFrom) return false;
-        if (dateTo && d > dateTo) return false;
-        return true;
+        const text = ((m.content || '') + ' ' + (m.share?.title || '')).toLowerCase();
+        return kws.some(k => text.includes(k));
       });
     }
+
+    const byDate = new Map();
+    for (const m of msgs) {
+      const d = msgDate(m);
+      if (d) byDate.set(d, (byDate.get(d) || 0) + 1);
+    }
+    let groups = [...byDate.entries()].map(([key, count]) => ({ key, count }));
+    groups.sort((a, b) => b.count - a.count);
+    const truncated = groups.length > 40;
+    groups = groups.slice(0, 40).sort((a, b) => (a.key < b.key ? -1 : 1));
+
+    ledger.searchHistory.push({ count: true, keywords, person, dateFrom, dateTo, total: msgs.length });
+    return {
+      total: msgs.length,
+      groups,
+      truncated,
+      dateSpan: dateSpanOf(allMessages),
+      ...(personNote ? { personNote } : {}),
+      ...(msgs.length === 0 ? { hint: kws.length ? '没有消息包含这些关键词。建议:换更短的词(2字)或同义词后重试' : '该条件下没有任何消息' } : {}),
+    };
+  }
+
+  if (name === 'get_context') {
+    const { messageId, span } = args;
+    const maxSpan = Math.min(Math.max(Number(span) || 24, 4), 60);
+    const idx = allMessages.findIndex(m => String(m.id) === String(messageId));
+    if (idx === -1) {
+      return { found: false, hint: `消息 id "${messageId}" 不存在。messageId 必须来自 search_messages 返回的 hitIds,不要自行构造` };
+    }
+    const [start, end] = expandContext(allMessages, idx, { maxSpan });
+    const slice = allMessages.slice(start, end);
+    const m = allMessages[idx];
+    ledger.citations.push({
+      id: m.id,
+      date: msgDate(m),
+      user: m.user,
+      preview: (m.content || m.share?.title || '').slice(0, 60),
+    });
+    ledger.searchHistory.push({ context: true, messageId });
+    return {
+      found: true,
+      range: { from: msgDate(slice[0]), to: msgDate(slice[slice.length - 1]), count: slice.length },
+      messages: slice.map(formatMessage),
+    };
+  }
+
+  if (name === 'search_messages') {
+    const { person, dateFrom, dateTo } = args;
+    const keywords = normalizeKeywords(args.keywords);
+    const invalid = validateDateArgs(args);
+    if (invalid) return invalid;
+
+    let msgs = filterByDate(allMessages, dateFrom, dateTo);
+    let personNote;
     if (person) {
-      const p = person.toLowerCase();
-      const byPerson = msgs.filter(m => (m.user || '').toLowerCase().includes(p));
-      // 有匹配者按人筛选；没有则保留全量（人名可能记错，让关键词兜底）
+      const p = String(person).toLowerCase();
+      const byPerson = msgs.filter(m => String(m.user ?? '').toLowerCase().includes(p));
+      // 有匹配者按人筛选;没有则保留全量(人名可能记错,让关键词兜底)并显式告知
       if (byPerson.length > 0) msgs = byPerson;
+      else personNote = `未找到发言人 "${person}",已在全部发言人中搜索`;
+    }
+
+    const span = dateSpanOf(allMessages);
+    if (msgs.length === 0) {
+      ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
+      return {
+        matchCount: 0,
+        totalInRange: 0,
+        hint: `日期范围 ${dateFrom || '?'} ~ ${dateTo || '?'} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}`,
+      };
     }
 
     // BM25 检索（bigram 分词，词频/文档长度归一），替代 includes 命中计数
     const docs = msgs.map(m => (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || ''));
     const query = keywords.join(' ');
     let hits = bm25Search(docs, query, { limit: 40 });
+
+    if (hits.length === 0) {
+      ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
+      return {
+        matchCount: 0,
+        totalInRange: msgs.length,
+        hint: `范围内有 ${msgs.length} 条消息但关键词无命中。建议:1) 把长关键词拆成 2 字短词 2) 补充同义词/英文缩写 3) 用 count_messages 换关键词探测话题分布在哪些日期`,
+        ...(personNote ? { personNote } : {}),
+      };
+    }
 
     // 时间衰减加权：问"最近"时用户更关心新消息，纯相关性会让几天前的
     // 高分讨论把今天的对话挤出 top-N。半衰期 2 天，只在范围内相对衰减。
@@ -295,7 +452,8 @@ async function executeTool(name, args, allMessages, ledger, config, question) {
     }
     const chunks = merged.slice(0, 8).map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
 
-    // 真实引用：top 命中的消息 id/日期/预览，供最终 sources 使用
+    // 真实引用：top 命中的消息 id/日期/预览。同时作为 hitIds 回给模型,
+    // 供 get_context 按 id 下钻——模型无法从纯文本 snippets 得知消息 id。
     const citations = hits.slice(0, 8).map(h => {
       const m = msgs[h.idx];
       return {
@@ -317,20 +475,22 @@ async function executeTool(name, args, allMessages, ledger, config, question) {
       totalInRange: msgs.length,
       reranked,
       dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
+      hitIds: citations,
       snippets: chunks,
+      ...(personNote ? { personNote } : {}),
     };
   }
 
   if (name === 'get_recent_messages') {
     const { dateFrom, dateTo, limit } = args;
+    const invalid = validateDateArgs(args);
+    if (invalid) return invalid;
     const maxCount = Math.min(limit || 120, 200);
-    const msgs = allMessages.filter(m => {
-      const d = (m.time || '').split(' ')[0].replace(/\//g, '-');
-      if (!d) return false;
-      if (dateFrom && d < dateFrom) return false;
-      if (dateTo && d > dateTo) return false;
-      return true;
-    });
+    const msgs = filterByDate(allMessages, dateFrom, dateTo);
+    if (msgs.length === 0) {
+      const span = dateSpanOf(allMessages);
+      return { total: 0, returned: 0, hint: `日期范围 ${dateFrom} ~ ${dateTo} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}` };
+    }
     // 超出上限时均匀采样而非只取尾部，避免总结型问题的时间偏差
     let sample;
     if (msgs.length <= maxCount) {
@@ -399,26 +559,32 @@ async function conversationLoop(question, allMessages, config) {
   const today = new Date().toISOString().split('T')[0];
   const systemPrompt = `你是一个群聊记录问答助手。今天是 ${today}。
 
-先判断问题类型，选对工具：
+先判断问题类型,选对工具:
 
 【事实检索型】"X 说了什么"、"谁提到过 Y"、"关于 Z 的讨论"
-→ 用 search_messages。关键词同时给同义词/英文缩写（问"大模型"→ ["大模型","LLM","GPT","AI"]）。
-→ 结果不足时换关键词或扩大日期范围再搜，不要轻易放弃。
+→ 用 search_messages。关键词同时给同义词/英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"])。
+→ 片段信息不足以回答时,用 get_context 按 hitIds 里的消息 id 拉完整对话。
 
 【总结归纳型】"大家在聊什么"、"总结一下"、"最近有什么话题"、"聊天氛围如何"
 → 直接用 get_recent_messages 读取该时间段记录后归纳。不要用关键词搜索——总结不需要检索。
 
-回答要求：
-- 只基于聊天记录回答，不要编造
+搜索策略(先宽后窄):
+- 不确定话题发生在什么时候 → 先用 count_messages(不限日期)探测该话题分布在哪些日期,再把 search_messages 锁定到热点日期。
+- 先用宽泛的短关键词起步,根据结果逐步收窄;不要一上来就用长而具体的词组。
+- 零命中不是终点:工具返回的 hint 会告诉你怎么调整(拆词/换同义词/扩日期),按提示重试,不要轻易放弃。
+- 结果里的 personNote / hint 字段是给你的操作提示,务必据此修正下一步调用。
+
+回答要求:
+- 只基于聊天记录回答,不要编造
 - 引用具体发言人和日期
 - 找不到相关信息时明确告知
 - 用中文回答
 
-时间理解：
+时间理解:
 - "昨天" = ${new Date(Date.now() - 86400000).toISOString().split('T')[0]}
 - "前天" = ${new Date(Date.now() - 172800000).toISOString().split('T')[0]}
 - "最近" = 最近7天 (${new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]} ~ ${today})
-- "上周" = 上一个完整周（周一到周日）`;
+- "上周" = 上一个完整周(周一到周日)`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -435,8 +601,9 @@ async function conversationLoop(question, allMessages, config) {
     }
 
     // LLM call with retry + timeout (Pi-Multi-Agent pattern)
+    // 60s:总结型问题携带 200 条消息生成最终回答,30s 会误杀(baseline q15)
     const assistantMsg = await withRetry(
-      () => withTimeout(callLLM(config, messages), 30000),
+      () => withTimeout(callLLM(config, messages), 60000),
       { maxRetries: 2, initialDelay: 1000 }
     );
 
@@ -489,6 +656,9 @@ async function conversationLoop(question, allMessages, config) {
 }
 
 // ─── Public API ────────────────────────────────────────────────────────
+// executeTool / expandContext 仅为单测导出
+export { executeTool, expandContext };
+
 export async function askAgent(question, allMessages, aiConfigOverride) {
   const aiConfig = aiConfigOverride || loadAiConfig();
   if (!aiConfig) return { ok: false, error: 'AI 未配置' };
