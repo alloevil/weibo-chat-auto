@@ -21,6 +21,17 @@ function loadCookies() {
     return require('./lib/cookie-store').cookieHeader();
 }
 
+// 微博响应会滚动续期部分 Cookie（Set-Cookie），吸收回 cookies.json 延长登录有效期
+function absorbSetCookies(proxyRes, requestUrl) {
+    const sc = proxyRes.headers['set-cookie'];
+    if (!sc || !sc.length) return;
+    try {
+        require('./lib/cookie-store').absorbSetCookies(sc, requestUrl);
+    } catch (e) {
+        console.error('[cookie] Set-Cookie 吸收失败:', e.message);
+    }
+}
+
 // Per-group message cache
 const messageCaches = {};
 
@@ -566,6 +577,7 @@ const server = http.createServer((req, res) => {
                 'X-Requested-With': 'XMLHttpRequest',
             },
         }, (proxyRes) => {
+            absorbSetCookies(proxyRes, imageUrl);
             if (proxyRes.statusCode !== 200) {
                 res.writeHead(proxyRes.statusCode);
                 res.end('Image fetch failed');
@@ -825,6 +837,7 @@ const server = http.createServer((req, res) => {
                         return;
                     }
                     https.get(imgUrl, { headers: { 'Cookie': cookieHeader, 'Referer': 'https://api.weibo.com/chat' } }, (imgRes) => {
+                        absorbSetCookies(imgRes, imgUrl);
                         if (imgRes.statusCode !== 200) { resolve(null); return; }
                         const chunks = [];
                         imgRes.on('data', c => chunks.push(c));
