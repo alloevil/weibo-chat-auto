@@ -10,7 +10,7 @@ module.exports = [
     prettier,
     // 通用 Node 脚本
     {
-        files: ['*.js', 'lib/**/*.js', 'test/**/*.js'],
+        files: ['*.js', 'lib/**/*.js', 'test/**/*.js', 'scripts/**/*.js'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'commonjs',
@@ -23,6 +23,8 @@ module.exports = [
                 Buffer: 'readonly',
                 setTimeout: 'readonly',
                 clearTimeout: 'readonly',
+                setInterval: 'readonly',
+                clearInterval: 'readonly',
                 globalThis: 'readonly',
                 URL: 'readonly',
                 fetch: 'readonly',
