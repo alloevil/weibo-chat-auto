@@ -1,14 +1,30 @@
-# 📨 Weibo Group Chat Archiver
+<p align="center">
+  <img src="./assets/hero.svg" width="100%" alt="Weibo Group Chat Archiver — 自动归档微博群聊消息，原生桌面应用 + AI 摘要与问答">
+</p>
 
-> 自动归档微博网页聊天群的历史消息 — **原生桌面应用**（应用内扫码登录，无需手动配 Cookie）或本地查看器，支持多群、定时归档、按天导出，内置 AI 每日摘要与 Agentic 问答。
-
-<p>
+<p align="center">
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white">
   <img alt="Puppeteer" src="https://img.shields.io/badge/Puppeteer-24-40B5A4?logo=puppeteer&logoColor=white">
   <img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20WSL-555">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
+  <img alt="Stars" src="https://img.shields.io/github/stars/alloevil/weibo-chat-auto?style=flat&logo=github&color=yellow">
 </p>
+
+<p align="center">
+  <a href="#-快速开始">快速开始</a> ·
+  <a href="#-功能">功能</a> ·
+  <a href="#-ai-功能">AI 功能</a> ·
+  <a href="#-预览截图">截图</a>
+</p>
+
+---
+
+自动归档微博网页聊天群的历史消息 — **原生桌面应用**（应用内扫码登录，无需手动配 Cookie）或本地查看器，支持多群、定时归档、按天导出，内置 AI 每日摘要与 Agentic 问答。
+
+---
+
+## 🎬 演示
 
 ![演示](docs/demo.gif)
 
@@ -201,8 +217,10 @@ Cookie 有时效（约几天～两周），但**归档器每次成功运行都�
 
 ---
 
+## 📸 预览截图
+
 <details>
-<summary><b>📸 预览截图</b></summary>
+<summary><b>点击展开截图</b></summary>
 
 **消息视图** — 时段热力图、引用气泡（标原作者）、@提及高亮、每条「🎯 上下文」入口
 
@@ -219,6 +237,8 @@ Cookie 有时效（约几天～两周），但**归档器每次成功运行都�
 > 截图中的用户名、群名与头像均为脱敏示例。
 
 </details>
+
+---
 
 <details>
 <summary><b>✅ 前置要求</b></summary>
@@ -364,3 +384,9 @@ npm run save-cookies
 ## 📄 License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">
+  <sub>⭐ 觉得有用？给个 Star 吧！</sub>
+</p>
