@@ -727,6 +727,8 @@ async function main() {
     let pageNum = 0;
     const MAX_PAGES = 500;
     const COUNT = 20;
+    let consecutiveErrors = 0;  // 连续错误计数，用于指数退避
+    const MAX_CONSECUTIVE_ERRORS = 5;
 
     while (pageNum < MAX_PAGES) {
         let url = `https://api.weibo.com/webim/groupchat/query_messages.json?convert_emoji=1&query_sender=1&count=${COUNT}&id=${groupId}&max_mid=${maxMid || 0}`;
@@ -734,11 +736,41 @@ async function main() {
 
         try {
             const resp = await httpsGet(url);
+
+            // 速率限制检测：429 Too Many Requests 或 403 Forbidden
+            if (resp.status === 429 || resp.status === 403) {
+                consecutiveErrors++;
+                if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                    console.log(`[API] 连续 ${consecutiveErrors} 次被限流，停止分页（已获取 ${allApiMessages.length} 条）`);
+                    break;
+                }
+                // 指数退避：1s → 2s → 4s → 8s → 16s
+                const backoffMs = Math.min(1000 * Math.pow(2, consecutiveErrors), 16000);
+                console.log(`[API] 被限流 (${resp.status})，${backoffMs / 1000}s 后重试 (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})`);
+                await delay(backoffMs);
+                continue; // 不递增 pageNum，重试当前页
+            }
+
             const data = JSON.parse(resp.body);
 
-            if (pageNum === 0) {
-                console.log(`[API] 状态: ${resp.status}, keys: ${Object.keys(data).join(',')}`);
+            // 微博 API 错误码检测
+            if (data.error_code) {
+                const code = data.error_code;
+                if (code === 21301) {
+                    console.log('[API] 登录态失效，停止');
+                    break;
+                }
+                console.log(`[API] 业务错误: ${code} ${data.error || ''}`);
+                if (code === 10023 || code === 10024) { // 频率限制类错误码
+                    consecutiveErrors++;
+                    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) break;
+                    await delay(Math.min(1000 * Math.pow(2, consecutiveErrors), 16000));
+                    continue;
+                }
+                break;
             }
+
+            consecutiveErrors = 0; // 成功则重置
 
             const rawMsgs = data.messages || data.data?.messages || data.data || [];
             const msgList = Array.isArray(rawMsgs) ? rawMsgs : (Array.isArray(data.list) ? data.list : []);
@@ -779,36 +811,20 @@ async function main() {
             maxMid = firstId;
             pageNum++;
 
-            await delay(300);
+            // 基础间隔 500ms（从 300ms 提升），每 50 页额外休息 2s
+            const baseDelay = 500;
+            const extraDelay = (pageNum % 50 === 0) ? 2000 : 0;
+            await delay(baseDelay + extraDelay);
         } catch (e) {
-            console.log(`[API] 请求失败: ${e.message}`);
-            // 重试一次
-            await delay(2000);
-            try {
-                const resp = await httpsGet(url);
-                const data = JSON.parse(resp.body);
-                const rawMsgs = data.messages || data.data?.messages || data.data || [];
-                const msgList = Array.isArray(rawMsgs) ? rawMsgs : [];
-                if (msgList.length === 0) break;
-                for (const m of msgList) {
-                    const n = normalizeMessage(m);
-                    if (n && !messageIds.has(String(n.id))) {
-                        messageIds.add(String(n.id));
-                        allApiMessages.push(n);
-                    }
-                }
-                const firstMsg = msgList[0];
-                const firstId = String(firstMsg?.id || firstMsg?.mid || '');
-                const pageOldestTs = (typeof firstMsg?.time === 'number' && firstMsg.time > 0) ? firstMsg.time * 1000 : Date.now();
-                if (stopTimestamp > 0 && pageOldestTs < stopTimestamp) break;
-                if (!firstId || firstId === maxMid) break;
-                maxMid = firstId;
-                pageNum++;
-                await delay(300);
-            } catch (e2) {
-                console.log(`[API] 重试也失败: ${e2.message}`);
+            consecutiveErrors++;
+            console.log(`[API] 请求失败: ${e.message} (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})`);
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                console.log('[API] 连续错误过多，停止分页');
                 break;
             }
+            // 指数退避重试
+            const backoffMs = Math.min(2000 * Math.pow(2, consecutiveErrors - 1), 16000);
+            await delay(backoffMs);
         }
     }
 
