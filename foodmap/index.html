@@ -63,7 +63,8 @@ const bloggerName = params.get('name') || '';
 document.getElementById('bloggerName').textContent = bloggerName ? `${bloggerName}的美食地图` : '美食地图';
 
 // 暗色底图(CartoDB dark_all,免 API key)
-const map = L.map('map', { zoomControl: true }).setView([34, 108], 5);
+const map = L.map('map', { zoomControl: false }).setView([34, 108], 5);
+L.control.zoom({ position: 'topright' }).addTo(map); // 避免与左上角信息卡重叠
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
     subdomains: 'abcd',
