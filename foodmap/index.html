@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>美食地图</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+    --primary: #5e6ad2;
+    --primary-hover: #828fff;
+    --on-primary: #ffffff;
+    --ink: #f7f8f8;
+    --ink-muted: #d0d6e0;
+    --ink-subtle: #8a8f98;
+    --canvas: #010102;
+    --surface-1: #0f1011;
+    --surface-2: #141516;
+    --hairline: #23252a;
+    --hairline-strong: #34343a;
+    --primary-tint: rgba(94, 106, 210, 0.16);
+    color-scheme: dark;
+}
+body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, sans-serif; background: var(--canvas); color: var(--ink); height: 100vh; overflow: hidden; }
+#map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--canvas); }
+.topbar {
+    position: absolute; top: 16px; left: 16px; z-index: 1000;
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
+    padding: 12px 16px; min-width: 220px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+}
+.topbar h1 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.topbar .sub { font-size: 12px; color: var(--ink-subtle); }
+.topbar .stat { font-size: 12px; color: var(--ink-muted); margin-top: 6px; }
+.leaflet-popup-content-wrapper { background: var(--surface-1); color: var(--ink); border-radius: 12px; border: 1px solid var(--hairline); }
+.leaflet-popup-tip { background: var(--surface-1); }
+.leaflet-popup-content { margin: 12px 14px; }
+.leaflet-popup-close-button { color: var(--ink-subtle) !important; }
+.poi-name { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--ink); }
+.visit { padding: 8px 0; border-top: 1px solid var(--hairline); }
+.visit:first-child { border-top: none; padding-top: 0; }
+.visit-date { font-size: 12px; color: var(--ink-subtle); margin-bottom: 3px; }
+.visit-dishes span { display: inline-block; padding: 1px 7px; margin: 2px 3px 0 0; background: var(--primary-tint); border-radius: 5px; color: var(--primary-hover); font-size: 11px; }
+.visit-quote { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-top: 4px; }
+.visit-link { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--primary-hover); text-decoration: none; }
+.visit-link:hover { text-decoration: underline; }
+.empty-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 999; color: var(--ink-subtle); font-size: 14px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="topbar">
+    <h1 id="bloggerName">美食地图</h1>
+    <div class="sub">来自微博个人主页动态的地理标记</div>
+    <div class="stat" id="stat"></div>
+</div>
+<div class="empty-hint" id="emptyHint" style="display:none"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+const params = new URLSearchParams(location.search);
+const bloggerName = params.get('name') || '';
+document.getElementById('bloggerName').textContent = bloggerName ? `${bloggerName}的美食地图` : '美食地图';
+
+// 暗色底图(CartoDB dark_all,免 API key)
+const map = L.map('map', { zoomControl: true }).setView([34, 108], 5);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+}).addTo(map);
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function formatDate(raw) {
+    const t = Date.parse(raw);
+    if (isNaN(t)) return raw || '';
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function renderPopup(r) {
+    let html = `<div class="poi-name">${escapeHtml(r.name)}</div>`;
+    for (const v of r.visits) {
+        const dishes = (v.dishes || []).map(d => `<span>${escapeHtml(d)}</span>`).join('');
+        html += `<div class="visit">
+            <div class="visit-date">${formatDate(v.date)}</div>
+            ${dishes ? `<div class="visit-dishes">${dishes}</div>` : ''}
+            ${v.quote ? `<div class="visit-quote">${escapeHtml(v.quote)}</div>` : ''}
+            ${v.postUrl ? `<a class="visit-link" href="${v.postUrl}" target="_blank" rel="noopener">查看原微博 →</a>` : ''}
+        </div>`;
+    }
+    return html;
+}
+
+async function load() {
+    // 不带 ?name= 时仍尝试请求接口——服务端可能用 --name 配了默认博主
+    const resp = await fetch('/api/restaurants' + (bloggerName ? '?name=' + encodeURIComponent(bloggerName) : ''));
+    const restaurants = await resp.json();
+    if (!Array.isArray(restaurants)) {
+        document.getElementById('emptyHint').style.display = '';
+        document.getElementById('emptyHint').textContent = resp.status === 400
+            ? '请在地址栏加上 ?name=<博主名>,例如 ?name=陈晓卿(或启动 server.mjs 时加 --name 参数)'
+            : (restaurants.error || '加载失败');
+        return;
+    }
+    if (restaurants.length === 0) {
+        document.getElementById('emptyHint').style.display = '';
+        document.getElementById('emptyHint').textContent = '暂无数据';
+        return;
+    }
+
+    const totalVisits = restaurants.reduce((s, r) => s + r.visits.length, 0);
+    document.getElementById('stat').textContent = `${restaurants.length} 家餐厅 · ${totalVisits} 次拜访`;
+
+    const markers = [];
+    for (const r of restaurants) {
+        const marker = L.circleMarker([r.lat, r.lng], {
+            radius: 7, color: '#5e6ad2', fillColor: '#828fff', fillOpacity: 0.85, weight: 2,
+        }).addTo(map);
+        marker.bindPopup(renderPopup(r), { maxWidth: 320 });
+        markers.push(marker);
+    }
+    const group = L.featureGroup(markers);
+    map.fitBounds(group.getBounds(), { padding: [40, 40] });
+}
+
+load();
+</script>
+</body>
+</html>

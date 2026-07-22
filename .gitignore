@@ -27,3 +27,7 @@ sidecar/dist/
 design-md/
 .codex/
 eval/results/
+
+# foodmap:独立 Cookie(与群聊 cookies.json 隔离,见 foodmap/weibo-cookies.mjs 注释)+ 生成数据
+foodmap/cookies.json
+foodmap/data/
