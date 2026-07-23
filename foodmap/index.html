@@ -684,18 +684,28 @@ function setupJourney(restaurants, clusterGroup) {
     // 近似:取两点中点,往垂直方向偏移一点当控制点,弯曲程度跟距离成比例
     // (偏移量是中点到两端距离的固定比例,不是绝对像素值,长途线看起来
     // 弯得自然,短途线不会突然弓起一个很夸张的包)。
-    function arcPoints(a, b, steps = 24) {
+    // arcControlPoint/quadraticPoint 单独抽出来,是因为画弧线的 arcPoints
+    // 和让飞机图标沿弧线滑动的 animateMarkerTo 必须用同一个控制点、同一条
+    // 曲线——之前两边各算一套(画线用弧线公式,图标用直线插值),导致图标
+    // 走的是直线、背后的线却是弯的,两者对不上。
+    function arcControlPoint(a, b) {
         const midLat = (a.lat + b.lat) / 2, midLng = (a.lng + b.lng) / 2;
         const dLat = b.lat - a.lat, dLng = b.lng - a.lng;
         const bend = 0.45;
-        const ctrlLat = midLat - dLng * bend;
-        const ctrlLng = midLng + dLat * bend;
+        return { lat: midLat - dLng * bend, lng: midLng + dLat * bend };
+    }
+    function quadraticPoint(a, ctrl, b, t) {
+        return {
+            lat: (1 - t) ** 2 * a.lat + 2 * (1 - t) * t * ctrl.lat + t ** 2 * b.lat,
+            lng: (1 - t) ** 2 * a.lng + 2 * (1 - t) * t * ctrl.lng + t ** 2 * b.lng,
+        };
+    }
+    function arcPoints(a, b, steps = 24) {
+        const ctrl = arcControlPoint(a, b);
         const pts = [];
         for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const lat = (1 - t) ** 2 * a.lat + 2 * (1 - t) * t * ctrlLat + t ** 2 * b.lat;
-            const lng = (1 - t) ** 2 * a.lng + 2 * (1 - t) * t * ctrlLng + t ** 2 * b.lng;
-            pts.push([lat, lng]);
+            const p = quadraticPoint(a, ctrl, b, i / steps);
+            pts.push([p.lat, p.lng]);
         }
         return pts;
     }
@@ -737,10 +747,12 @@ function setupJourney(restaurants, clusterGroup) {
     // 是什么图标。远距离的这一步改成让图标沿直线平滑"飞"过去(而不是瞬移),
     // 配合下面 play() 里给远距离步骤单独留出更长的停留时间,才看得出"飞机在飞"。
     function animateMarkerTo(from, to, duration) {
+        const ctrl = arcControlPoint(from, to); // 跟 rebuildSegments 画的弧线用同一个控制点
         const start = performance.now();
         function step(now) {
             const t = Math.min(1, (now - start) / duration);
-            marker.setLatLng([from.lat + (to.lat - from.lat) * t, from.lng + (to.lng - from.lng) * t]);
+            const p = quadraticPoint(from, ctrl, to, t);
+            marker.setLatLng([p.lat, p.lng]);
             if (t < 1) requestAnimationFrame(step);
         }
         requestAnimationFrame(step);
@@ -750,7 +762,7 @@ function setupJourney(restaurants, clusterGroup) {
     // 瓦片就立刻开始滑动,看起来像"漂浮在一片空白/半空白的底图上飘过去"。
     // 用顶层的 tilesReady 标记等一下,超时(1.5s)兜底,不会因为某张瓦片
     // 一直加载不出来就卡住整个播放。
-    function waitForTiles(maxWaitMs = 1500) {
+    function waitForTiles(maxWaitMs = 1200) {
         if (tilesReady) return Promise.resolve();
         return new Promise(resolve => {
             let done = false;
@@ -772,7 +784,7 @@ function setupJourney(restaurants, clusterGroup) {
         marker.setIcon(journeyIcon(mode));
         function moveMarker() {
             if (animateMarker && mode === 'far' && prev) {
-                animateMarkerTo(prev, pt, 1400);
+                animateMarkerTo(prev, pt, 1600);
             } else {
                 marker.setLatLng([pt.lat, pt.lng]);
             }
@@ -790,16 +802,18 @@ function setupJourney(restaurants, clusterGroup) {
         // 目标缩放很接近"时才认为"不需要再挪镜头",飞机步骤(缩放目标依
         // 每一步的两点距离而变)则维持原来每次都飞的行为,不做跳过判断。
         // 镜头真的要移动时,先等目标区域的瓦片加载完才让图标动,不然图标
-        // 会先"到位"、瓦片才慢慢补上,看起来很突兀。
+        // 会先"到位"、瓦片才慢慢补上,看起来很突兀。动画本身也不能太快——
+        // 之前 1.4s/0.5s 对瓦片下载来说太紧,经常动画都放完了瓦片还是空的,
+        // 拉长一些给瓦片留出真正加载完的时间。
         if (pan) {
             if (mode === 'far' && prev) {
-                map.flyToBounds([[prev.lat, prev.lng], [pt.lat, pt.lng]], { padding: [80, 80], maxZoom: 8, duration: 1.4 });
+                map.flyToBounds([[prev.lat, prev.lng], [pt.lat, pt.lng]], { padding: [80, 80], maxZoom: 8, duration: 2.2 });
                 waitForTiles().then(moveMarker);
             } else {
                 const zoomCloseEnough = Math.abs(map.getZoom() - 12) < 0.6;
                 const alreadyVisible = zoomCloseEnough && map.getBounds().pad(-0.15).contains([pt.lat, pt.lng]);
                 if (!alreadyVisible) {
-                    map.flyTo([pt.lat, pt.lng], 12, { animate: true, duration: 0.5 });
+                    map.flyTo([pt.lat, pt.lng], 12, { animate: true, duration: 0.9 });
                     waitForTiles().then(moveMarker);
                 } else {
                     moveMarker();
@@ -827,7 +841,7 @@ function setupJourney(restaurants, clusterGroup) {
             if (!playing) return;
             if (index >= journey.length - 1) { pause(); return; }
             renderStep(index + 1, { pan: true, animateMarker: true });
-            timer = setTimeout(tick, lastMode === 'far' ? 2200 : 900);
+            timer = setTimeout(tick, lastMode === 'far' ? 3200 : 1000);
         }
         tick();
     }
