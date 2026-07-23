@@ -318,6 +318,13 @@ const baseLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voy
     className: 'lively-tiles', // 纯 CSS 滤镜调色,不用额外的地图服务/API key
 }).addTo(map);
 
+// 跟踪瓦片是否加载完——轨迹回放跳到新区域时用得上(见 setupJourney 的
+// waitForTiles):不能让车/飞机图标在瓦片还没画出来的空白/半空白底图上
+// 就开始滑动,那样看起来像"漂浮在虚空里"
+let tilesReady = true;
+baseLayer.on('loading', () => { tilesReady = false; });
+baseLayer.on('load', () => { tilesReady = true; });
+
 // 滤镜强度跟着缩放层级走:洲/世界视图(zoom<=4)加到最猛,街道级
 // (zoom>=12)减弱到不影响路名可读性,中间保持默认强度
 function updateTileFilterTier() {
@@ -716,6 +723,20 @@ function setupJourney(restaurants, clusterGroup) {
         requestAnimationFrame(step);
     }
 
+    // 镜头飞到新区域时,目标位置的瓦片往往还在下载——如果车/飞机图标不等
+    // 瓦片就立刻开始滑动,看起来像"漂浮在一片空白/半空白的底图上飘过去"。
+    // 用顶层的 tilesReady 标记等一下,超时(1.5s)兜底,不会因为某张瓦片
+    // 一直加载不出来就卡住整个播放。
+    function waitForTiles(maxWaitMs = 1500) {
+        if (tilesReady) return Promise.resolve();
+        return new Promise(resolve => {
+            let done = false;
+            const finish = () => { if (done) return; done = true; baseLayer.off('load', finish); resolve(); };
+            baseLayer.on('load', finish);
+            setTimeout(finish, maxWaitMs);
+        });
+    }
+
     function renderStep(i, { pan = false, animateMarker = false } = {}) {
         index = i;
         progressEl.value = i;
@@ -726,10 +747,12 @@ function setupJourney(restaurants, clusterGroup) {
         const mode = distKm > FAR_THRESHOLD_KM ? 'far' : 'near';
         lastMode = mode;
         marker.setIcon(journeyIcon(mode));
-        if (animateMarker && mode === 'far' && prev) {
-            animateMarkerTo(prev, pt, 1400);
-        } else {
-            marker.setLatLng([pt.lat, pt.lng]);
+        function moveMarker() {
+            if (animateMarker && mode === 'far' && prev) {
+                animateMarkerTo(prev, pt, 1400);
+            } else {
+                marker.setLatLng([pt.lat, pt.lng]);
+            }
         }
         const dishText = pt.dishes.length ? ` · ${pt.dishes.slice(0, 3).join('、')}` : '';
         labelEl.textContent = `${formatDate(pt.date)} ${pt.name}${dishText}`;
@@ -743,16 +766,24 @@ function setupJourney(restaurants, clusterGroup) {
         // 永远卡在最初的大视野上、再也不放大——所以只在"当前缩放已经跟
         // 目标缩放很接近"时才认为"不需要再挪镜头",飞机步骤(缩放目标依
         // 每一步的两点距离而变)则维持原来每次都飞的行为,不做跳过判断。
+        // 镜头真的要移动时,先等目标区域的瓦片加载完才让图标动,不然图标
+        // 会先"到位"、瓦片才慢慢补上,看起来很突兀。
         if (pan) {
             if (mode === 'far' && prev) {
                 map.flyToBounds([[prev.lat, prev.lng], [pt.lat, pt.lng]], { padding: [80, 80], maxZoom: 8, duration: 1.4 });
+                waitForTiles().then(moveMarker);
             } else {
                 const zoomCloseEnough = Math.abs(map.getZoom() - 12) < 0.6;
                 const alreadyVisible = zoomCloseEnough && map.getBounds().pad(-0.15).contains([pt.lat, pt.lng]);
                 if (!alreadyVisible) {
                     map.flyTo([pt.lat, pt.lng], 12, { animate: true, duration: 0.5 });
+                    waitForTiles().then(moveMarker);
+                } else {
+                    moveMarker();
                 }
             }
+        } else {
+            moveMarker();
         }
     }
 
