@@ -273,8 +273,9 @@ function showLocateHint() {
         hint.classList.remove('show');
         setTimeout(() => hint.remove(), 300);
     };
-    const timer = setTimeout(dismiss, 6000);
-    btn.addEventListener('click', () => { clearTimeout(timer); dismiss(); }, { once: true });
+    // 只在点了按钮(或气泡本身)之后才消失,不设自动超时——用户可能没
+    // 第一时间注意到,给够时间看清楚提示在说什么
+    btn.addEventListener('click', dismiss, { once: true });
     hint.addEventListener('click', dismiss);
 }
 
