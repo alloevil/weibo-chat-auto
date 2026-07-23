@@ -427,12 +427,11 @@ const JourneyControl = L.Control.extend({
 });
 map.addControl(new JourneyControl());
 
-// 首次进入时用一个指向目标按钮的气泡提一下作用,避免光靠图标/文字被忽略;
-// 看过一次(点按钮/点气泡/等够几秒)就用 localStorage 记住,不会每次刷新
-// 都弹出来打扰老用户。定位按钮和侧栏折叠按钮共用这套逻辑,只是箭头方向
-// 相反——侧栏按钮在屏幕左边,气泡要摆在它右边、箭头朝左指。
-function showPointerHint({ key, targetSelector, text, arrowLeft = false }) {
-    if (localStorage.getItem(key)) return;
+// 每次进入都用一个指向目标按钮的气泡提一下作用,避免光靠图标/文字被忽略。
+// 之前用 localStorage 记住"看过了"只弹一次,但用户明确要求每次打开都弹,
+// 所以去掉了那层记忆——气泡还是会在点击按钮或点气泡本身之后消失,只是
+// 不再持久记住,下次刷新页面会重新出现。
+function showPointerHint({ targetSelector, text, arrowLeft = false }) {
     const btn = document.querySelector(targetSelector);
     if (!btn) return;
 
@@ -457,7 +456,6 @@ function showPointerHint({ key, targetSelector, text, arrowLeft = false }) {
     window.addEventListener('resize', position);
 
     const dismiss = () => {
-        localStorage.setItem(key, '1');
         window.removeEventListener('resize', position);
         hint.classList.remove('show');
         setTimeout(() => hint.remove(), 300);
@@ -585,9 +583,9 @@ async function load() {
     setupJourney(restaurants, clusterGroup);
     // 稍等一下再弹,避免和地图初次加载的动画抢注意力;两个提示错开时间,
     // 不会在同一瞬间一起弹出来显得很吵
-    setTimeout(() => showPointerHint({ key: 'foodmap_locate_hint_seen', targetSelector: '.locate-btn', text: '👉 点这里看看附近好吃的' }), 1200);
-    setTimeout(() => showPointerHint({ key: 'foodmap_journey_hint_seen', targetSelector: '.journey-btn', text: '👉 点这里回放旅行轨迹' }), 1600);
-    setTimeout(() => showPointerHint({ key: 'foodmap_sidebar_hint_seen', targetSelector: '#sidebarToggle', text: '👉 点这里看餐厅列表', arrowLeft: true }), 2000);
+    setTimeout(() => showPointerHint({ targetSelector: '.locate-btn', text: '👉 点这里看看附近好吃的' }), 1200);
+    setTimeout(() => showPointerHint({ targetSelector: '.journey-btn', text: '👉 点这里回放旅行轨迹' }), 1600);
+    setTimeout(() => showPointerHint({ targetSelector: '#sidebarToggle', text: '👉 点这里看餐厅列表', arrowLeft: true }), 2000);
 }
 
 // "定位我"按钮的实现:拿到浏览器地理位置后,在地图上标出"你在这"并把侧栏
