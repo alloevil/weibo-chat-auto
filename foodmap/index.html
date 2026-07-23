@@ -224,7 +224,9 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .journey-legend { display: flex; flex-wrap: wrap; gap: 8px; max-width: 460px; }
 .journey-legend .item { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--ink-subtle); }
 .journey-legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.journey-marker { position: relative; width: 14px; height: 14px; border-radius: 50%; background: #2f6f4f; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,111,79,.35); }
+/* 两段之间距离远用飞机、距离近用汽车(见 setupJourney 的 journeyIcon),
+   图标本身放大到能装下一个 emoji,不再是纯色小圆点 */
+.journey-marker { position: relative; width: 26px; height: 26px; border-radius: 50%; background: #2f6f4f; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,111,79,.35); display: flex; align-items: center; justify-content: center; font-size: 13px; }
 .journey-marker::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid #2f6f4f; animation: pulse 1.6s ease-out infinite; }
 /* 手机窄屏:这些面板的宽度都是按桌面尺寸一个个手动定的(236px 侧栏、
    170px 滑块……),窄屏上要么整体超出屏幕右边被裁掉,要么互相挤在一起。
@@ -682,8 +684,18 @@ function setupJourney(restaurants, clusterGroup) {
         }
     }
 
+    // 两点之间距离决定用什么交通方式的图标——纯粹是视觉隐喻,不是真实
+    // 交通方式数据,阈值(80km)选的是"市内开车 vs 跨城/跨国出行"的大致分界
+    const FAR_THRESHOLD_KM = 80;
+    function journeyIcon(mode) {
+        const emoji = mode === 'far' ? '✈️' : '🚗';
+        return L.divIcon({
+            className: '', html: `<div class="journey-marker">${emoji}</div>`,
+            iconSize: [26, 26], iconAnchor: [13, 13],
+        });
+    }
     const marker = L.marker(journey[0], {
-        icon: L.divIcon({ className: '', html: '<div class="journey-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }),
+        icon: journeyIcon('near'),
         zIndexOffset: 1000,
     });
 
@@ -695,11 +707,24 @@ function setupJourney(restaurants, clusterGroup) {
         index = i;
         progressEl.value = i;
         const pt = journey[i];
+        const prev = journey[i - 1];
         rebuildSegments(i);
+        const distKm = prev ? distanceKm(prev.lat, prev.lng, pt.lat, pt.lng) : 0;
+        const mode = distKm > FAR_THRESHOLD_KM ? 'far' : 'near';
+        marker.setIcon(journeyIcon(mode));
         marker.setLatLng([pt.lat, pt.lng]);
         const dishText = pt.dishes.length ? ` · ${pt.dishes.slice(0, 3).join('、')}` : '';
         labelEl.textContent = `${formatDate(pt.date)} ${pt.name}${dishText}`;
-        if (pan) map.panTo([pt.lat, pt.lng], { animate: true, duration: 0.4 });
+        // 近距离(市内开车)放大到看得清街道的程度;远距离(飞机跨城/跨国)
+        // 缩小到能把起点和终点都塞进视野,不然缩放没变、地图会突然"跳"到
+        // 看不出移动轨迹的一个小点
+        if (pan) {
+            if (mode === 'far' && prev) {
+                map.flyToBounds([[prev.lat, prev.lng], [pt.lat, pt.lng]], { padding: [80, 80], maxZoom: 8, duration: 0.6 });
+            } else {
+                map.flyTo([pt.lat, pt.lng], 12, { animate: true, duration: 0.5 });
+            }
+        }
     }
 
     function pause() {
@@ -714,7 +739,7 @@ function setupJourney(restaurants, clusterGroup) {
         timer = setInterval(() => {
             if (index >= journey.length - 1) { pause(); return; }
             renderStep(index + 1, { pan: true });
-        }, 550);
+        }, 900); // 比之前的 550ms 慢一些,给飞机跳转的缩放动画留出播放时间
     }
 
     function enter() {
