@@ -39,6 +39,9 @@
 }
 body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, sans-serif; background: var(--canvas); color: var(--ink); height: 100vh; overflow: hidden; }
 #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--canvas); }
+/* 纯 CSS 滤镜给底图调色,让颜色更鲜活、更接近插画感——不用换成需要 API
+   key 的卡通风格地图服务,底图数据源不变,只是显示时"调了个滤镜"。 */
+.lively-tiles { filter: saturate(1.45) contrast(1.08) brightness(1.02) sepia(.06); }
 .topbar {
     position: absolute; top: 16px; left: 16px; z-index: 1000;
     background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-panel);
@@ -303,6 +306,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
     attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
     subdomains: 'abcd',
     maxZoom: 19,
+    className: 'lively-tiles', // 纯 CSS 滤镜调色,不用额外的地图服务/API key
 }).addTo(map);
 
 // 侧栏顶部跟随信息卡的实际高度,而不是写死一个像素值——统计文字长度会变
