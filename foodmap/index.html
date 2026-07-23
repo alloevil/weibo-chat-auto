@@ -80,6 +80,16 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .sidebar-item .count { font-size: 11px; color: var(--ink-subtle); flex-shrink: 0; }
 .sidebar-item .count.repeat { color: #FFC131; }
 .sidebar-empty { padding: 16px; font-size: 12px; color: var(--ink-subtle); text-align: center; }
+.timebar {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1000;
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
+    padding: 10px 18px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-muted);
+}
+.timebar input[type=range] { width: 160px; accent-color: var(--primary-hover); }
+.timebar .year-label { min-width: 34px; text-align: center; color: var(--ink); font-weight: 600; }
+.timebar .reset-btn { color: var(--primary-hover); cursor: pointer; font-size: 11px; padding: 2px 6px; }
+.timebar .reset-btn:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -94,6 +104,15 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 <div class="sidebar" id="sidebar">
     <input class="sidebar-search" id="sidebarSearch" placeholder="搜索餐厅…">
     <div class="sidebar-list" id="sidebarList"></div>
+</div>
+<div class="timebar" id="timebar" style="display:none">
+    <span>起始</span>
+    <input type="range" id="yearFrom">
+    <span class="year-label" id="yearFromLabel"></span>
+    <span>结束</span>
+    <input type="range" id="yearTo">
+    <span class="year-label" id="yearToLabel"></span>
+    <span class="reset-btn" id="yearReset">重置</span>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -208,27 +227,32 @@ async function load() {
         marker.bindPopup(renderPopup(r), { maxWidth: 320 });
         clusterGroup.addLayer(marker);
         r._marker = marker; // 供侧栏列表点击联动
+        r._years = r.visits.map(v => { const t = Date.parse(v.date); return isNaN(t) ? null : new Date(t).getFullYear(); }).filter(y => y != null);
     }
     map.addLayer(clusterGroup);
     map.fitBounds(clusterGroup.getBounds(), { padding: [40, 40] });
 
-    setupSidebar(restaurants, clusterGroup, pickEmoji);
+    const sidebar = setupSidebar(restaurants, clusterGroup, pickEmoji);
+    setupTimeFilter(restaurants, clusterGroup, sidebar);
 }
 
-// 侧栏餐厅列表:按拜访次数排序,支持按名称搜索;点击项目让地图聚焦该标记并弹出详情
+// 侧栏餐厅列表:按拜访次数排序,支持按名称搜索;点击项目让地图聚焦该标记并弹出详情。
+// 返回 { refresh(visibleSet) } 供时间滑块联动——滑块变化时侧栏也要同步只显示范围内的餐厅。
 function setupSidebar(restaurants, clusterGroup, pickEmoji) {
     const sorted = [...restaurants].sort((a, b) => b.visits.length - a.visits.length);
     const listEl = document.getElementById('sidebarList');
     const searchEl = document.getElementById('sidebarSearch');
+    let visibleSet = null; // null = 不做时间过滤(全部可见)
 
-    function renderList(query) {
-        const q = (query || '').trim().toLowerCase();
-        const filtered = q ? sorted.filter(r => r.name.toLowerCase().includes(q)) : sorted;
+    function renderList() {
+        const q = searchEl.value.trim().toLowerCase();
+        let filtered = q ? sorted.filter(r => r.name.toLowerCase().includes(q)) : sorted;
+        if (visibleSet) filtered = filtered.filter(r => visibleSet.has(r));
         if (filtered.length === 0) {
             listEl.innerHTML = '<div class="sidebar-empty">没有匹配的餐厅</div>';
             return;
         }
-        listEl.innerHTML = filtered.map((r, i) => {
+        listEl.innerHTML = filtered.map((r) => {
             const repeat = r.visits.length >= 2;
             const idx = sorted.indexOf(r);
             return `<div class="sidebar-item" data-idx="${idx}">
@@ -238,8 +262,8 @@ function setupSidebar(restaurants, clusterGroup, pickEmoji) {
             </div>`;
         }).join('');
     }
-    renderList('');
-    searchEl.addEventListener('input', () => renderList(searchEl.value));
+    renderList();
+    searchEl.addEventListener('input', renderList);
 
     listEl.addEventListener('click', (e) => {
         const item = e.target.closest('.sidebar-item');
@@ -256,6 +280,58 @@ function setupSidebar(restaurants, clusterGroup, pickEmoji) {
         sidebarEl.classList.toggle('collapsed');
         toggleBtn.classList.toggle('collapsed');
     });
+
+    return {
+        refresh(newVisibleSet) { visibleSet = newVisibleSet; renderList(); },
+    };
+}
+
+// 年份范围滑块:拖动后只在地图上显示至少有一次拜访落在 [from,to] 区间的餐厅,
+// 用两个单值 range 输入模拟双滑块(避免引入额外的滑块组件库)。
+// 重建 clusterGroup 的图层而非仅调透明度——否则聚合气泡上的数字会继续把
+// 范围外的点计进去,滑动时数字对不上就失去了"筛选"的意义。
+function setupTimeFilter(restaurants, clusterGroup, sidebar) {
+    const allYears = restaurants.flatMap(r => r._years);
+    if (allYears.length === 0) return; // 没有可解析的日期,不显示滑块
+    const minYear = Math.min(...allYears), maxYear = Math.max(...allYears);
+    if (minYear === maxYear) return; // 只有一年的数据,滑块没有意义
+
+    const timebar = document.getElementById('timebar');
+    const fromEl = document.getElementById('yearFrom');
+    const toEl = document.getElementById('yearTo');
+    const fromLabel = document.getElementById('yearFromLabel');
+    const toLabel = document.getElementById('yearToLabel');
+    timebar.style.display = 'flex';
+    for (const el of [fromEl, toEl]) { el.min = minYear; el.max = maxYear; }
+    fromEl.value = minYear;
+    toEl.value = maxYear;
+
+    const totalVisitsAll = restaurants.reduce((s, r) => s + r.visits.length, 0);
+
+    function apply() {
+        let from = Number(fromEl.value), to = Number(toEl.value);
+        if (from > to) { [from, to] = [to, from]; } // 交叉时自动纠正,避免空区间
+        fromLabel.textContent = from;
+        toLabel.textContent = to;
+
+        const visible = restaurants.filter(r => r._years.some(y => y >= from && y <= to));
+        clusterGroup.clearLayers();
+        clusterGroup.addLayers(visible.map(r => r._marker));
+
+        const isFiltered = from !== minYear || to !== maxYear;
+        const visitCount = visible.reduce((s, r) => s + r.visits.length, 0);
+        document.getElementById('stat').textContent = isFiltered
+            ? `${visible.length} 家餐厅 · ${visitCount} 次拜访(${from}–${to} 年,共 ${restaurants.length} 家)`
+            : `${restaurants.length} 家餐厅 · ${totalVisitsAll} 次拜访`;
+
+        sidebar.refresh(isFiltered ? new Set(visible) : null);
+    }
+    fromEl.addEventListener('input', apply);
+    toEl.addEventListener('input', apply);
+    document.getElementById('yearReset').addEventListener('click', () => {
+        fromEl.value = minYear; toEl.value = maxYear; apply();
+    });
+    apply();
 }
 
 load();
