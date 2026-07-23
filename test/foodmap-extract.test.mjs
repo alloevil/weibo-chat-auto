@@ -44,9 +44,9 @@ test('parseExtractionResponse: 越界编号/格式错误行忽略,不抛错', ()
 
 test('aggregateRestaurants: 同名餐厅合并为一条,多次拜访按时间升序', () => {
   const extracted = [
-    { name: '星冈', dishes: ['生蚝'], quote: '第一次', geo: { lat: 39.9, lng: 116.4 }, createdAt: 'Thu Jul 10 2026', postId: 1, postUrl: 'u1' },
-    { name: ' 星冈 ', dishes: ['和牛'], quote: '第二次', geo: null, createdAt: 'Thu Jul 20 2026', postId: 2, postUrl: 'u2' },
-    { name: '又益轩', dishes: ['马肉米粉'], quote: '桂林', geo: { lat: 25.3, lng: 110.3 }, createdAt: 'Thu Jul 05 2026', postId: 3, postUrl: 'u3' },
+    { name: '星冈', dishes: ['生蚝'], quote: '第一次', geo: { lat: 39.9, lng: 116.4 }, createdAt: 'Thu Jul 10 2026', postId: 1, postUrl: 'u1', regionName: '北京' },
+    { name: ' 星冈 ', dishes: ['和牛'], quote: '第二次', geo: null, createdAt: 'Thu Jul 20 2026', postId: 2, postUrl: 'u2', regionName: '北京' },
+    { name: '又益轩', dishes: ['马肉米粉'], quote: '桂林', geo: { lat: 25.3, lng: 110.3 }, createdAt: 'Thu Jul 05 2026', postId: 3, postUrl: 'u3', regionName: '广西' },
   ];
   const r = aggregateRestaurants(extracted);
   assert.strictEqual(r.length, 2);
@@ -55,6 +55,22 @@ test('aggregateRestaurants: 同名餐厅合并为一条,多次拜访按时间升
   assert.strictEqual(xingang.lat, 39.9); // 沿用首次出现时的坐标
   assert.strictEqual(xingang.visits[0].quote, '第一次'); // 时间升序
   assert.strictEqual(xingang.visits[1].quote, '第二次');
+  assert.strictEqual(xingang.region, '北京');
+  assert.strictEqual(r.find(x => x.name === '又益轩').region, '广西');
+});
+
+test('aggregateRestaurants: region 取众数,不一致时以出现次数最多的为准', () => {
+  const r = aggregateRestaurants([
+    { name: 'X', dishes: [], quote: 'a', geo: { lat: 1, lng: 1 }, createdAt: 't1', postId: 1, postUrl: 'u1', regionName: '广东' },
+    { name: 'X', dishes: [], quote: 'b', geo: { lat: 1, lng: 1 }, createdAt: 't2', postId: 2, postUrl: 'u2', regionName: '广东' },
+    { name: 'X', dishes: [], quote: 'c', geo: { lat: 1, lng: 1 }, createdAt: 't3', postId: 3, postUrl: 'u3', regionName: '海外' },
+  ]);
+  assert.strictEqual(r[0].region, '广东');
+});
+
+test('aggregateRestaurants: regionName 缺失不报错,region 为 null', () => {
+  const r = aggregateRestaurants([{ name: 'Y', dishes: [], quote: 'q', geo: null, createdAt: 't', postId: 1, postUrl: 'u' }]);
+  assert.strictEqual(r[0].region, null);
 });
 
 test('aggregateRestaurants: 无 geo 的候选也保留在结果里(由调用方决定是否上图)', () => {

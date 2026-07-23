@@ -53,8 +53,22 @@ function normalizeName(name) {
   return name.replace(/\s+/g, '').toLowerCase();
 }
 
+/** 众数(出现次数最多的取值);全为空/无输入时返回 null。 */
+function mode(values) {
+  const counts = new Map();
+  for (const v of values) {
+    if (!v) continue;
+    counts.set(v, (counts.get(v) || 0) + 1);
+  }
+  let best = null, bestCount = 0;
+  for (const [v, c] of counts) {
+    if (c > bestCount) { best = v; bestCount = c; }
+  }
+  return best;
+}
+
 /**
- * 按餐厅名聚合多次拜访。入参每项需含 { name, dishes, quote, geo, createdAt, postUrl, postId }。
+ * 按餐厅名聚合多次拜访。入参每项需含 { name, dishes, quote, geo, createdAt, postUrl, postId, regionName }。
  * geo 缺失的候选仍会被收录(dishes/quote 有价值),但不参与地图落点——
  * 由调用方决定是否过滤掉 lat/lng 为 null 的结果。
  */
@@ -68,10 +82,12 @@ export function aggregateRestaurants(extracted) {
         lat: item.geo?.lat ?? null,
         lng: item.geo?.lng ?? null,
         visits: [],
+        _regions: [], // 临时字段,聚合完后折叠成 region 并删除
       });
     }
     const entry = byKey.get(key);
     if (entry.lat == null && item.geo) { entry.lat = item.geo.lat; entry.lng = item.geo.lng; }
+    entry._regions.push(item.regionName || null);
     entry.visits.push({
       date: item.createdAt,
       postId: item.postId,
@@ -83,6 +99,11 @@ export function aggregateRestaurants(extracted) {
   // 每家餐厅按拜访时间升序排列,便于地图卡片展示"第一次/最近一次"
   for (const r of byKey.values()) {
     r.visits.sort((a, b) => Date.parse(a.date || 0) - Date.parse(b.date || 0));
+    // 微博的 region_name 是发帖时的 IP 归属地(粗粒度),同一家店多次拜访
+    // 偶尔会因为发帖设备/网络环境不同而不一致,取众数作为该店的代表地区,
+    // 供"按地区筛选"用——不是精确地址。
+    r.region = mode(r._regions);
+    delete r._regions;
   }
   return [...byKey.values()];
 }

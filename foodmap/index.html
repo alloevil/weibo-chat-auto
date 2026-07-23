@@ -75,6 +75,10 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     background: var(--surface-2); color: var(--ink); font-size: 13px; outline: none;
 }
 .sidebar-search::placeholder { color: var(--ink-subtle); }
+.sidebar-region {
+    margin: 0 10px 10px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--hairline);
+    background: var(--surface-2); color: var(--ink); font-size: 13px; outline: none; cursor: pointer;
+}
 .sidebar-list { flex: 1; overflow-y: auto; padding: 0 6px 10px; }
 .sidebar-item {
     display: flex; align-items: center; gap: 8px; padding: 8px 8px; border-radius: 8px; cursor: pointer;
@@ -93,14 +97,17 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 }
 .timebar input[type=range] { width: 160px; accent-color: var(--primary-hover); }
 .timebar .year-label { min-width: 34px; text-align: center; color: var(--ink); font-weight: 600; }
+.timebar .timebar-label { font-weight: 600; color: var(--ink); padding-right: 6px; border-right: 1px solid var(--hairline); margin-right: 4px; }
 .timebar .reset-btn { color: var(--primary-hover); cursor: pointer; font-size: 11px; padding: 2px 6px; }
 .timebar .reset-btn:hover { text-decoration: underline; }
 .locate-btn {
-    width: 34px; height: 34px; background: var(--surface-1); border: none; cursor: pointer;
-    font-size: 16px; display: flex; align-items: center; justify-content: center; color: var(--ink);
+    display: flex; align-items: center; gap: 6px; padding: 9px 14px; margin: 0;
+    background: var(--primary); color: var(--on-primary); border: none; border-radius: 20px;
+    cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(193,100,42,.4);
 }
-.locate-btn:hover { background: var(--surface-2); }
-.locate-btn.loading { opacity: .5; cursor: wait; }
+.locate-btn:hover { background: var(--primary-hover); }
+.locate-btn.loading { opacity: .6; cursor: wait; }
 .user-dot { position: relative; width: 16px; height: 16px; border-radius: 50%; background: #4da6ff; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(77,166,255,.35); }
 .user-dot::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid #4da6ff; animation: pulse 1.6s ease-out infinite; }
 @keyframes pulse { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
@@ -121,17 +128,21 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 <button class="sidebar-toggle" id="sidebarToggle" title="餐厅列表">☰</button>
 <div class="sidebar" id="sidebar">
     <input class="sidebar-search" id="sidebarSearch" placeholder="搜索餐厅…">
+    <select class="sidebar-region" id="regionSelect" style="display:none">
+        <option value="">全部地区</option>
+    </select>
     <div class="nearby-banner" id="nearbyBanner" style="display:none">
         <span id="nearbyBannerText">离你最近</span>
         <span class="back" id="nearbyBack">返回全部 ✕</span>
     </div>
     <div class="sidebar-list" id="sidebarList"></div>
 </div>
-<div class="timebar" id="timebar" style="display:none">
-    <span>起始</span>
+<div class="timebar" id="timebar" style="display:none" title="拖动滑块只看某段时间内去过的餐厅">
+    <span class="timebar-label">拜访年份</span>
+    <span>从</span>
     <input type="range" id="yearFrom">
     <span class="year-label" id="yearFromLabel"></span>
-    <span>结束</span>
+    <span>到</span>
     <input type="range" id="yearTo">
     <span class="year-label" id="yearToLabel"></span>
     <span class="reset-btn" id="yearReset">重置</span>
@@ -178,8 +189,8 @@ const LocateControl = L.Control.extend({
     options: { position: 'topright' },
     onAdd() {
         const btn = L.DomUtil.create('button', 'locate-btn');
-        btn.innerHTML = '📍';
-        btn.title = '定位我,看附近好吃的';
+        btn.innerHTML = '📍 附近好吃的';
+        btn.title = '获取你的位置,按距离排序看附近有什么好吃的';
         L.DomEvent.disableClickPropagation(btn);
         L.DomEvent.on(btn, 'click', () => onLocate && onLocate(btn));
         return btn;
@@ -295,7 +306,7 @@ async function load() {
     map.fitBounds(clusterGroup.getBounds(), { padding: [40, 40] });
 
     const sidebar = setupSidebar(restaurants, clusterGroup, pickEmoji);
-    setupTimeFilter(restaurants, clusterGroup, sidebar);
+    setupFilters(restaurants, clusterGroup, sidebar);
     setupLocate(restaurants, sidebar);
 }
 
@@ -411,51 +422,77 @@ function setupSidebar(restaurants, clusterGroup, pickEmoji) {
     };
 }
 
-// 年份范围滑块:拖动后只在地图上显示至少有一次拜访落在 [from,to] 区间的餐厅,
-// 用两个单值 range 输入模拟双滑块(避免引入额外的滑块组件库)。
-// 重建 clusterGroup 的图层而非仅调透明度——否则聚合气泡上的数字会继续把
-// 范围外的点计进去,滑动时数字对不上就失去了"筛选"的意义。
-function setupTimeFilter(restaurants, clusterGroup, sidebar) {
+// 年份滑块 + 地区下拉的组合筛选器。两者共享同一套"重算可见集合"逻辑
+// (取交集),这样"2020年在北京吃过的地方"这种组合筛选是自然成立的,
+// 不需要分别维护两套状态。重建 clusterGroup 的图层而非仅调透明度——
+// 否则聚合气泡上的数字会继续把范围外的点计进去,失去"筛选"的意义。
+function setupFilters(restaurants, clusterGroup, sidebar) {
     const allYears = restaurants.flatMap(r => r._years);
-    if (allYears.length === 0) return; // 没有可解析的日期,不显示滑块
-    const minYear = Math.min(...allYears), maxYear = Math.max(...allYears);
-    if (minYear === maxYear) return; // 只有一年的数据,滑块没有意义
+    const hasYearFilter = allYears.length > 0 && Math.min(...allYears) !== Math.max(...allYears);
+    const minYear = hasYearFilter ? Math.min(...allYears) : null;
+    const maxYear = hasYearFilter ? Math.max(...allYears) : null;
 
-    const timebar = document.getElementById('timebar');
     const fromEl = document.getElementById('yearFrom');
     const toEl = document.getElementById('yearTo');
     const fromLabel = document.getElementById('yearFromLabel');
     const toLabel = document.getElementById('yearToLabel');
-    timebar.style.display = 'flex';
-    for (const el of [fromEl, toEl]) { el.min = minYear; el.max = maxYear; }
-    fromEl.value = minYear;
-    toEl.value = maxYear;
+    if (hasYearFilter) {
+        document.getElementById('timebar').style.display = 'flex';
+        for (const el of [fromEl, toEl]) { el.min = minYear; el.max = maxYear; }
+        fromEl.value = minYear;
+        toEl.value = maxYear;
+    }
+
+    // 地区下拉:按出现次数从高到低排列,少见地区排在后面不用滚半天
+    const regionSelect = document.getElementById('regionSelect');
+    const regionCounts = new Map();
+    for (const r of restaurants) { if (r.region) regionCounts.set(r.region, (regionCounts.get(r.region) || 0) + 1); }
+    const hasRegions = regionCounts.size > 0;
+    if (hasRegions) {
+        regionSelect.style.display = '';
+        const regions = [...regionCounts.entries()].sort((a, b) => b[1] - a[1]);
+        regionSelect.innerHTML = '<option value="">全部地区</option>' +
+            regions.map(([name, count]) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}(${count})</option>`).join('');
+    }
 
     const totalVisitsAll = restaurants.reduce((s, r) => s + r.visits.length, 0);
 
     function apply() {
-        let from = Number(fromEl.value), to = Number(toEl.value);
-        if (from > to) { [from, to] = [to, from]; } // 交叉时自动纠正,避免空区间
-        fromLabel.textContent = from;
-        toLabel.textContent = to;
+        let from = minYear, to = maxYear;
+        if (hasYearFilter) {
+            from = Number(fromEl.value); to = Number(toEl.value);
+            if (from > to) { [from, to] = [to, from]; } // 交叉时自动纠正,避免空区间
+            fromLabel.textContent = from;
+            toLabel.textContent = to;
+        }
+        const region = hasRegions ? regionSelect.value : '';
 
-        const visible = restaurants.filter(r => r._years.some(y => y >= from && y <= to));
+        const visible = restaurants.filter(r =>
+            (!hasYearFilter || r._years.some(y => y >= from && y <= to)) &&
+            (!region || r.region === region)
+        );
         clusterGroup.clearLayers();
         clusterGroup.addLayers(visible.map(r => r._marker));
 
-        const isFiltered = from !== minYear || to !== maxYear;
+        const isFiltered = visible.length !== restaurants.length;
         const visitCount = visible.reduce((s, r) => s + r.visits.length, 0);
+        const parts = [];
+        if (hasYearFilter && (from !== minYear || to !== maxYear)) parts.push(`${from}–${to} 年`);
+        if (region) parts.push(region);
         document.getElementById('stat').textContent = isFiltered
-            ? `${visible.length} 家餐厅 · ${visitCount} 次拜访(${from}–${to} 年,共 ${restaurants.length} 家)`
+            ? `${visible.length} 家餐厅 · ${visitCount} 次拜访(${parts.join(' · ')},共 ${restaurants.length} 家)`
             : `${restaurants.length} 家餐厅 · ${totalVisitsAll} 次拜访`;
 
         sidebar.refresh(isFiltered ? new Set(visible) : null);
     }
-    fromEl.addEventListener('input', apply);
-    toEl.addEventListener('input', apply);
-    document.getElementById('yearReset').addEventListener('click', () => {
-        fromEl.value = minYear; toEl.value = maxYear; apply();
-    });
+    if (hasYearFilter) {
+        fromEl.addEventListener('input', apply);
+        toEl.addEventListener('input', apply);
+        document.getElementById('yearReset').addEventListener('click', () => {
+            fromEl.value = minYear; toEl.value = maxYear; apply();
+        });
+    }
+    if (hasRegions) regionSelect.addEventListener('change', apply);
     apply();
 }
 

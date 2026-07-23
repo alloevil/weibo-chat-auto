@@ -10,7 +10,8 @@
 //     (曾观察到挂在一条无关回复上的景区签到),只作为辅助线索,不单独
 //     作为收录条件。
 //   - `region_name`(如"发布于 湖南")是发布时的 IP 归属地,粒度粗,
-//     不能当作餐馆地址使用。
+//     不能当作餐馆精确地址使用,但作为"按省份/城市粗筛"的依据够用——
+//     这正是地图页"按地区筛选"功能想要的粒度,不是精确定位。
 //   - POI 名称/推荐菜品不在结构化字段里,需要从 `text_raw` 用 LLM 抽取。
 
 /** 微博 geo 字段 → {lat, lng},非法/缺失返回 null。 */
@@ -31,6 +32,13 @@ function parseCheckinTitle(urlStruct) {
   return place?.url_title || null;
 }
 
+/** "发布于 湖南" → "湖南";没有则 null。粗粒度地区,供筛选而非精确定位。 */
+export function parseRegionName(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const name = raw.replace(/^发布于\s*/, '').trim();
+  return name || null;
+}
+
 export function buildPostUrl(uid, mblogid) {
   return `https://weibo.com/${uid}/${mblogid}`;
 }
@@ -49,6 +57,7 @@ export function normalizePost(raw, uid) {
     textRaw: raw.text_raw || '',
     geo,
     checkinTitle,
+    regionName: parseRegionName(raw.region_name),
     isRetweet: !!raw.retweeted_status,
     picNum: raw.pic_num || 0,
     postUrl: raw.mblogid ? buildPostUrl(uid, raw.mblogid) : null,

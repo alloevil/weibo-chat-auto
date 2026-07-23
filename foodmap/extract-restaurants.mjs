@@ -9,11 +9,11 @@ import { hasLocationSignal } from './normalize.mjs';
 import { buildCandidateText, buildExtractionPrompt, parseExtractionResponse, aggregateRestaurants } from './extract.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, '..');
+const ROOT = __dirname;
 
 function dataDir(name) {
   const safe = name.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-  return path.join(ROOT, 'foodmap', 'data', safe);
+  return path.join(ROOT, 'data', safe);
 }
 
 async function callLLM(config, prompt) {
@@ -69,6 +69,7 @@ async function main() {
       extracted.push({
         name: r.name, dishes: r.dishes, quote: r.quote,
         geo: post.geo, createdAt: post.createdAt, postId: post.id, postUrl: post.postUrl,
+        regionName: post.regionName,
       });
     });
     console.log(`进度 ${Math.min(i + batchSize, candidates.length)}/${candidates.length}  已识别餐厅动态 ${extracted.length}`);
