@@ -58,7 +58,19 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .visit-quote { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-top: 4px; }
 .visit-link { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--primary-hover); text-decoration: none; }
 .visit-link:hover { text-decoration: underline; }
-.empty-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 999; color: var(--ink-subtle); font-size: 14px; text-align: center; }
+.empty-hint {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 999;
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-panel); padding: 20px 26px; max-width: 320px;
+    color: var(--ink-subtle); font-size: 13px; text-align: center; line-height: 1.6;
+}
+.empty-hint::before { content: '🍽️'; display: block; font-size: 28px; margin-bottom: 8px; }
+/* 标记/聚类气泡加载时错落地"弹"出来,而不是一次性全部瞬间出现——
+   animation-delay 由 JS 按索引算出(见 makeFoodIcon),cluster-pin 因为是
+   Leaflet.markercluster 内部动态生成、拿不到稳定索引,只播放不带延迟的
+   基础版本,依然比完全没有动画生硬地贴上去要好。 */
+@keyframes pin-pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.food-pin, .cluster-pin { animation: pin-pop .3s cubic-bezier(.34,1.56,.64,1) backwards; }
 .food-pin { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--surface-1); border: 2px solid var(--primary); box-shadow: 0 2px 8px rgba(43,33,24,.25); }
 .food-pin.repeat { border-color: var(--gold); box-shadow: 0 0 10px rgba(163,105,15,.4); }
 .cluster-pin { display: flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 600; box-shadow: 0 2px 10px rgba(43,33,24,.3); }
@@ -384,8 +396,18 @@ function formatDate(raw) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// 按名称哈希挑一个食物 emoji,同一家餐厅在标记/侧栏/弹窗里始终显示同一个
+// 图标——纯函数、不依赖任何状态,提到顶层后弹窗和侧栏可以直接调用,不用
+// 再作为参数一路传下去
+const FOOD_EMOJI = ['🍜', '🍲', '🍛', '🥘', '🍚', '🍢', '🥟', '🍤', '🍗', '🍣'];
+function pickEmoji(name) {
+    let h = 0;
+    for (const ch of name) h = (h * 31 + ch.codePointAt(0)) % FOOD_EMOJI.length;
+    return FOOD_EMOJI[h];
+}
+
 function renderPopup(r) {
-    let html = `<div class="poi-name">${escapeHtml(r.name)}</div>`;
+    let html = `<div class="poi-name">${pickEmoji(r.name)} ${escapeHtml(r.name)}</div>`;
     for (const v of r.visits) {
         const dishes = (v.dishes || []).map(d => `<span>${escapeHtml(d)}</span>`).join('');
         html += `<div class="visit">
@@ -422,20 +444,13 @@ async function load() {
     const totalVisits = restaurants.reduce((s, r) => s + r.visits.length, 0);
     document.getElementById('stat').textContent = `${restaurants.length} 家餐厅 · ${totalVisits} 次拜访`;
 
-    // 按名称哈希挑一个食物 emoji,拜访 ≥2 次的用金色高亮("回头客"信号),
-    // 半径随拜访次数增大,一眼看出常去的地方
-    const FOOD_EMOJI = ['🍜', '🍲', '🍛', '🥘', '🍚', '🍢', '🥟', '🍤', '🍗', '🍣'];
-    function pickEmoji(name) {
-        let h = 0;
-        for (const ch of name) h = (h * 31 + ch.codePointAt(0)) % FOOD_EMOJI.length;
-        return FOOD_EMOJI[h];
-    }
-    function makeFoodIcon(r) {
+    // 拜访 ≥2 次的用金色高亮("回头客"信号),半径随拜访次数增大,一眼看出常去的地方
+    function makeFoodIcon(r, delayMs) {
         const repeat = r.visits.length >= 2;
         const size = Math.min(26 + r.visits.length * 3, 44);
         return L.divIcon({
             className: '',
-            html: `<div class="food-pin${repeat ? ' repeat' : ''}" style="width:${size}px;height:${size}px;font-size:${size * 0.55}px">${pickEmoji(r.name)}</div>`,
+            html: `<div class="food-pin${repeat ? ' repeat' : ''}" style="width:${size}px;height:${size}px;font-size:${size * 0.55}px;animation-delay:${delayMs}ms">${pickEmoji(r.name)}</div>`,
             iconSize: [size, size],
             iconAnchor: [size / 2, size / 2],
         });
@@ -458,17 +473,17 @@ async function load() {
         },
     });
 
-    for (const r of restaurants) {
-        const marker = L.marker([r.lat, r.lng], { icon: makeFoodIcon(r) });
+    restaurants.forEach((r, idx) => {
+        const marker = L.marker([r.lat, r.lng], { icon: makeFoodIcon(r, Math.min(idx * 3, 450)) });
         marker.bindPopup(renderPopup(r), { maxWidth: 320 });
         clusterGroup.addLayer(marker);
         r._marker = marker; // 供侧栏列表点击联动
         r._years = r.visits.map(v => { const t = Date.parse(v.date); return isNaN(t) ? null : new Date(t).getFullYear(); }).filter(y => y != null);
-    }
+    });
     map.addLayer(clusterGroup);
     map.fitBounds(clusterGroup.getBounds(), { padding: [40, 40] });
 
-    const sidebar = setupSidebar(restaurants, clusterGroup, pickEmoji);
+    const sidebar = setupSidebar(restaurants, clusterGroup);
     setupFilters(restaurants, clusterGroup, sidebar);
     setupLocate(restaurants, sidebar);
     setupJourney(restaurants, clusterGroup);
@@ -625,7 +640,7 @@ function setupJourney(restaurants, clusterGroup) {
 
 // 侧栏餐厅列表:按拜访次数排序,支持按名称搜索;点击项目让地图聚焦该标记并弹出详情。
 // 返回 { refresh(visibleSet), showNearby(lat,lng) } 供时间滑块/定位按钮联动。
-function setupSidebar(restaurants, clusterGroup, pickEmoji) {
+function setupSidebar(restaurants, clusterGroup) {
 
     const sorted = [...restaurants].sort((a, b) => b.visits.length - a.visits.length);
     const listEl = document.getElementById('sidebarList');
