@@ -168,15 +168,19 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1000;
     background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
     padding: 10px 16px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
-    display: none; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-muted); max-width: 90vw;
+    display: none; flex-direction: column; gap: 6px; font-size: 12px; color: var(--ink-muted); max-width: 90vw;
 }
 .journey-bar.show { display: flex; }
+.journey-controls { display: flex; align-items: center; gap: 10px; }
 .journey-play { background: #2f6f4f; color: #fff; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 13px; flex-shrink: 0; display:flex; align-items:center; justify-content:center; }
 .journey-progress { flex-shrink: 0; }
 .journey-progress input[type=range] { width: 160px; accent-color: #2f6f4f; }
 .journey-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; flex: 1; }
 .journey-exit { color: var(--primary-hover); cursor: pointer; flex-shrink: 0; }
 .journey-exit:hover { text-decoration: underline; }
+.journey-legend { display: flex; flex-wrap: wrap; gap: 8px; max-width: 460px; }
+.journey-legend .item { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--ink-subtle); }
+.journey-legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .journey-marker { position: relative; width: 14px; height: 14px; border-radius: 50%; background: #2f6f4f; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,111,79,.35); }
 .journey-marker::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid #2f6f4f; animation: pulse 1.6s ease-out infinite; }
 </style>
@@ -217,10 +221,13 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     <span class="reset-btn" id="yearReset">重置</span>
 </div>
 <div class="journey-bar" id="journeyBar">
-    <button class="journey-play" id="journeyPlay" title="播放/暂停">▶</button>
-    <div class="journey-progress"><input type="range" id="journeyProgress" min="0" value="0"></div>
-    <span class="journey-label" id="journeyLabel"></span>
-    <span class="journey-exit" id="journeyExit">退出轨迹 ✕</span>
+    <div class="journey-controls">
+        <button class="journey-play" id="journeyPlay" title="播放/暂停">▶</button>
+        <div class="journey-progress"><input type="range" id="journeyProgress" min="0" value="0"></div>
+        <span class="journey-label" id="journeyLabel"></span>
+        <span class="journey-exit" id="journeyExit">退出轨迹 ✕</span>
+    </div>
+    <div class="journey-legend" id="journeyLegend"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -487,26 +494,50 @@ function setupJourney(restaurants, clusterGroup) {
     journey.sort((a, b) => a.t - b.t);
     if (journey.length < 2) return; // 数据不够连成一条有意义的路线,不启用这个功能
 
+    // 按年份分配颜色:用黄金角(137.508°)在色环上取点,不管有多少年都能让
+    // 相邻年份的颜色尽量拉开,不会挤成一片分不清——比按顺序等分色环更均匀
+    const years = [...new Set(journey.map(p => new Date(p.t).getFullYear()))].sort((a, b) => a - b);
+    const yearColor = (year) => `hsl(${(years.indexOf(year) * 137.508) % 360}, 62%, 42%)`;
+
     const journeyBtn = document.querySelector('.journey-btn');
     const barEl = document.getElementById('journeyBar');
     const playBtn = document.getElementById('journeyPlay');
     const progressEl = document.getElementById('journeyProgress');
     const labelEl = document.getElementById('journeyLabel');
+    const legendEl = document.getElementById('journeyLegend');
     progressEl.max = journey.length - 1;
+    legendEl.innerHTML = years.map(y => `<span class="item"><span class="dot" style="background:${yearColor(y)}"></span>${y}</span>`).join('');
 
-    const path = L.polyline([], { color: '#2f6f4f', weight: 2, opacity: 0.7, dashArray: '4,5' });
+    // 路径不是一条整体折线,而是"点i→点i+1"一段段的小折线,每段按终点所在
+    // 年份上色——这样跨年移动时颜色会在年份边界处切换,同一年内的移动始终
+    // 是同一色,一眼就能分清"这一片是哪年在这边转"而不是一整条糊在一起。
+    let segments = [];
+    function rebuildSegments(uptoIndex) {
+        for (const seg of segments) map.removeLayer(seg);
+        segments = [];
+        for (let j = 0; j < uptoIndex; j++) {
+            const a = journey[j], b = journey[j + 1];
+            const seg = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
+                color: yearColor(new Date(b.t).getFullYear()), weight: 3, opacity: 0.85,
+            }).addTo(map);
+            segments.push(seg);
+        }
+    }
+
     const marker = L.marker(journey[0], {
         icon: L.divIcon({ className: '', html: '<div class="journey-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }),
         zIndexOffset: 1000,
     });
 
     let active = false, playing = false, timer = null, index = 0;
+    const timebarEl = document.getElementById('timebar');
+    let timebarPrevDisplay = '';
 
     function renderStep(i, { pan = false } = {}) {
         index = i;
         progressEl.value = i;
         const pt = journey[i];
-        path.setLatLngs(journey.slice(0, i + 1).map(p => [p.lat, p.lng]));
+        rebuildSegments(i);
         marker.setLatLng([pt.lat, pt.lng]);
         const dishText = pt.dishes.length ? ` · ${pt.dishes.slice(0, 3).join('、')}` : '';
         labelEl.textContent = `${formatDate(pt.date)} ${pt.name}${dishText}`;
@@ -532,8 +563,8 @@ function setupJourney(restaurants, clusterGroup) {
         active = true;
         journeyBtn.classList.add('active');
         map.removeLayer(clusterGroup);
-        document.getElementById('timebar').style.display = 'none'; // 轨迹模式下时间由播放进度表达,年份滑块会互相打架
-        path.addTo(map);
+        timebarPrevDisplay = timebarEl.style.display; // 轨迹模式下时间由播放进度表达,先记住原来的显示状态再隐藏,退出时还原
+        timebarEl.style.display = 'none';
         marker.addTo(map);
         barEl.classList.add('show');
         renderStep(0, { pan: false });
@@ -543,9 +574,11 @@ function setupJourney(restaurants, clusterGroup) {
         active = false;
         pause();
         journeyBtn.classList.remove('active');
-        map.removeLayer(path);
+        for (const seg of segments) map.removeLayer(seg);
+        segments = [];
         map.removeLayer(marker);
         barEl.classList.remove('show');
+        timebarEl.style.display = timebarPrevDisplay;
         map.addLayer(clusterGroup);
         map.fitBounds(clusterGroup.getBounds(), { padding: [40, 40] });
     }
