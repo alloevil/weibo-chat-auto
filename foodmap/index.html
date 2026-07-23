@@ -216,6 +216,24 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .journey-legend .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .journey-marker { position: relative; width: 14px; height: 14px; border-radius: 50%; background: #2f6f4f; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,111,79,.35); }
 .journey-marker::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid #2f6f4f; animation: pulse 1.6s ease-out infinite; }
+/* 手机窄屏:这些面板的宽度都是按桌面尺寸一个个手动定的(236px 侧栏、
+   170px 滑块……),窄屏上要么整体超出屏幕右边被裁掉,要么互相挤在一起。
+   核心思路是把"宽度由内容撑开"改成"宽度受屏幕限制、内部元素让路"。 */
+@media (max-width: 640px) {
+    .topbar { min-width: 0; max-width: calc(100vw - 32px); }
+    .sidebar { width: calc(100vw - 32px); max-width: 320px; }
+    /* 展开态下 toggle 原本靠"侧栏宽度+间距"算出一个固定偏移(252px),
+       侧栏宽度在窄屏上是动态的,这个偏移会算错——干脆固定贴在侧栏
+       右侧一小段距离,不再跟侧栏宽度绑定 */
+    .sidebar-toggle { left: calc(100vw - 52px); }
+    .sidebar-toggle.collapsed { left: 16px; }
+    .timebar { max-width: calc(100vw - 24px); padding: 8px 10px; gap: 6px; }
+    .timebar .timebar-label { display: none; }
+    .timebar .range-slider { width: 100px; }
+    .journey-bar { padding: 8px 10px; }
+    .journey-controls { gap: 6px; }
+    .journey-progress input[type=range] { width: 90px; }
+}
 </style>
 </head>
 <body>
