@@ -177,6 +177,7 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .pointer-hint {
     position: fixed; z-index: 1001; background: var(--primary); color: var(--on-primary);
     padding: 8px 14px; border-radius: var(--radius-control); font-size: 12px; font-weight: 600; white-space: nowrap;
+    width: 190px; text-align: center; box-sizing: border-box; /* 统一宽度,不然三个提示文字长短不一,气泡宽度参差不齐很难看 */
     box-shadow: var(--shadow-accent); cursor: pointer;
     opacity: 0; transition: opacity .3s; animation: hint-nudge 1.4s ease-in-out infinite;
 }
@@ -688,10 +689,9 @@ function setupJourney(restaurants, clusterGroup) {
     // 和让飞机图标沿弧线滑动的 animateMarkerTo 必须用同一个控制点、同一条
     // 曲线——之前两边各算一套(画线用弧线公式,图标用直线插值),导致图标
     // 走的是直线、背后的线却是弯的,两者对不上。
-    function arcControlPoint(a, b) {
+    function arcControlPoint(a, b, bend) {
         const midLat = (a.lat + b.lat) / 2, midLng = (a.lng + b.lng) / 2;
         const dLat = b.lat - a.lat, dLng = b.lng - a.lng;
-        const bend = 0.45;
         return { lat: midLat - dLng * bend, lng: midLng + dLat * bend };
     }
     function quadraticPoint(a, ctrl, b, t) {
@@ -700,8 +700,8 @@ function setupJourney(restaurants, clusterGroup) {
             lng: (1 - t) ** 2 * a.lng + 2 * (1 - t) * t * ctrl.lng + t ** 2 * b.lng,
         };
     }
-    function arcPoints(a, b, steps = 24) {
-        const ctrl = arcControlPoint(a, b);
+    function arcPoints(a, b, bend, steps = 24) {
+        const ctrl = arcControlPoint(a, b, bend);
         const pts = [];
         for (let i = 0; i <= steps; i++) {
             const p = quadraticPoint(a, ctrl, b, i / steps);
@@ -709,13 +709,16 @@ function setupJourney(restaurants, clusterGroup) {
         }
         return pts;
     }
+    // 开车(近距离)的弧度比飞机(远距离)小得多——短途一小段路弓成跟长途
+    // 一样的弧度会显得很夸张,只给一点点弯曲意思一下就够了
+    function bendFor(isFar) { return isFar ? 0.45 : 0.15; }
     function rebuildSegments(uptoIndex) {
         for (const seg of segments) map.removeLayer(seg);
         segments = [];
         for (let j = 0; j < uptoIndex; j++) {
             const a = journey[j], b = journey[j + 1];
             const isFar = distanceKm(a.lat, a.lng, b.lat, b.lng) > FAR_THRESHOLD_KM;
-            const latlngs = isFar ? arcPoints(a, b) : [[a.lat, a.lng], [b.lat, b.lng]];
+            const latlngs = arcPoints(a, b, bendFor(isFar));
             const seg = L.polyline(latlngs, {
                 color: yearColor(new Date(b.t).getFullYear()), weight: 3, opacity: 0.85, dashArray: '6 6',
                 smoothFactor: 0, // 关掉路径简化——弧线在缩得很远时偏移只有几像素,不关的话会被简化成直线
@@ -747,7 +750,7 @@ function setupJourney(restaurants, clusterGroup) {
     // 是什么图标。远距离的这一步改成让图标沿直线平滑"飞"过去(而不是瞬移),
     // 配合下面 play() 里给远距离步骤单独留出更长的停留时间,才看得出"飞机在飞"。
     function animateMarkerTo(from, to, duration) {
-        const ctrl = arcControlPoint(from, to); // 跟 rebuildSegments 画的弧线用同一个控制点
+        const ctrl = arcControlPoint(from, to, bendFor(true)); // 跟 rebuildSegments 画的弧线用同一个控制点(飞机段的弯曲度)
         const start = performance.now();
         function step(now) {
             const t = Math.min(1, (now - start) / duration);
