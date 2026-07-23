@@ -329,6 +329,58 @@ function updateTileFilterTier() {
 map.on('zoomend', updateTileFilterTier);
 map.whenReady(updateTileFilterTier);
 
+// 现有 location.continent 字段是中文(来自 geocode-regions.mjs),
+// GeoJSON 边界数据里的 CONTINENT 属性是英文,这里做个映射
+const CONTINENT_EN = { 亚洲: 'Asia', 欧洲: 'Europe', 非洲: 'Africa', 北美洲: 'North America', 南美洲: 'South America', 大洋洲: 'Oceania' };
+
+// 按洲涂色背景(choropleth):颜色深浅代表该洲拜访次数多少,跟区域/年份
+// 筛选联动(见 setupFilters 的 apply() 末尾调用 choropleth.update())。
+// 用 sqrt 而不是线性映射次数→透明度,是因为数据往往像陈晓卿这份一样
+// 悬殊(亚洲 274 次、欧洲个位数)——线性映射会把小值的洲压得几乎看不见,
+// sqrt 让"有一点"和"完全没有"之间的差异更看得出来。
+function setupChoropleth(restaurants) {
+    const layer = L.geoJSON(null, {
+        interactive: false, // 不拦截点击/拖动,纯装饰性背景
+        style: () => ({ color: 'transparent', weight: 0, fillColor: '#c1642a', fillOpacity: 0 }),
+    }).addTo(map);
+    let baseOpacity = new Map();
+
+    fetch('assets/continents.geojson')
+        .then(r => r.json())
+        .then(data => { layer.addData(data); update(restaurants); })
+        .catch(() => {}); // 纯装饰图层,拉取失败静默跳过,不影响地图核心功能
+
+    // 缩到国家/街道级别时整块颜色会糊住大半个屏幕,反而干扰看细节——
+    // 跟瓦片滤镜的三档思路一样,放大到 zoom 9 以上就淡出到完全透明
+    function zoomFactor() {
+        const z = map.getZoom();
+        if (z <= 6) return 1;
+        if (z >= 9) return 0;
+        return 1 - (z - 6) / 3;
+    }
+    function applyOpacity() {
+        const factor = zoomFactor();
+        layer.eachLayer(l => {
+            const base = baseOpacity.get(l.feature.properties.continent) || 0;
+            l.setStyle({ fillOpacity: base * factor });
+        });
+    }
+    map.on('zoomend', applyOpacity);
+
+    function update(visibleRestaurants) {
+        const counts = {};
+        for (const r of visibleRestaurants) {
+            const en = CONTINENT_EN[r.location && r.location.continent];
+            if (!en) continue;
+            counts[en] = (counts[en] || 0) + r.visits.length;
+        }
+        const max = Math.max(1, ...Object.values(counts));
+        baseOpacity = new Map(Object.entries(counts).map(([en, c]) => [en, 0.06 + 0.5 * Math.sqrt(c / max)]));
+        applyOpacity();
+    }
+    return { update };
+}
+
 // 侧栏顶部跟随信息卡的实际高度,而不是写死一个像素值——统计文字长度会变
 // (比如年份筛选后的文案更长换行),写死的话卡片一变高就会和侧栏重叠。
 // 折叠按钮同理:折叠态下它会挪到左上角(标题卡所在位置),top 也必须跟
@@ -527,7 +579,8 @@ async function load() {
     map.fitBounds(clusterGroup.getBounds(), { padding: [40, 40] });
 
     const sidebar = setupSidebar(restaurants, clusterGroup);
-    setupFilters(restaurants, clusterGroup, sidebar);
+    const choropleth = setupChoropleth(restaurants);
+    setupFilters(restaurants, clusterGroup, sidebar, choropleth);
     setupLocate(restaurants, sidebar);
     setupJourney(restaurants, clusterGroup);
     // 稍等一下再弹,避免和地图初次加载的动画抢注意力;两个提示错开时间,
@@ -801,7 +854,7 @@ function regionOf(r) {
     };
 }
 
-function setupFilters(restaurants, clusterGroup, sidebar) {
+function setupFilters(restaurants, clusterGroup, sidebar, choropleth) {
     const allYears = restaurants.flatMap(r => r._years);
     const hasYearFilter = allYears.length > 0 && Math.min(...allYears) !== Math.max(...allYears);
     const minYear = hasYearFilter ? Math.min(...allYears) : null;
@@ -920,6 +973,7 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
             : `${restaurants.length} 家餐厅 · ${totalVisitsAll} 次拜访`;
 
         sidebar.refresh(isFiltered ? new Set(visible) : null);
+        choropleth.update(visible);
     }
     if (hasYearFilter) {
         fromEl.addEventListener('input', () => { clampHandles(fromEl); apply(); });
