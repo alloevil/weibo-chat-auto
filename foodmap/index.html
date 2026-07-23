@@ -513,6 +513,7 @@ async function load() {
     // 稍等一下再弹,避免和地图初次加载的动画抢注意力;两个提示错开时间,
     // 不会在同一瞬间一起弹出来显得很吵
     setTimeout(() => showPointerHint({ key: 'foodmap_locate_hint_seen', targetSelector: '.locate-btn', text: '👉 点这里看看附近好吃的' }), 1200);
+    setTimeout(() => showPointerHint({ key: 'foodmap_journey_hint_seen', targetSelector: '.journey-btn', text: '👉 点这里回放旅行轨迹' }), 1600);
     setTimeout(() => showPointerHint({ key: 'foodmap_sidebar_hint_seen', targetSelector: '#sidebarToggle', text: '👉 点这里看餐厅列表', arrowLeft: true }), 2000);
 }
 
