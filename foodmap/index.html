@@ -735,12 +735,23 @@ function setupJourney(restaurants, clusterGroup) {
         labelEl.textContent = `${formatDate(pt.date)} ${pt.name}${dishText}`;
         // 近距离(市内开车)放大到看得清街道的程度;远距离(飞机跨城/跨国)
         // 缩小到能把起点和终点都塞进视野,不然缩放没变、地图会突然"跳"到
-        // 看不出移动轨迹的一个小点
+        // 看不出移动轨迹的一个小点。
+        // 但如果这一步的移动本来就还在当前视野内,就不用再挪镜头——判断
+        // "在视野内"必须连同缩放级别一起看,不能只看经纬度是否落在当前
+        // 画面矩形里:刚进入回放时地图是缩到能装下整条轨迹的大视野,任何
+        // 一个点几乎都"技术上"落在这个大矩形里,如果只判断这一条,镜头会
+        // 永远卡在最初的大视野上、再也不放大——所以只在"当前缩放已经跟
+        // 目标缩放很接近"时才认为"不需要再挪镜头",飞机步骤(缩放目标依
+        // 每一步的两点距离而变)则维持原来每次都飞的行为,不做跳过判断。
         if (pan) {
             if (mode === 'far' && prev) {
                 map.flyToBounds([[prev.lat, prev.lng], [pt.lat, pt.lng]], { padding: [80, 80], maxZoom: 8, duration: 1.4 });
             } else {
-                map.flyTo([pt.lat, pt.lng], 12, { animate: true, duration: 0.5 });
+                const zoomCloseEnough = Math.abs(map.getZoom() - 12) < 0.6;
+                const alreadyVisible = zoomCloseEnough && map.getBounds().pad(-0.15).contains([pt.lat, pt.lng]);
+                if (!alreadyVisible) {
+                    map.flyTo([pt.lat, pt.lng], 12, { animate: true, duration: 0.5 });
+                }
             }
         }
     }
