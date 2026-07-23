@@ -99,10 +99,31 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-muted);
 }
 .timebar input[type=range] { width: 160px; accent-color: var(--primary-hover); }
-.timebar .year-label { min-width: 34px; text-align: center; color: var(--ink); font-weight: 600; }
+.timebar .year-label { min-width: 30px; text-align: center; color: var(--ink); font-weight: 600; }
 .timebar .timebar-label { font-weight: 600; color: var(--ink); padding-right: 6px; border-right: 1px solid var(--hairline); margin-right: 4px; }
 .timebar .reset-btn { color: var(--primary-hover); cursor: pointer; font-size: 11px; padding: 2px 6px; }
 .timebar .reset-btn:hover { text-decoration: underline; }
+/* 单轴双手柄区间滑块:两个原生 range 输入完全重叠,轨道透明只露出手柄,
+   中间垫一条可见的轨道 + 高亮条(range-fill)表示当前选中区间。手柄靠
+   ::-webkit/moz-range-thumb 的 pointer-events:auto 单独接收点击,输入
+   本身 pointer-events:none,这样两个手柄互不打架,各管各的拖动。 */
+.range-slider { position: relative; width: 170px; height: 20px; flex-shrink: 0; }
+.range-track { position: absolute; top: 9px; left: 0; right: 0; height: 4px; background: var(--hairline-strong); border-radius: 2px; }
+.range-fill { position: absolute; top: 9px; height: 4px; background: var(--primary); border-radius: 2px; }
+.range-input {
+    position: absolute; top: 0; left: 0; width: 100%; height: 20px; margin: 0;
+    -webkit-appearance: none; appearance: none; background: transparent; pointer-events: none;
+}
+.range-input::-webkit-slider-thumb {
+    -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--primary); border: 2px solid var(--surface-1); box-shadow: 0 1px 4px rgba(43,33,24,.4); cursor: pointer;
+}
+.range-input::-moz-range-thumb {
+    pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--surface-1);
+    background: var(--primary); box-shadow: 0 1px 4px rgba(43,33,24,.4); cursor: pointer;
+}
+.range-input::-webkit-slider-runnable-track { background: transparent; }
+.range-input::-moz-range-track { background: transparent; }
 .locate-btn {
     display: flex; align-items: center; gap: 6px; padding: 9px 14px; margin: 0;
     background: var(--primary); color: var(--on-primary); border: none; border-radius: 20px;
@@ -113,6 +134,20 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .locate-btn.loading { opacity: .6; cursor: wait; }
 .user-dot { position: relative; width: 16px; height: 16px; border-radius: 50%; background: #4da6ff; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(77,166,255,.35); }
 .user-dot::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid #4da6ff; animation: pulse 1.6s ease-out infinite; }
+/* 首次进入时指向"定位"按钮的引导气泡,点一次/等几秒/点气泡本身都会消失,
+   localStorage 记住看过了,不会每次刷新都弹 */
+.locate-hint {
+    position: fixed; z-index: 1001; background: var(--primary); color: var(--on-primary);
+    padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(193,100,42,.4); cursor: pointer;
+    opacity: 0; transition: opacity .3s; animation: hint-nudge 1.4s ease-in-out infinite;
+}
+.locate-hint.show { opacity: 1; }
+.locate-hint::after {
+    content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%);
+    border-width: 6px 0 6px 6px; border-style: solid; border-color: transparent transparent transparent var(--primary);
+}
+@keyframes hint-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-4px); } }
 @keyframes pulse { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
 .nearby-banner { display: flex; justify-content: space-between; align-items: center; margin: 0 10px 8px; font-size: 12px; color: var(--ink-subtle); }
 .nearby-banner .back { color: var(--primary-hover); cursor: pointer; }
@@ -143,13 +178,15 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     </div>
     <div class="sidebar-list" id="sidebarList"></div>
 </div>
-<div class="timebar" id="timebar" style="display:none" title="拖动滑块只看某段时间内去过的餐厅">
+<div class="timebar" id="timebar" style="display:none" title="拖动两端手柄只看某段时间内去过的餐厅">
     <span class="timebar-label">拜访年份</span>
-    <span>从</span>
-    <input type="range" id="yearFrom">
     <span class="year-label" id="yearFromLabel"></span>
-    <span>到</span>
-    <input type="range" id="yearTo">
+    <div class="range-slider" id="yearRangeSlider">
+        <div class="range-track"></div>
+        <div class="range-fill" id="yearRangeFill"></div>
+        <input type="range" class="range-input" id="yearFrom">
+        <input type="range" class="range-input" id="yearTo">
+    </div>
     <span class="year-label" id="yearToLabel"></span>
     <span class="reset-btn" id="yearReset">重置</span>
 </div>
@@ -203,6 +240,40 @@ const LocateControl = L.Control.extend({
     },
 });
 map.addControl(new LocateControl());
+
+// 首次进入时用一个指向定位按钮的气泡提一下"这里能看附近好吃的",避免
+// 光靠按钮文字被忽略;看过一次(点按钮/点气泡/等够几秒)就用 localStorage
+// 记住,不会每次刷新都弹出来打扰老用户
+function showLocateHint() {
+    const HINT_KEY = 'foodmap_locate_hint_seen';
+    if (localStorage.getItem(HINT_KEY)) return;
+    const btn = document.querySelector('.locate-btn');
+    if (!btn) return;
+
+    const hint = document.createElement('div');
+    hint.className = 'locate-hint';
+    hint.textContent = '👉 点这里看看附近好吃的';
+    document.body.appendChild(hint);
+
+    function position() {
+        const rect = btn.getBoundingClientRect();
+        hint.style.right = (window.innerWidth - rect.left + 10) + 'px';
+        hint.style.top = (rect.top + rect.height / 2 - hint.offsetHeight / 2) + 'px';
+    }
+    position();
+    requestAnimationFrame(() => hint.classList.add('show'));
+    window.addEventListener('resize', position);
+
+    const dismiss = () => {
+        localStorage.setItem(HINT_KEY, '1');
+        window.removeEventListener('resize', position);
+        hint.classList.remove('show');
+        setTimeout(() => hint.remove(), 300);
+    };
+    const timer = setTimeout(dismiss, 6000);
+    btn.addEventListener('click', () => { clearTimeout(timer); dismiss(); }, { once: true });
+    hint.addEventListener('click', dismiss);
+}
 
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -314,6 +385,7 @@ async function load() {
     const sidebar = setupSidebar(restaurants, clusterGroup, pickEmoji);
     setupFilters(restaurants, clusterGroup, sidebar);
     setupLocate(restaurants, sidebar);
+    setTimeout(showLocateHint, 1200); // 稍等一下再弹,避免和地图初次加载的动画抢注意力
 }
 
 // "定位我"按钮的实现:拿到浏览器地理位置后,在地图上标出"你在这"并把侧栏
@@ -462,11 +534,29 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
     const toEl = document.getElementById('yearTo');
     const fromLabel = document.getElementById('yearFromLabel');
     const toLabel = document.getElementById('yearToLabel');
+    const fillEl = document.getElementById('yearRangeFill');
     if (hasYearFilter) {
         document.getElementById('timebar').style.display = 'flex';
         for (const el of [fromEl, toEl]) { el.min = minYear; el.max = maxYear; }
         fromEl.value = minYear;
         toEl.value = maxYear;
+    }
+
+    // 单轴双手柄:拖动一端不能越过另一端,而是把对方推着走——比"允许穿过
+    // 再在计算时交换 from/to"更符合直觉,用户看到的手柄位置和自己拖动的
+    // 手感一致,不会出现"明明在拖右边,数字却突然变成左边"的错位感。
+    function clampHandles(movedEl) {
+        if (Number(fromEl.value) > Number(toEl.value)) {
+            if (movedEl === fromEl) toEl.value = fromEl.value;
+            else fromEl.value = toEl.value;
+        }
+    }
+    function updateFill() {
+        if (!hasYearFilter) return;
+        const min = Number(fromEl.min), max = Number(fromEl.max);
+        const pct = v => max === min ? 0 : (v - min) / (max - min) * 100;
+        fillEl.style.left = pct(Number(fromEl.value)) + '%';
+        fillEl.style.width = Math.max(0, pct(Number(toEl.value)) - pct(Number(fromEl.value))) + '%';
     }
 
     const hasAnyRegion = restaurants.some(r => Object.values(regionOf(r)).some(Boolean));
@@ -523,9 +613,9 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
         let from = minYear, to = maxYear;
         if (hasYearFilter) {
             from = Number(fromEl.value); to = Number(toEl.value);
-            if (from > to) { [from, to] = [to, from]; } // 交叉时自动纠正,避免空区间
             fromLabel.textContent = from;
             toLabel.textContent = to;
+            updateFill();
         }
 
         const visible = restaurants.filter(r => {
@@ -552,8 +642,8 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
         sidebar.refresh(isFiltered ? new Set(visible) : null);
     }
     if (hasYearFilter) {
-        fromEl.addEventListener('input', apply);
-        toEl.addEventListener('input', apply);
+        fromEl.addEventListener('input', () => { clampHandles(fromEl); apply(); });
+        toEl.addEventListener('input', () => { clampHandles(toEl); apply(); });
         document.getElementById('yearReset').addEventListener('click', () => {
             fromEl.value = minYear; toEl.value = maxYear; apply();
         });
