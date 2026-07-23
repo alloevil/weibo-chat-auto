@@ -24,19 +24,29 @@
     --hairline-strong: #d8c8ab;
     --primary-tint: rgba(193, 100, 42, 0.14);
     --gold: #a3690f;
+    /* 统一的浮层设计变量:所有卡片/面板共用同一套阴影/圆角/间距,不再各自
+       攒了一套——这几个数字之前是每加一个新面板就顺手抄一遍上一个的写法,
+       攒下来出现了 0.4/0.28/0.25 好几个相近但不同的透明度,肉眼看不出差别
+       却让代码里的"标准值"变得模糊。收拢成三个 token 后,以后新加面板直接
+       引用,不再重新决定一遍数值。 */
+    --shadow-panel: 0 4px 20px rgba(43, 33, 24, .28);
+    --shadow-accent: 0 4px 14px rgba(193, 100, 42, .4);
+    --radius-panel: 12px;
+    --radius-control: 10px;
+    --space-panel: 10px 16px;
     color-scheme: light;
 }
 body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, sans-serif; background: var(--canvas); color: var(--ink); height: 100vh; overflow: hidden; }
 #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--canvas); }
 .topbar {
     position: absolute; top: 16px; left: 16px; z-index: 1000;
-    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
-    padding: 12px 16px; min-width: 220px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    padding: 12px 16px; min-width: 220px; box-shadow: var(--shadow-panel);
 }
 .topbar h1 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
 .topbar .sub { font-size: 12px; color: var(--ink-subtle); }
 .topbar .stat { font-size: 12px; color: var(--ink-muted); margin-top: 6px; }
-.leaflet-popup-content-wrapper { background: var(--surface-1); color: var(--ink); border-radius: 12px; border: 1px solid var(--hairline); }
+.leaflet-popup-content-wrapper { background: var(--surface-1); color: var(--ink); border-radius: var(--radius-panel); border: 1px solid var(--hairline); }
 .leaflet-popup-tip { background: var(--surface-1); }
 .leaflet-popup-content { margin: 12px 14px; }
 .leaflet-popup-close-button { color: var(--ink-subtle) !important; }
@@ -58,15 +68,17 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .cluster-pin.tier-4 { background: #7a2015; border: 2px solid #5c160f; color: #fff; }
 .sidebar-toggle {
     position: absolute; top: 16px; left: 252px; z-index: 1000;
-    width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--hairline);
+    width: 36px; height: 36px; border-radius: var(--radius-control); border: 1px solid var(--hairline);
     background: var(--surface-1); color: var(--ink); font-size: 16px; cursor: pointer;
-    box-shadow: 0 4px 24px rgba(0,0,0,.4); transition: left .2s;
+    box-shadow: var(--shadow-panel); transition: left .2s;
 }
+/* 折叠态下按钮挪到左上角——但那正是标题卡所在位置,top 也必须跟着标题卡
+   实际高度动态挪(见 repositionSidebar),不能写死 16px,否则两者会叠在一起 */
 .sidebar-toggle.collapsed { left: 16px; }
 .sidebar {
     position: absolute; left: 16px; width: 236px; max-height: 50vh; z-index: 999;
-    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
-    box-shadow: 0 4px 24px rgba(0,0,0,.4); display: flex; flex-direction: column; overflow: hidden;
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-panel); display: flex; flex-direction: column; overflow: hidden;
     transition: transform .2s, opacity .2s;
 }
 .sidebar.collapsed { transform: translateX(-260px); opacity: 0; pointer-events: none; }
@@ -94,8 +106,8 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .sidebar-empty { padding: 16px; font-size: 12px; color: var(--ink-subtle); text-align: center; }
 .timebar {
     position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1000;
-    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
-    padding: 10px 18px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    padding: var(--space-panel); box-shadow: var(--shadow-panel);
     display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-muted);
 }
 .timebar input[type=range] { width: 160px; accent-color: var(--primary-hover); }
@@ -131,7 +143,7 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; margin: 0;
     background: var(--primary); color: var(--on-primary); border: none; border-radius: 50%;
     cursor: pointer; font-size: 16px;
-    box-shadow: 0 4px 14px rgba(193,100,42,.4);
+    box-shadow: var(--shadow-accent);
 }
 .locate-btn:hover { background: var(--primary-hover); }
 .locate-btn.loading { opacity: .6; cursor: wait; }
@@ -139,18 +151,26 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .user-dot::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid #4da6ff; animation: pulse 1.6s ease-out infinite; }
 /* 首次进入时指向"定位"按钮的引导气泡,点一次/等几秒/点气泡本身都会消失,
    localStorage 记住看过了,不会每次刷新都弹 */
-.locate-hint {
+.pointer-hint {
     position: fixed; z-index: 1001; background: var(--primary); color: var(--on-primary);
-    padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap;
-    box-shadow: 0 4px 14px rgba(193,100,42,.4); cursor: pointer;
+    padding: 8px 14px; border-radius: var(--radius-control); font-size: 12px; font-weight: 600; white-space: nowrap;
+    box-shadow: var(--shadow-accent); cursor: pointer;
     opacity: 0; transition: opacity .3s; animation: hint-nudge 1.4s ease-in-out infinite;
 }
-.locate-hint.show { opacity: 1; }
-.locate-hint::after {
+.pointer-hint.show { opacity: 1; }
+/* 默认箭头在气泡右侧,指向屏幕右边的目标(比如右上角的定位按钮) */
+.pointer-hint::after {
     content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%);
     border-width: 6px 0 6px 6px; border-style: solid; border-color: transparent transparent transparent var(--primary);
 }
+/* 目标在屏幕左边(比如左上角的餐厅列表按钮)时,箭头要翻到气泡左侧朝左指 */
+.pointer-hint.arrow-left::after {
+    right: auto; left: -6px;
+    border-width: 6px 6px 6px 0; border-color: transparent var(--primary) transparent transparent;
+}
+.pointer-hint.arrow-left { animation: hint-nudge-left 1.4s ease-in-out infinite; }
 @keyframes hint-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-4px); } }
+@keyframes hint-nudge-left { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
 @keyframes pulse { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
 .nearby-banner { display: flex; justify-content: space-between; align-items: center; margin: 0 10px 8px; font-size: 12px; color: var(--ink-subtle); }
 .nearby-banner .back { color: var(--primary-hover); cursor: pointer; }
@@ -160,14 +180,14 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .journey-btn {
     display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; margin: 0;
     background: var(--surface-1); color: var(--ink); border: none; border-radius: 50%;
-    cursor: pointer; font-size: 15px; box-shadow: 0 4px 14px rgba(43,33,24,.25);
+    cursor: pointer; font-size: 15px; box-shadow: var(--shadow-panel);
 }
 .journey-btn:hover { background: var(--surface-2); }
 .journey-btn.active { background: #2f6f4f; color: #fff; }
 .journey-bar {
     position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1000;
-    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
-    padding: 10px 16px; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    padding: var(--space-panel); box-shadow: var(--shadow-panel);
     display: none; flex-direction: column; gap: 6px; font-size: 12px; color: var(--ink-muted); max-width: 90vw;
 }
 .journey-bar.show { display: flex; }
@@ -193,8 +213,8 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     <div class="stat" id="stat"></div>
 </div>
 <div class="empty-hint" id="emptyHint" style="display:none"></div>
-<button class="sidebar-toggle" id="sidebarToggle" title="餐厅列表">☰</button>
-<div class="sidebar" id="sidebar">
+<button class="sidebar-toggle collapsed" id="sidebarToggle" title="餐厅列表">☰</button>
+<div class="sidebar collapsed" id="sidebar">
     <input class="sidebar-search" id="sidebarSearch" placeholder="搜索餐厅…">
     <div class="region-filters" id="regionFilters" style="display:none">
         <select id="continentSelect"><option value="">全部洲</option></select>
@@ -255,11 +275,16 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 }).addTo(map);
 
 // 侧栏顶部跟随信息卡的实际高度,而不是写死一个像素值——统计文字长度会变
-// (比如年份筛选后的文案更长换行),写死的话卡片一变高就会和侧栏重叠
+// (比如年份筛选后的文案更长换行),写死的话卡片一变高就会和侧栏重叠。
+// 折叠按钮同理:折叠态下它会挪到左上角(标题卡所在位置),top 也必须跟
+// 标题卡一起动,否则标题卡一变高,折叠按钮就会被压在它上面。
 const topbarEl = document.querySelector('.topbar');
 const sidebarEl0 = document.getElementById('sidebar');
+const sidebarToggleEl0 = document.getElementById('sidebarToggle');
 function repositionSidebar() {
-    sidebarEl0.style.top = (topbarEl.getBoundingClientRect().bottom + 12) + 'px';
+    const top = (topbarEl.getBoundingClientRect().bottom + 12) + 'px';
+    sidebarEl0.style.top = top;
+    sidebarToggleEl0.style.top = top;
 }
 new ResizeObserver(repositionSidebar).observe(topbarEl);
 repositionSidebar();
@@ -295,23 +320,29 @@ const JourneyControl = L.Control.extend({
 });
 map.addControl(new JourneyControl());
 
-// 首次进入时用一个指向定位按钮的气泡提一下"这里能看附近好吃的",避免
-// 光靠按钮文字被忽略;看过一次(点按钮/点气泡/等够几秒)就用 localStorage
-// 记住,不会每次刷新都弹出来打扰老用户
-function showLocateHint() {
-    const HINT_KEY = 'foodmap_locate_hint_seen';
-    if (localStorage.getItem(HINT_KEY)) return;
-    const btn = document.querySelector('.locate-btn');
+// 首次进入时用一个指向目标按钮的气泡提一下作用,避免光靠图标/文字被忽略;
+// 看过一次(点按钮/点气泡/等够几秒)就用 localStorage 记住,不会每次刷新
+// 都弹出来打扰老用户。定位按钮和侧栏折叠按钮共用这套逻辑,只是箭头方向
+// 相反——侧栏按钮在屏幕左边,气泡要摆在它右边、箭头朝左指。
+function showPointerHint({ key, targetSelector, text, arrowLeft = false }) {
+    if (localStorage.getItem(key)) return;
+    const btn = document.querySelector(targetSelector);
     if (!btn) return;
 
     const hint = document.createElement('div');
-    hint.className = 'locate-hint';
-    hint.textContent = '👉 点这里看看附近好吃的';
+    hint.className = 'pointer-hint' + (arrowLeft ? ' arrow-left' : '');
+    hint.textContent = text;
     document.body.appendChild(hint);
 
     function position() {
         const rect = btn.getBoundingClientRect();
-        hint.style.right = (window.innerWidth - rect.left + 10) + 'px';
+        if (arrowLeft) {
+            hint.style.left = (rect.right + 10) + 'px';
+            hint.style.right = 'auto';
+        } else {
+            hint.style.right = (window.innerWidth - rect.left + 10) + 'px';
+            hint.style.left = 'auto';
+        }
         hint.style.top = (rect.top + rect.height / 2 - hint.offsetHeight / 2) + 'px';
     }
     position();
@@ -319,7 +350,7 @@ function showLocateHint() {
     window.addEventListener('resize', position);
 
     const dismiss = () => {
-        localStorage.setItem(HINT_KEY, '1');
+        localStorage.setItem(key, '1');
         window.removeEventListener('resize', position);
         hint.classList.remove('show');
         setTimeout(() => hint.remove(), 300);
@@ -441,7 +472,10 @@ async function load() {
     setupFilters(restaurants, clusterGroup, sidebar);
     setupLocate(restaurants, sidebar);
     setupJourney(restaurants, clusterGroup);
-    setTimeout(showLocateHint, 1200); // 稍等一下再弹,避免和地图初次加载的动画抢注意力
+    // 稍等一下再弹,避免和地图初次加载的动画抢注意力;两个提示错开时间,
+    // 不会在同一瞬间一起弹出来显得很吵
+    setTimeout(() => showPointerHint({ key: 'foodmap_locate_hint_seen', targetSelector: '.locate-btn', text: '👉 点这里看看附近好吃的' }), 1200);
+    setTimeout(() => showPointerHint({ key: 'foodmap_sidebar_hint_seen', targetSelector: '#sidebarToggle', text: '👉 点这里看餐厅列表', arrowLeft: true }), 2000);
 }
 
 // "定位我"按钮的实现:拿到浏览器地理位置后,在地图上标出"你在这"并把侧栏
