@@ -39,6 +39,9 @@
 }
 body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, sans-serif; background: var(--canvas); color: var(--ink); height: 100vh; overflow: hidden; }
 #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--canvas); }
+/* 纯 CSS 滤镜给底图调色,让颜色更鲜活、更接近插画感——不用换成需要 API
+   key 的卡通风格地图服务,底图数据源不变,只是显示时"调了个滤镜"。 */
+.lively-tiles { filter: saturate(1.45) contrast(1.08) brightness(1.02) sepia(.06); }
 .topbar {
     position: absolute; top: 16px; left: 16px; z-index: 1000;
     background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius-panel);
@@ -299,13 +302,11 @@ function safeName(name) {
 // 暖色底图(CartoDB Voyager,免 API key;比纯灰的 Positron 更暖,契合美食主题)
 const map = L.map('map', { zoomControl: false }).setView([34, 108], 5);
 L.control.zoom({ position: 'topright' }).addTo(map); // 避免与左上角信息卡重叠
-// Stadia Maps 的水彩风底图。本地开发(localhost)不需要任何鉴权就能用,
-// 但线上域名(alloevil.github.io)需要去 Stadia Maps 后台把这个域名登记
-// 做"域名鉴权"才能正常出图——不用在代码里塞 API key,但账号是必须的。
-// 没登记/登记错了的话,瓦片会显示 401 或者盖着 Stamen 水印的警示图。
-L.tileLayer('https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg', {
-    attribution: '&copy; Stadia Maps &copy; Stamen Design &copy; OpenStreetMap contributors',
-    maxZoom: 16,
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+    className: 'lively-tiles', // 纯 CSS 滤镜调色,不用额外的地图服务/API key
 }).addTo(map);
 
 // 侧栏顶部跟随信息卡的实际高度,而不是写死一个像素值——统计文字长度会变
