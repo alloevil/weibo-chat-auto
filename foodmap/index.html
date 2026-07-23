@@ -108,7 +108,10 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
    ::-webkit/moz-range-thumb 的 pointer-events:auto 单独接收点击,输入
    本身 pointer-events:none,这样两个手柄互不打架,各管各的拖动。 */
 .range-slider { position: relative; width: 170px; height: 20px; flex-shrink: 0; }
-.range-track { position: absolute; top: 9px; left: 0; right: 0; height: 4px; background: var(--hairline-strong); border-radius: 2px; }
+/* 原生 range 手柄(16px 直径)实际可移动范围是 [8px, 容器宽度-8px],不是
+   [0, 100%]——手柄中心到不了容器边缘。轨道/高亮条按这个真实范围内缩
+   8px,否则数值到最大时手柄看着"没到最右端"(轨道比手柄能走到的地方长)。 */
+.range-track { position: absolute; top: 9px; left: 8px; right: 8px; height: 4px; background: var(--hairline-strong); border-radius: 2px; }
 .range-fill { position: absolute; top: 9px; height: 4px; background: var(--primary); border-radius: 2px; }
 .range-input {
     position: absolute; top: 0; left: 0; width: 100%; height: 20px; margin: 0;
@@ -125,9 +128,9 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .range-input::-webkit-slider-runnable-track { background: transparent; }
 .range-input::-moz-range-track { background: transparent; }
 .locate-btn {
-    display: flex; align-items: center; gap: 6px; padding: 9px 14px; margin: 0;
-    background: var(--primary); color: var(--on-primary); border: none; border-radius: 20px;
-    cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap;
+    display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; margin: 0;
+    background: var(--primary); color: var(--on-primary); border: none; border-radius: 50%;
+    cursor: pointer; font-size: 16px;
     box-shadow: 0 4px 14px rgba(193,100,42,.4);
 }
 .locate-btn:hover { background: var(--primary-hover); }
@@ -232,7 +235,7 @@ const LocateControl = L.Control.extend({
     options: { position: 'topright' },
     onAdd() {
         const btn = L.DomUtil.create('button', 'locate-btn');
-        btn.innerHTML = '📍 附近好吃的';
+        btn.innerHTML = '📍';
         btn.title = '获取你的位置,按距离排序看附近有什么好吃的';
         L.DomEvent.disableClickPropagation(btn);
         L.DomEvent.on(btn, 'click', () => onLocate && onLocate(btn));
@@ -554,9 +557,12 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
     function updateFill() {
         if (!hasYearFilter) return;
         const min = Number(fromEl.min), max = Number(fromEl.max);
-        const pct = v => max === min ? 0 : (v - min) / (max - min) * 100;
-        fillEl.style.left = pct(Number(fromEl.value)) + '%';
-        fillEl.style.width = Math.max(0, pct(Number(toEl.value)) - pct(Number(fromEl.value))) + '%';
+        const THUMB_RADIUS = 8; // 手柄半径,和 .range-input::-webkit/moz-range-thumb 的尺寸对应
+        const trackWidth = document.getElementById('yearRangeSlider').offsetWidth - THUMB_RADIUS * 2;
+        const pxPos = v => THUMB_RADIUS + (max === min ? 0 : (v - min) / (max - min) * trackWidth);
+        const left = pxPos(Number(fromEl.value)), right = pxPos(Number(toEl.value));
+        fillEl.style.left = left + 'px';
+        fillEl.style.width = Math.max(0, right - left) + 'px';
     }
 
     const hasAnyRegion = restaurants.some(r => Object.values(regionOf(r)).some(Boolean));
