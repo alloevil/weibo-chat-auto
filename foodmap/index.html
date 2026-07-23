@@ -517,6 +517,20 @@ async function load() {
 // 与其猜一个截断距离不如把最近的几家原样列出来,由用户自己判断远不远。
 function setupLocate(restaurants, sidebar) {
     let userMarker = null;
+    // 定位权限一旦被拒绝,浏览器不会再弹系统授权框,之后每次点击都会立刻
+    // 拿到同一个"已拒绝"错误——用户必须自己去系统/浏览器设置里手动改。
+    // "浏览器设置"这个说法太笼统,iOS 和 Android 的操作路径完全不一样,
+    // 按 UA 给出具体路径,不然等于没说。
+    function geolocationDeniedMsg() {
+        const ua = navigator.userAgent;
+        if (/iPhone|iPad|iPod/.test(ua)) {
+            return '定位被拒绝。请打开系统"设置" → 隐私与安全性 → 定位服务,确认已开启;再找到 Safari(或你使用的浏览器)把定位权限改成"允许",然后回来刷新本页重试。';
+        }
+        if (/Android/.test(ua)) {
+            return '定位被拒绝。请点一下浏览器地址栏左侧的图标(或菜单里的"网站设置"),把"位置"权限改成"允许",然后刷新本页重试。';
+        }
+        return '定位被拒绝,请在浏览器设置里允许本站访问位置,然后刷新页面重试。';
+    }
     onLocate = (btn) => {
         if (!navigator.geolocation) { alert('你的浏览器不支持定位'); return; }
         btn.classList.add('loading');
@@ -534,7 +548,7 @@ function setupLocate(restaurants, sidebar) {
             },
             (err) => {
                 btn.classList.remove('loading');
-                const msg = err.code === 1 ? '定位被拒绝,请在浏览器设置里允许本站访问位置'
+                const msg = err.code === 1 ? geolocationDeniedMsg()
                     : err.code === 2 ? '无法获取定位,请检查设备定位服务是否开启'
                     : '定位超时,请重试';
                 alert(msg);
