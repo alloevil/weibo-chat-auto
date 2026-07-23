@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="320" viewBox="0 0 1200 320"
+     role="img" aria-labelledby="title desc">
+  <title id="title">foodmap</title>
+  <desc id="desc">A warm cream hero showing scattered terracotta pins across an abstract world silhouette, representing restaurants extracted from a food blogger's Weibo posts.</desc>
+
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#c1642a"/>
+      <stop offset="100%" stop-color="#e0a05a"/>
+    </linearGradient>
+    <radialGradient id="pinGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c1642a" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#c1642a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="320" fill="#f5ede0"/>
+
+  <!-- Abstract world dot-grid silhouette (loosely China/Asia-weighted, echoing the real data) -->
+  <g fill="#d8c8ab">
+    <circle cx="120" cy="120" r="2.5"/><circle cx="140" cy="130" r="2.5"/><circle cx="160" cy="115" r="2.5"/>
+    <circle cx="300" cy="90" r="2.5"/><circle cx="320" cy="105" r="2.5"/><circle cx="340" cy="95" r="2.5"/>
+    <circle cx="600" cy="150" r="2.5"/><circle cx="620" cy="140" r="2.5"/><circle cx="640" cy="160" r="2.5"/>
+    <circle cx="660" cy="135" r="2.5"/><circle cx="680" cy="150" r="2.5"/><circle cx="700" cy="120" r="2.5"/>
+    <circle cx="720" cy="145" r="2.5"/><circle cx="740" cy="130" r="2.5"/><circle cx="760" cy="160" r="2.5"/>
+    <circle cx="630" cy="180" r="2.5"/><circle cx="650" cy="195" r="2.5"/><circle cx="690" cy="185" r="2.5"/>
+    <circle cx="710" cy="200" r="2.5"/><circle cx="670" cy="210" r="2.5"/>
+    <circle cx="900" cy="180" r="2.5"/><circle cx="920" cy="165" r="2.5"/><circle cx="940" cy="190" r="2.5"/>
+    <circle cx="450" cy="220" r="2.5"/><circle cx="470" cy="235" r="2.5"/><circle cx="490" cy="215" r="2.5"/>
+    <circle cx="1000" cy="230" r="2.5"/><circle cx="1020" cy="245" r="2.5"/>
+  </g>
+
+  <!-- Glowing pins over the densest cluster, echoing the real screenshot -->
+  <g>
+    <circle cx="665" cy="165" r="22" fill="url(#pinGlow)"/>
+    <circle cx="700" cy="145" r="18" fill="url(#pinGlow)"/>
+    <circle cx="640" cy="185" r="16" fill="url(#pinGlow)"/>
+    <circle cx="665" cy="165" r="4" fill="#c1642a"/>
+    <circle cx="700" cy="145" r="3.5" fill="#c1642a"/>
+    <circle cx="640" cy="185" r="3" fill="#c1642a"/>
+    <circle cx="720" cy="170" r="3" fill="#c1642a"/>
+    <circle cx="680" cy="200" r="3" fill="#c1642a"/>
+  </g>
+
+  <!-- Title -->
+  <text x="90" y="150" font-family="-apple-system, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#2b2118">foodmap</text>
+  <text x="90" y="190" font-family="-apple-system, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" fill="#8a7a66">微博美食博主主页动态 → AI 抽取推荐菜品 → 可视化地图</text>
+
+  <!-- Accent underline -->
+  <rect x="90" y="205" width="140" height="4" rx="2" fill="url(#accent)"/>
+</svg>
