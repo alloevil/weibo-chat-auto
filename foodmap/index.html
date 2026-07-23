@@ -679,13 +679,36 @@ function setupJourney(restaurants, clusterGroup) {
     // 年份上色——这样跨年移动时颜色会在年份边界处切换,同一年内的移动始终
     // 是同一色,一眼就能分清"这一片是哪年在这边转"而不是一整条糊在一起。
     let segments = [];
+    // 远距离(飞机)的这一段画成弧线而不是直线——航线图传统上都用弧线表示
+    // 长途飞行,直线反而不像"飞过去"、更像"贴地挪过去"。用二次贝塞尔曲线
+    // 近似:取两点中点,往垂直方向偏移一点当控制点,弯曲程度跟距离成比例
+    // (偏移量是中点到两端距离的固定比例,不是绝对像素值,长途线看起来
+    // 弯得自然,短途线不会突然弓起一个很夸张的包)。
+    function arcPoints(a, b, steps = 24) {
+        const midLat = (a.lat + b.lat) / 2, midLng = (a.lng + b.lng) / 2;
+        const dLat = b.lat - a.lat, dLng = b.lng - a.lng;
+        const bend = 0.45;
+        const ctrlLat = midLat - dLng * bend;
+        const ctrlLng = midLng + dLat * bend;
+        const pts = [];
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const lat = (1 - t) ** 2 * a.lat + 2 * (1 - t) * t * ctrlLat + t ** 2 * b.lat;
+            const lng = (1 - t) ** 2 * a.lng + 2 * (1 - t) * t * ctrlLng + t ** 2 * b.lng;
+            pts.push([lat, lng]);
+        }
+        return pts;
+    }
     function rebuildSegments(uptoIndex) {
         for (const seg of segments) map.removeLayer(seg);
         segments = [];
         for (let j = 0; j < uptoIndex; j++) {
             const a = journey[j], b = journey[j + 1];
-            const seg = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
-                color: yearColor(new Date(b.t).getFullYear()), weight: 3, opacity: 0.85,
+            const isFar = distanceKm(a.lat, a.lng, b.lat, b.lng) > FAR_THRESHOLD_KM;
+            const latlngs = isFar ? arcPoints(a, b) : [[a.lat, a.lng], [b.lat, b.lng]];
+            const seg = L.polyline(latlngs, {
+                color: yearColor(new Date(b.t).getFullYear()), weight: 3, opacity: 0.85, dashArray: '6 6',
+                smoothFactor: 0, // 关掉路径简化——弧线在缩得很远时偏移只有几像素,不关的话会被简化成直线
             }).addTo(map);
             segments.push(seg);
         }
