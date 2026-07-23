@@ -229,6 +229,10 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
    图标本身放大到能装下一个 emoji,不再是纯色小圆点 */
 .journey-marker { position: relative; width: 26px; height: 26px; border-radius: 50%; background: #2f6f4f; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(47,111,79,.35); display: flex; align-items: center; justify-content: center; font-size: 13px; }
 .journey-marker::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid #2f6f4f; animation: pulse 1.6s ease-out infinite; }
+/* 轨迹回放路过的每个地点留一个小图标(见 setupJourney 的 rebuildStopMarkers)
+   ——比地图默认的 food-pin 小一圈,不会跟正在移动的车/飞机图标抢视觉重心,
+   纯粹是"走过的路"的留痕 */
+.journey-stop { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--surface-1); border: 2px solid var(--primary); font-size: 11px; box-shadow: 0 1px 4px rgba(43,33,24,.3); animation: pin-pop .25s cubic-bezier(.34,1.56,.64,1) backwards; }
 /* 手机窄屏:这些面板的宽度都是按桌面尺寸一个个手动定的(236px 侧栏、
    170px 滑块……),窄屏上要么整体超出屏幕右边被裁掉,要么互相挤在一起。
    核心思路是把"宽度由内容撑开"改成"宽度受屏幕限制、内部元素让路"。 */
@@ -727,6 +731,23 @@ function setupJourney(restaurants, clusterGroup) {
         }
     }
 
+    // 路过的每个地点留一个小食物图标(用跟主地图一致的 pickEmoji,一眼认出
+    // 是同一家餐厅),随播放进度逐个"冒出来"而不是一开始就铺满——呼应
+    // rebuildSegments 只画到当前进度为止的线段,两者进度保持一致
+    let stopMarkers = [];
+    function rebuildStopMarkers(uptoIndex) {
+        for (const m of stopMarkers) map.removeLayer(m);
+        stopMarkers = [];
+        for (let j = 0; j <= uptoIndex; j++) {
+            const pt = journey[j];
+            const m = L.marker([pt.lat, pt.lng], {
+                icon: L.divIcon({ className: '', html: `<div class="journey-stop">${pickEmoji(pt.name)}</div>`, iconSize: [20, 20], iconAnchor: [10, 10] }),
+                zIndexOffset: 500,
+            }).addTo(map);
+            stopMarkers.push(m);
+        }
+    }
+
     // 两点之间距离决定用什么交通方式的图标——纯粹是视觉隐喻,不是真实
     // 交通方式数据,阈值(80km)选的是"市内开车 vs 跨城/跨国出行"的大致分界
     const FAR_THRESHOLD_KM = 80;
@@ -781,6 +802,7 @@ function setupJourney(restaurants, clusterGroup) {
         const pt = journey[i];
         const prev = journey[i - 1];
         rebuildSegments(i);
+        rebuildStopMarkers(i);
         const distKm = prev ? distanceKm(prev.lat, prev.lng, pt.lat, pt.lng) : 0;
         const mode = distKm > FAR_THRESHOLD_KM ? 'far' : 'near';
         lastMode = mode;
@@ -866,6 +888,8 @@ function setupJourney(restaurants, clusterGroup) {
         journeyBtn.classList.remove('active');
         for (const seg of segments) map.removeLayer(seg);
         segments = [];
+        for (const m of stopMarkers) map.removeLayer(m);
+        stopMarkers = [];
         map.removeLayer(marker);
         barEl.classList.remove('show');
         timebarEl.style.display = timebarPrevDisplay;
