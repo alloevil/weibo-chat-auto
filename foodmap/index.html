@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>美食地图</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -45,6 +48,9 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .visit-link { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--primary-hover); text-decoration: none; }
 .visit-link:hover { text-decoration: underline; }
 .empty-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 999; color: var(--ink-subtle); font-size: 14px; text-align: center; }
+.food-pin { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--surface-1); border: 2px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.food-pin.repeat { border-color: #FFC131; box-shadow: 0 0 10px rgba(255,193,49,.5); }
+.cluster-pin { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-weight: 600; border: 2px solid var(--primary-hover); box-shadow: 0 2px 10px rgba(0,0,0,.5); }
 </style>
 </head>
 <body>
@@ -57,10 +63,19 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 <div class="empty-hint" id="emptyHint" style="display:none"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 const params = new URLSearchParams(location.search);
-const bloggerName = params.get('name') || '';
-document.getElementById('bloggerName').textContent = bloggerName ? `${bloggerName}的美食地图` : '美食地图';
+// 未指定 ?name= 时默认展示随仓库附带的示例数据(陈晓卿);其他博主的数据
+// 需要你本地跑过 fetch-posts.mjs/extract-restaurants.mjs 后用 ?name=<博主名> 查看
+const DEFAULT_BLOGGER = '陈晓卿';
+const bloggerName = params.get('name') || DEFAULT_BLOGGER;
+document.getElementById('bloggerName').textContent = `${bloggerName}的美食地图`;
+
+// 与 extract-restaurants.mjs 的 dataDir() 保持一致的目录名清洗规则
+function safeName(name) {
+    return String(name).replace(/[^a-zA-Z0-9一-鿿]/g, '_');
+}
 
 // 暗色底图(CartoDB dark_all,免 API key)
 const map = L.map('map', { zoomControl: false }).setView([34, 108], 5);
@@ -97,14 +112,18 @@ function renderPopup(r) {
 }
 
 async function load() {
-    // 不带 ?name= 时仍尝试请求接口——服务端可能用 --name 配了默认博主
-    const resp = await fetch('/api/restaurants' + (bloggerName ? '?name=' + encodeURIComponent(bloggerName) : ''));
+    // 纯静态读取:GitHub Pages 没有后端,直接 fetch 仓库里的 JSON 文件。
+    // server.mjs 本地起服务时也是同一套相对路径,行为一致。
+    const resp = await fetch('data/' + encodeURIComponent(safeName(bloggerName)) + '/restaurants.json');
+    if (!resp.ok) {
+        document.getElementById('emptyHint').style.display = '';
+        document.getElementById('emptyHint').textContent = `未找到"${bloggerName}"的数据。请先在本地运行 fetch-posts.mjs + extract-restaurants.mjs,或换用 ?name=陈晓卿 查看示例`;
+        return;
+    }
     const restaurants = await resp.json();
     if (!Array.isArray(restaurants)) {
         document.getElementById('emptyHint').style.display = '';
-        document.getElementById('emptyHint').textContent = resp.status === 400
-            ? '请在地址栏加上 ?name=<博主名>,例如 ?name=陈晓卿(或启动 server.mjs 时加 --name 参数)'
-            : (restaurants.error || '加载失败');
+        document.getElementById('emptyHint').textContent = '数据格式错误';
         return;
     }
     if (restaurants.length === 0) {
@@ -116,16 +135,47 @@ async function load() {
     const totalVisits = restaurants.reduce((s, r) => s + r.visits.length, 0);
     document.getElementById('stat').textContent = `${restaurants.length} 家餐厅 · ${totalVisits} 次拜访`;
 
-    const markers = [];
-    for (const r of restaurants) {
-        const marker = L.circleMarker([r.lat, r.lng], {
-            radius: 7, color: '#5e6ad2', fillColor: '#828fff', fillOpacity: 0.85, weight: 2,
-        }).addTo(map);
-        marker.bindPopup(renderPopup(r), { maxWidth: 320 });
-        markers.push(marker);
+    // 按名称哈希挑一个食物 emoji,拜访 ≥2 次的用金色高亮("回头客"信号),
+    // 半径随拜访次数增大,一眼看出常去的地方
+    const FOOD_EMOJI = ['🍜', '🍲', '🍛', '🥘', '🍚', '🍢', '🥟', '🍤', '🍗', '🍣'];
+    function pickEmoji(name) {
+        let h = 0;
+        for (const ch of name) h = (h * 31 + ch.codePointAt(0)) % FOOD_EMOJI.length;
+        return FOOD_EMOJI[h];
     }
-    const group = L.featureGroup(markers);
-    map.fitBounds(group.getBounds(), { padding: [40, 40] });
+    function makeFoodIcon(r) {
+        const repeat = r.visits.length >= 2;
+        const size = Math.min(26 + r.visits.length * 3, 44);
+        return L.divIcon({
+            className: '',
+            html: `<div class="food-pin${repeat ? ' repeat' : ''}" style="width:${size}px;height:${size}px;font-size:${size * 0.55}px">${pickEmoji(r.name)}</div>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+        });
+    }
+
+    // 聚类:密集区(如北京、桂林)几十个点挤在一起时收成数字气泡,放大到街道级再展开
+    const clusterGroup = L.markerClusterGroup({
+        maxClusterRadius: 45,
+        disableClusteringAtZoom: 15,
+        iconCreateFunction(cluster) {
+            const count = cluster.getChildCount();
+            const size = count < 10 ? 34 : count < 30 ? 42 : 50;
+            return L.divIcon({
+                className: '',
+                html: `<div class="cluster-pin" style="width:${size}px;height:${size}px;font-size:${size * 0.32}px">${count}</div>`,
+                iconSize: [size, size],
+            });
+        },
+    });
+
+    for (const r of restaurants) {
+        const marker = L.marker([r.lat, r.lng], { icon: makeFoodIcon(r) });
+        marker.bindPopup(renderPopup(r), { maxWidth: 320 });
+        clusterGroup.addLayer(marker);
+    }
+    map.addLayer(clusterGroup);
+    map.fitBounds(clusterGroup.getBounds(), { padding: [40, 40] });
 }
 
 load();

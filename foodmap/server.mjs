@@ -1,54 +1,38 @@
-// 美食地图的最小静态文件 + 数据 API server(纯 Node 内置 http,不引入新依赖)。
-// 用法: node foodmap/server.mjs [--name 陈晓卿] [--port 3457]
+// 本地起一个最小静态文件 server(纯 Node 内置 http,不引入新依赖),行为与
+// GitHub Pages 完全一致——index.html 用相对路径 fetch data/<name>/restaurants.json,
+// 本地开发和线上静态托管走的是同一套代码,不需要额外的 /api 层。
+// 用法: node server.mjs [--port 3457]
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, '..');
+const ROOT = __dirname;
 
-function safeName(name) {
-  return String(name).replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-}
-
-function restaurantsPath(name) {
-  return path.join(ROOT, 'foodmap', 'data', safeName(name), 'restaurants.json');
-}
+const MIME = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.js': 'text/javascript', '.png': 'image/png' };
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(`--${n}`); return i !== -1 ? args[i + 1] : d; };
 const PORT = Number(opt('port')) || 3457;
-const DEFAULT_NAME = opt('name') || '';
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, 'http://localhost');
+    const url = new URL(req.url, 'http://localhost');
+    let reqPath = decodeURIComponent(url.pathname);
+    if (reqPath === '/') reqPath = '/index.html';
 
-  if (url.pathname === '/api/restaurants') {
-    const name = url.searchParams.get('name') || DEFAULT_NAME;
-    if (!name) { res.writeHead(400); res.end('缺少 name 参数'); return; }
-    fs.readFile(restaurantsPath(name), 'utf-8', (err, data) => {
-      if (err) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: '未找到该博主的数据,请先运行 extract-restaurants.mjs' })); return; }
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(data);
+    const filePath = path.normalize(path.join(ROOT, reqPath));
+    if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; } // 防目录穿越
+
+    fs.readFile(filePath, (err, data) => {
+        if (err) { res.writeHead(404); res.end('Not found'); return; }
+        const ext = path.extname(filePath);
+        res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+        res.end(data);
     });
-    return;
-  }
-
-  if (url.pathname === '/' || url.pathname === '/index.html') {
-    fs.readFile(path.join(__dirname, 'index.html'), 'utf-8', (err, data) => {
-      if (err) { res.writeHead(500); res.end('index.html 读取失败'); return; }
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(data);
-    });
-    return;
-  }
-
-  res.writeHead(404);
-  res.end('Not found');
 });
 
 server.listen(PORT, () => {
-  console.log(`美食地图: http://localhost:${PORT}/${DEFAULT_NAME ? '' : '?name=<博主名>'}`);
-  if (DEFAULT_NAME) console.log(`默认展示: ${DEFAULT_NAME}`);
+    console.log(`美食地图: http://localhost:${PORT}/`);
+    console.log(`(默认展示示例数据"陈晓卿",用 ?name=<博主名> 切换)`);
 });
