@@ -699,11 +699,24 @@ function setupJourney(restaurants, clusterGroup) {
         zIndexOffset: 1000,
     });
 
-    let active = false, playing = false, timer = null, index = 0;
+    let active = false, playing = false, timer = null, index = 0, lastMode = 'near';
     const timebarEl = document.getElementById('timebar');
     let timebarPrevDisplay = '';
 
-    function renderStep(i, { pan = false } = {}) {
+    // 飞机图标之前只在瞬间跳到新位置时露一下脸,900ms 一晃就过去,根本看不清
+    // 是什么图标。远距离的这一步改成让图标沿直线平滑"飞"过去(而不是瞬移),
+    // 配合下面 play() 里给远距离步骤单独留出更长的停留时间,才看得出"飞机在飞"。
+    function animateMarkerTo(from, to, duration) {
+        const start = performance.now();
+        function step(now) {
+            const t = Math.min(1, (now - start) / duration);
+            marker.setLatLng([from.lat + (to.lat - from.lat) * t, from.lng + (to.lng - from.lng) * t]);
+            if (t < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    function renderStep(i, { pan = false, animateMarker = false } = {}) {
         index = i;
         progressEl.value = i;
         const pt = journey[i];
@@ -711,8 +724,13 @@ function setupJourney(restaurants, clusterGroup) {
         rebuildSegments(i);
         const distKm = prev ? distanceKm(prev.lat, prev.lng, pt.lat, pt.lng) : 0;
         const mode = distKm > FAR_THRESHOLD_KM ? 'far' : 'near';
+        lastMode = mode;
         marker.setIcon(journeyIcon(mode));
-        marker.setLatLng([pt.lat, pt.lng]);
+        if (animateMarker && mode === 'far' && prev) {
+            animateMarkerTo(prev, pt, 1400);
+        } else {
+            marker.setLatLng([pt.lat, pt.lng]);
+        }
         const dishText = pt.dishes.length ? ` · ${pt.dishes.slice(0, 3).join('、')}` : '';
         labelEl.textContent = `${formatDate(pt.date)} ${pt.name}${dishText}`;
         // 近距离(市内开车)放大到看得清街道的程度;远距离(飞机跨城/跨国)
@@ -720,7 +738,7 @@ function setupJourney(restaurants, clusterGroup) {
         // 看不出移动轨迹的一个小点
         if (pan) {
             if (mode === 'far' && prev) {
-                map.flyToBounds([[prev.lat, prev.lng], [pt.lat, pt.lng]], { padding: [80, 80], maxZoom: 8, duration: 0.6 });
+                map.flyToBounds([[prev.lat, prev.lng], [pt.lat, pt.lng]], { padding: [80, 80], maxZoom: 8, duration: 1.4 });
             } else {
                 map.flyTo([pt.lat, pt.lng], 12, { animate: true, duration: 0.5 });
             }
@@ -730,16 +748,23 @@ function setupJourney(restaurants, clusterGroup) {
     function pause() {
         playing = false;
         playBtn.textContent = '▶';
-        if (timer) { clearInterval(timer); timer = null; }
+        if (timer) { clearTimeout(timer); timer = null; }
     }
     function play() {
         if (index >= journey.length - 1) index = 0; // 播放完了再点,从头再来一遍
         playing = true;
         playBtn.textContent = '⏸';
-        timer = setInterval(() => {
+        // setInterval 的固定间隔没法区分"这一步是开车还是坐飞机"——改成
+        // setTimeout 自己排下一次,每步结束后按刚渲染的这一步是远是近决定
+        // 停留多久:飞机步骤停留够长(2.2s)让人看清图标和缩放动画,开车步骤
+        // 维持原来的节奏(900ms)不拖慢整体播放
+        function tick() {
+            if (!playing) return;
             if (index >= journey.length - 1) { pause(); return; }
-            renderStep(index + 1, { pan: true });
-        }, 900); // 比之前的 550ms 慢一些,给飞机跳转的缩放动画留出播放时间
+            renderStep(index + 1, { pan: true, animateMarker: true });
+            timer = setTimeout(tick, lastMode === 'far' ? 2200 : 900);
+        }
+        tick();
     }
 
     function enter() {
