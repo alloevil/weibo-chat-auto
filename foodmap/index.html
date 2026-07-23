@@ -94,6 +94,19 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 .timebar .year-label { min-width: 34px; text-align: center; color: var(--ink); font-weight: 600; }
 .timebar .reset-btn { color: var(--primary-hover); cursor: pointer; font-size: 11px; padding: 2px 6px; }
 .timebar .reset-btn:hover { text-decoration: underline; }
+.locate-btn {
+    width: 34px; height: 34px; background: var(--surface-1); border: none; cursor: pointer;
+    font-size: 16px; display: flex; align-items: center; justify-content: center; color: var(--ink);
+}
+.locate-btn:hover { background: var(--surface-2); }
+.locate-btn.loading { opacity: .5; cursor: wait; }
+.user-dot { position: relative; width: 16px; height: 16px; border-radius: 50%; background: #4da6ff; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(77,166,255,.35); }
+.user-dot::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid #4da6ff; animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
+.nearby-banner { display: flex; justify-content: space-between; align-items: center; margin: 0 10px 8px; font-size: 12px; color: var(--ink-subtle); }
+.nearby-banner .back { color: var(--primary-hover); cursor: pointer; }
+.nearby-banner .back:hover { text-decoration: underline; }
+.sidebar-item .dist { font-size: 11px; color: var(--ink-subtle); flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -107,6 +120,10 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 <button class="sidebar-toggle" id="sidebarToggle" title="餐厅列表">☰</button>
 <div class="sidebar" id="sidebar">
     <input class="sidebar-search" id="sidebarSearch" placeholder="搜索餐厅…">
+    <div class="nearby-banner" id="nearbyBanner" style="display:none">
+        <span id="nearbyBannerText">离你最近</span>
+        <span class="back" id="nearbyBack">返回全部 ✕</span>
+    </div>
     <div class="sidebar-list" id="sidebarList"></div>
 </div>
 <div class="timebar" id="timebar" style="display:none">
@@ -153,8 +170,36 @@ function repositionSidebar() {
 new ResizeObserver(repositionSidebar).observe(topbarEl);
 repositionSidebar();
 
+// "定位我"按钮:作为 Leaflet 控件加进 topright,会自动叠在缩放按钮下方,
+// 不用手动算像素偏移。真正的定位逻辑在 load() 里数据备好之后才挂(见 onLocate)。
+let onLocate = null;
+const LocateControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+        const btn = L.DomUtil.create('button', 'locate-btn');
+        btn.innerHTML = '📍';
+        btn.title = '定位我,看附近好吃的';
+        L.DomEvent.disableClickPropagation(btn);
+        L.DomEvent.on(btn, 'click', () => onLocate && onLocate(btn));
+        return btn;
+    },
+});
+map.addControl(new LocateControl());
+
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// 球面距离(公里),Haversine 公式,用于"附近好吃的"排序
+function distanceKm(lat1, lng1, lat2, lng2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function formatDistance(km) {
+    return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(km < 10 ? 1 : 0)}km`;
 }
 
 function formatDate(raw) {
@@ -250,31 +295,77 @@ async function load() {
 
     const sidebar = setupSidebar(restaurants, clusterGroup, pickEmoji);
     setupTimeFilter(restaurants, clusterGroup, sidebar);
+    setupLocate(restaurants, sidebar);
+}
+
+// "定位我"按钮的实现:拿到浏览器地理位置后,在地图上标出"你在这"并把侧栏
+// 切到按距离排序的附近榜。不设硬性半径——博主是全球到处跑的美食向导,
+// 与其猜一个截断距离不如把最近的几家原样列出来,由用户自己判断远不远。
+function setupLocate(restaurants, sidebar) {
+    let userMarker = null;
+    onLocate = (btn) => {
+        if (!navigator.geolocation) { alert('你的浏览器不支持定位'); return; }
+        btn.classList.add('loading');
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                btn.classList.remove('loading');
+                const { latitude: lat, longitude: lng } = pos.coords;
+                if (userMarker) map.removeLayer(userMarker);
+                userMarker = L.marker([lat, lng], {
+                    icon: L.divIcon({ className: '', html: '<div class="user-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
+                    zIndexOffset: 1000,
+                }).addTo(map);
+                map.setView([lat, lng], 12);
+                sidebar.showNearby(lat, lng);
+            },
+            (err) => {
+                btn.classList.remove('loading');
+                const msg = err.code === 1 ? '定位被拒绝,请在浏览器设置里允许本站访问位置'
+                    : err.code === 2 ? '无法获取定位,请检查设备定位服务是否开启'
+                    : '定位超时,请重试';
+                alert(msg);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
 }
 
 // 侧栏餐厅列表:按拜访次数排序,支持按名称搜索;点击项目让地图聚焦该标记并弹出详情。
-// 返回 { refresh(visibleSet) } 供时间滑块联动——滑块变化时侧栏也要同步只显示范围内的餐厅。
+// 返回 { refresh(visibleSet), showNearby(lat,lng) } 供时间滑块/定位按钮联动。
 function setupSidebar(restaurants, clusterGroup, pickEmoji) {
     const sorted = [...restaurants].sort((a, b) => b.visits.length - a.visits.length);
     const listEl = document.getElementById('sidebarList');
     const searchEl = document.getElementById('sidebarSearch');
+    const bannerEl = document.getElementById('nearbyBanner');
+    const bannerTextEl = document.getElementById('nearbyBannerText');
     let visibleSet = null; // null = 不做时间过滤(全部可见)
+    let nearbyOrigin = null; // {lat,lng} = 处于"附近好吃的"模式
+
+    function baseList() {
+        let list = visibleSet ? sorted.filter(r => visibleSet.has(r)) : sorted;
+        if (nearbyOrigin) {
+            list = [...list].sort((a, b) => distanceKm(nearbyOrigin.lat, nearbyOrigin.lng, a.lat, a.lng) - distanceKm(nearbyOrigin.lat, nearbyOrigin.lng, b.lat, b.lng));
+        }
+        return list;
+    }
 
     function renderList() {
         const q = searchEl.value.trim().toLowerCase();
-        let filtered = q ? sorted.filter(r => r.name.toLowerCase().includes(q)) : sorted;
-        if (visibleSet) filtered = filtered.filter(r => visibleSet.has(r));
+        let filtered = q ? baseList().filter(r => r.name.toLowerCase().includes(q)) : baseList();
+        if (nearbyOrigin && !q) filtered = filtered.slice(0, 20); // 不限定搜索时只列最近 20 家,避免刷到天荒地老
         if (filtered.length === 0) {
             listEl.innerHTML = '<div class="sidebar-empty">没有匹配的餐厅</div>';
             return;
         }
         listEl.innerHTML = filtered.map((r) => {
-            const repeat = r.visits.length >= 2;
             const idx = sorted.indexOf(r);
+            const rightSpan = nearbyOrigin
+                ? `<span class="dist">${formatDistance(distanceKm(nearbyOrigin.lat, nearbyOrigin.lng, r.lat, r.lng))}</span>`
+                : `<span class="count${r.visits.length >= 2 ? ' repeat' : ''}">${r.visits.length}次</span>`;
             return `<div class="sidebar-item" data-idx="${idx}">
                 <span class="emoji">${pickEmoji(r.name)}</span>
                 <span class="name">${escapeHtml(r.name)}</span>
-                <span class="count${repeat ? ' repeat' : ''}">${r.visits.length}次</span>
+                ${rightSpan}
             </div>`;
         }).join('');
     }
@@ -297,8 +388,25 @@ function setupSidebar(restaurants, clusterGroup, pickEmoji) {
         toggleBtn.classList.toggle('collapsed');
     });
 
+    document.getElementById('nearbyBack').addEventListener('click', () => {
+        nearbyOrigin = null;
+        bannerEl.style.display = 'none';
+        renderList();
+    });
+
     return {
         refresh(newVisibleSet) { visibleSet = newVisibleSet; renderList(); },
+        showNearby(lat, lng) {
+            nearbyOrigin = { lat, lng };
+            const nearest = baseList()[0];
+            const nearestKm = nearest ? distanceKm(lat, lng, nearest.lat, nearest.lng) : Infinity;
+            bannerTextEl.textContent = nearestKm > 100 ? `附近暂无记录,以下是离你最近的地点` : `离你最近`;
+            bannerEl.style.display = 'flex';
+            sidebarEl.classList.remove('collapsed');
+            toggleBtn.classList.remove('collapsed');
+            searchEl.value = '';
+            renderList();
+        },
     };
 }
 
