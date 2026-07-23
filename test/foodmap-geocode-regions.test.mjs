@@ -1,33 +1,48 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { reverseGeocodeRegion } from '../foodmap/geocode-regions.mjs';
+import { reverseGeocodeLocation } from '../foodmap/geocode-regions.mjs';
 
 function mockFetchOnce(addressObj) {
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ address: addressObj }) });
 }
 
-test('reverseGeocodeRegion: 优先取 city,其次 state,再其次 country', async () => {
-  mockFetchOnce({ city: '广州市', state: '广东省' });
-  assert.strictEqual(await reverseGeocodeRegion(23.13, 113.26), '广州市');
-
-  mockFetchOnce({ state: '上海市' }); // 直辖市在某些缩放级别只有 state 字段
-  assert.strictEqual(await reverseGeocodeRegion(31.23, 121.47), '上海市');
-
-  mockFetchOnce({ country: '日本' });
-  assert.strictEqual(await reverseGeocodeRegion(35.68, 139.69), '日本');
+test('reverseGeocodeLocation: 从 country_code 推出洲,取国家/省/市各级字段', async () => {
+  mockFetchOnce({ country_code: 'cn', country: '中国', state: '广东省', city: '广州市' });
+  assert.deepStrictEqual(await reverseGeocodeLocation(23.13, 113.26), {
+    continent: '亚洲', country: '中国', province: '广东省', city: '广州市',
+  });
 });
 
-test('reverseGeocodeRegion: 分号拼接的多语言地名只取第一段', async () => {
-  mockFetchOnce({ city: '纽约;紐約', state: '纽约州;紐約州' });
-  assert.strictEqual(await reverseGeocodeRegion(40.71, -74.0), '纽约');
+test('reverseGeocodeLocation: city 缺失时退化到 county', async () => {
+  mockFetchOnce({ country_code: 'fr', country: '法国', state: 'Provence-Alpes-Côte d\'Azur', county: '滨海阿尔卑斯省' });
+  const r = await reverseGeocodeLocation(43.55, 6.99);
+  assert.strictEqual(r.continent, '欧洲');
+  assert.strictEqual(r.city, '滨海阿尔卑斯省');
 });
 
-test('reverseGeocodeRegion: 地址信息全空时返回 null', async () => {
+test('reverseGeocodeLocation: 分号拼接的多语言地名只取第一段', async () => {
+  mockFetchOnce({ country_code: 'us', country: '美国;美國', state: '新泽西州;新澤西州;紐澤西州', county: 'Hudson County' });
+  const r = await reverseGeocodeLocation(40.74, -74.06);
+  assert.strictEqual(r.continent, '北美洲');
+  assert.strictEqual(r.country, '美国');
+  assert.strictEqual(r.province, '新泽西州');
+});
+
+test('reverseGeocodeLocation: 未知国家代码时 continent 为 null,其余字段仍正常', async () => {
+  mockFetchOnce({ country_code: 'xx', country: '未知国', state: '某省', city: '某市' });
+  const r = await reverseGeocodeLocation(0, 0);
+  assert.strictEqual(r.continent, null);
+  assert.strictEqual(r.country, '未知国');
+});
+
+test('reverseGeocodeLocation: 地址信息全空时各级均为 null,不抛错', async () => {
   mockFetchOnce({});
-  assert.strictEqual(await reverseGeocodeRegion(0, 0), null);
+  assert.deepStrictEqual(await reverseGeocodeLocation(0, 0), {
+    continent: null, country: null, province: null, city: null,
+  });
 });
 
-test('reverseGeocodeRegion: HTTP 非 200 时抛错(由调用方决定是否保留原值)', async () => {
+test('reverseGeocodeLocation: HTTP 非 200 时抛错(由调用方决定是否保留原值)', async () => {
   globalThis.fetch = async () => ({ ok: false, status: 429 });
-  await assert.rejects(() => reverseGeocodeRegion(1, 1), /Nominatim 429/);
+  await assert.rejects(() => reverseGeocodeLocation(1, 1), /Nominatim 429/);
 });

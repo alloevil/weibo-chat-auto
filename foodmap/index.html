@@ -75,9 +75,12 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
     background: var(--surface-2); color: var(--ink); font-size: 13px; outline: none;
 }
 .sidebar-search::placeholder { color: var(--ink-subtle); }
-.sidebar-region {
-    margin: 0 10px 10px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--hairline);
-    background: var(--surface-2); color: var(--ink); font-size: 13px; outline: none; cursor: pointer;
+.region-filters {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0 10px 10px;
+}
+.region-filters select {
+    width: 100%; padding: 6px 6px; border-radius: 8px; border: 1px solid var(--hairline);
+    background: var(--surface-2); color: var(--ink); font-size: 12px; outline: none; cursor: pointer;
 }
 .sidebar-list { flex: 1; overflow-y: auto; padding: 0 6px 10px; }
 .sidebar-item {
@@ -128,9 +131,12 @@ body { font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter"
 <button class="sidebar-toggle" id="sidebarToggle" title="餐厅列表">☰</button>
 <div class="sidebar" id="sidebar">
     <input class="sidebar-search" id="sidebarSearch" placeholder="搜索餐厅…">
-    <select class="sidebar-region" id="regionSelect" style="display:none">
-        <option value="">全部地区</option>
-    </select>
+    <div class="region-filters" id="regionFilters" style="display:none">
+        <select id="continentSelect"><option value="">全部洲</option></select>
+        <select id="countrySelect"><option value="">全部国家</option></select>
+        <select id="provinceSelect"><option value="">全部省</option></select>
+        <select id="citySelect"><option value="">全部市</option></select>
+    </div>
     <div class="nearby-banner" id="nearbyBanner" style="display:none">
         <span id="nearbyBannerText">离你最近</span>
         <span class="back" id="nearbyBack">返回全部 ✕</span>
@@ -422,10 +428,30 @@ function setupSidebar(restaurants, clusterGroup, pickEmoji) {
     };
 }
 
-// 年份滑块 + 地区下拉的组合筛选器。两者共享同一套"重算可见集合"逻辑
-// (取交集),这样"2020年在北京吃过的地方"这种组合筛选是自然成立的,
-// 不需要分别维护两套状态。重建 clusterGroup 的图层而非仅调透明度——
-// 否则聚合气泡上的数字会继续把范围外的点计进去,失去"筛选"的意义。
+// 年份滑块 + 洲/国/省/市四级联动下拉的组合筛选器。所有层级共享同一套
+// "重算可见集合"逻辑(取交集),这样"2020年在中国广东省吃过的地方"这种
+// 组合筛选是自然成立的,不需要分别维护几套状态。重建 clusterGroup 的图层
+// 而非仅调透明度——否则聚合气泡上的数字会继续把范围外的点计进去,失去
+// "筛选"的意义。
+const REGION_LEVELS = [
+    { key: 'continent', id: 'continentSelect', placeholder: '全部洲' },
+    { key: 'country', id: 'countrySelect', placeholder: '全部国家' },
+    { key: 'province', id: 'provinceSelect', placeholder: '全部省' },
+    { key: 'city', id: 'citySelect', placeholder: '全部市' },
+];
+
+// 兼容两种数据来源:geocode-regions.mjs 写入的结构化 location(优先),
+// 或旧版按发帖 IP 算出的扁平 region 字段(退化成"只有市"这一级)。
+function regionOf(r) {
+    const loc = r.location || {};
+    return {
+        continent: loc.continent || null,
+        country: loc.country || null,
+        province: loc.province || null,
+        city: loc.city || r.region || null,
+    };
+}
+
 function setupFilters(restaurants, clusterGroup, sidebar) {
     const allYears = restaurants.flatMap(r => r._years);
     const hasYearFilter = allYears.length > 0 && Math.min(...allYears) !== Math.max(...allYears);
@@ -443,16 +469,52 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
         toEl.value = maxYear;
     }
 
-    // 地区下拉:按出现次数从高到低排列,少见地区排在后面不用滚半天
-    const regionSelect = document.getElementById('regionSelect');
-    const regionCounts = new Map();
-    for (const r of restaurants) { if (r.region) regionCounts.set(r.region, (regionCounts.get(r.region) || 0) + 1); }
-    const hasRegions = regionCounts.size > 0;
-    if (hasRegions) {
-        regionSelect.style.display = '';
-        const regions = [...regionCounts.entries()].sort((a, b) => b[1] - a[1]);
-        regionSelect.innerHTML = '<option value="">全部地区</option>' +
-            regions.map(([name, count]) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}(${count})</option>`).join('');
+    const hasAnyRegion = restaurants.some(r => Object.values(regionOf(r)).some(Boolean));
+    const selects = Object.fromEntries(REGION_LEVELS.map(l => [l.key, document.getElementById(l.id)]));
+    if (hasAnyRegion) document.getElementById('regionFilters').style.display = '';
+
+    // 按"排在它前面的层级当前选了什么"筛出候选餐厅,用来给某一级下拉生成选项——
+    // 这就是级联的核心:选了"中国"之后,"省"这一级只列中国的省,不会混进法国的大区
+    function candidatesAbove(levelIdx) {
+        return restaurants.filter(r => {
+            const reg = regionOf(r);
+            for (let i = 0; i < levelIdx; i++) {
+                const val = selects[REGION_LEVELS[i].key].value;
+                if (val && reg[REGION_LEVELS[i].key] !== val) return false;
+            }
+            return true;
+        });
+    }
+
+    function populateLevel(levelIdx) {
+        const { key, placeholder } = REGION_LEVELS[levelIdx];
+        const selectEl = selects[key];
+        const counts = new Map();
+        for (const r of candidatesAbove(levelIdx)) {
+            const v = regionOf(r)[key];
+            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+        }
+        const entries = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+        selectEl.innerHTML = `<option value="">${placeholder}</option>` +
+            entries.map(([v, c]) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}(${c})</option>`).join('');
+    }
+
+    // 某一级变化时,它右边的所有层级都要清空重新生成选项(不然会出现
+    // "洲选了欧洲,市却还停留在之前选的广州市"这种不一致状态)
+    function cascadeFrom(changedIdx) {
+        for (let i = changedIdx + 1; i < REGION_LEVELS.length; i++) {
+            selects[REGION_LEVELS[i].key].value = '';
+            populateLevel(i);
+        }
+    }
+
+    if (hasAnyRegion) {
+        populateLevel(0);
+        REGION_LEVELS.forEach((level, idx) => {
+            selects[level.key].addEventListener('change', () => { cascadeFrom(idx); apply(); });
+        });
+        // 初始就把下面几级的选项铺好(此时都是"全部",候选是全量数据)
+        for (let i = 1; i < REGION_LEVELS.length; i++) populateLevel(i);
     }
 
     const totalVisitsAll = restaurants.reduce((s, r) => s + r.visits.length, 0);
@@ -465,12 +527,13 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
             fromLabel.textContent = from;
             toLabel.textContent = to;
         }
-        const region = hasRegions ? regionSelect.value : '';
 
-        const visible = restaurants.filter(r =>
-            (!hasYearFilter || r._years.some(y => y >= from && y <= to)) &&
-            (!region || r.region === region)
-        );
+        const visible = restaurants.filter(r => {
+            if (hasYearFilter && !r._years.some(y => y >= from && y <= to)) return false;
+            if (!hasAnyRegion) return true;
+            const reg = regionOf(r);
+            return REGION_LEVELS.every(({ key }) => !selects[key].value || reg[key] === selects[key].value);
+        });
         clusterGroup.clearLayers();
         clusterGroup.addLayers(visible.map(r => r._marker));
 
@@ -478,7 +541,10 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
         const visitCount = visible.reduce((s, r) => s + r.visits.length, 0);
         const parts = [];
         if (hasYearFilter && (from !== minYear || to !== maxYear)) parts.push(`${from}–${to} 年`);
-        if (region) parts.push(region);
+        if (hasAnyRegion) {
+            const picked = REGION_LEVELS.map(({ key }) => selects[key].value).filter(Boolean);
+            if (picked.length) parts.push(picked.join(' / '));
+        }
         document.getElementById('stat').textContent = isFiltered
             ? `${visible.length} 家餐厅 · ${visitCount} 次拜访(${parts.join(' · ')},共 ${restaurants.length} 家)`
             : `${restaurants.length} 家餐厅 · ${totalVisitsAll} 次拜访`;
@@ -492,7 +558,6 @@ function setupFilters(restaurants, clusterGroup, sidebar) {
             fromEl.value = minYear; toEl.value = maxYear; apply();
         });
     }
-    if (hasRegions) regionSelect.addEventListener('change', apply);
     apply();
 }
 
