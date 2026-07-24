@@ -70,6 +70,34 @@ export async function reverseGeocodeLocation(lat, lng) {
   };
 }
 
+/**
+ * 反过来:按"餐厅名 + 城市线索"正向搜索坐标——给那些微博动态里完全没打
+ * 官方位置标记/签到卡片的博主用(比如只在文字里提到店名),没法像
+ * reverseGeocodeLocation 那样从动态自带坐标反查。
+ *
+ * 准确性上限很明显:同名连锁店(比如"全聚德"全国多个分店)只会拿到搜索
+ * 结果排第一的那一家,不一定是博主实际去的那一家分店——这是"只有店名,
+ * 没有具体地址"这个数据源本身的局限,不是查询写法能解决的。
+ *
+ * 查不到(结果为空数组)返回 null,这是正常情况(店名太生僻/连锁店信息
+ * 不全/名字打错),不当成异常;HTTP 错误才抛错。
+ *
+ * countryCode 默认限定在中国(cn)——实测不加这个限制,店名+城市的模糊
+ * 匹配偶尔会跑到日本/法国等完全不相关的国家(汉字/常见词撞车),比同名
+ * 连锁店选错分店还离谱。这个工具目前服务的都是国内博主,默认限定成本
+ * 很低;真遇到海外博主再传别的 countryCode 覆盖。
+ */
+export async function forwardGeocodeByName(name, regionHint, countryCode = 'cn') {
+  const q = [name, regionHint].filter(Boolean).join(' ');
+  const cc = countryCode ? `&countrycodes=${countryCode}` : '';
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=jsonv2&limit=1&accept-language=zh${cc}`;
+  const resp = await fetch(url, { headers: { 'User-Agent': 'foodmap-demo/1.0 (personal project, see github.com/alloevil/foodmap)' } });
+  if (!resp.ok) throw new Error(`Nominatim ${resp.status}`);
+  const results = await resp.json();
+  const hit = results[0];
+  return hit ? { lat: Number(hit.lat), lng: Number(hit.lon) } : null;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const opt = (name, def) => {

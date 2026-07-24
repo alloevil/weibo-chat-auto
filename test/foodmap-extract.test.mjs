@@ -15,38 +15,43 @@ test('buildExtractionPrompt: 按编号列出候选文本', () => {
   const p = buildExtractionPrompt(['吃了米粉', '路过桂林']);
   assert.match(p, /【0】吃了米粉/);
   assert.match(p, /【1】路过桂林/);
-  assert.match(p, /编号\|餐厅名\|菜品/);
+  assert.match(p, /编号\|餐厅名\|城市\|菜品/);
 });
 
-test('parseExtractionResponse: 正常解析餐厅名/菜品/摘要', () => {
+test('parseExtractionResponse: 正常解析餐厅名/城市/菜品/摘要', () => {
   const out = parseExtractionResponse(
-    '0|又益轩|马肉米粉|离开桂林前吃了马肉米粉\n1|无||',
+    '0|又益轩|桂林|马肉米粉|离开桂林前吃了马肉米粉\n1|无|||',
     2
   );
-  assert.deepStrictEqual(out[0], { name: '又益轩', dishes: ['马肉米粉'], quote: '离开桂林前吃了马肉米粉' });
+  assert.deepStrictEqual(out[0], { name: '又益轩', city: '桂林', dishes: ['马肉米粉'], quote: '离开桂林前吃了马肉米粉' });
   assert.strictEqual(out[1], null);
 });
 
+test('parseExtractionResponse: 没提到具体城市时 city 为 null', () => {
+  const out = parseExtractionResponse('0|星冈||生蚝|好吃', 1);
+  assert.strictEqual(out[0].city, null);
+});
+
 test('parseExtractionResponse: 餐厅名"无"(不分大小写)判定为非餐馆', () => {
-  const out = parseExtractionResponse('0|无||\n1|None||\n2|NULL||', 3);
+  const out = parseExtractionResponse('0|无|||\n1|None|||\n2|NULL|||', 3);
   assert.deepStrictEqual(out, [null, null, null]);
 });
 
 test('parseExtractionResponse: 摘要里意外出现的竖线被拼回摘要而不截断', () => {
-  const out = parseExtractionResponse('0|星冈|生蚝,和牛|老板说 A|B 两个套餐都不错', 1);
+  const out = parseExtractionResponse('0|星冈|北京|生蚝,和牛|老板说 A|B 两个套餐都不错', 1);
   assert.strictEqual(out[0].quote, '老板说 A|B 两个套餐都不错');
 });
 
 test('parseExtractionResponse: 越界编号/格式错误行忽略,不抛错', () => {
-  const out = parseExtractionResponse('9|越界||\n完全没有格式\n0|星冈|生蚝|好吃', 1);
+  const out = parseExtractionResponse('9|越界|||\n完全没有格式\n0|星冈|北京|生蚝|好吃', 1);
   assert.strictEqual(out[0].name, '星冈');
 });
 
 test('aggregateRestaurants: 同名餐厅合并为一条,多次拜访按时间升序', () => {
   const extracted = [
-    { name: '星冈', dishes: ['生蚝'], quote: '第一次', geo: { lat: 39.9, lng: 116.4 }, createdAt: 'Thu Jul 10 2026', postId: 1, postUrl: 'u1', regionName: '北京' },
-    { name: ' 星冈 ', dishes: ['和牛'], quote: '第二次', geo: null, createdAt: 'Thu Jul 20 2026', postId: 2, postUrl: 'u2', regionName: '北京' },
-    { name: '又益轩', dishes: ['马肉米粉'], quote: '桂林', geo: { lat: 25.3, lng: 110.3 }, createdAt: 'Thu Jul 05 2026', postId: 3, postUrl: 'u3', regionName: '广西' },
+    { name: '星冈', city: '北京', dishes: ['生蚝'], quote: '第一次', geo: { lat: 39.9, lng: 116.4 }, createdAt: 'Thu Jul 10 2026', postId: 1, postUrl: 'u1', regionName: '北京' },
+    { name: ' 星冈 ', city: '北京', dishes: ['和牛'], quote: '第二次', geo: null, createdAt: 'Thu Jul 20 2026', postId: 2, postUrl: 'u2', regionName: '北京' },
+    { name: '又益轩', city: '桂林', dishes: ['马肉米粉'], quote: '桂林', geo: { lat: 25.3, lng: 110.3 }, createdAt: 'Thu Jul 05 2026', postId: 3, postUrl: 'u3', regionName: '广西' },
   ];
   const r = aggregateRestaurants(extracted);
   assert.strictEqual(r.length, 2);
@@ -57,6 +62,22 @@ test('aggregateRestaurants: 同名餐厅合并为一条,多次拜访按时间升
   assert.strictEqual(xingang.visits[1].quote, '第二次');
   assert.strictEqual(xingang.region, '北京');
   assert.strictEqual(r.find(x => x.name === '又益轩').region, '广西');
+});
+
+test('aggregateRestaurants: cityHint 取文字里提到城市的众数,跟 region(IP归属地)是两个独立字段', () => {
+  const r = aggregateRestaurants([
+    // 博主发帖 IP 在北京(region),但文字里写的是在成都探店(cityHint)——
+    // 按名称搜索坐标时应该用成都而不是北京,不然会系统性地搜偏
+    { name: '老字号', city: '成都', dishes: [], quote: 'a', geo: null, createdAt: 't1', postId: 1, postUrl: 'u1', regionName: '北京' },
+    { name: '老字号', city: '成都', dishes: [], quote: 'b', geo: null, createdAt: 't2', postId: 2, postUrl: 'u2', regionName: '北京' },
+  ]);
+  assert.strictEqual(r[0].region, '北京');
+  assert.strictEqual(r[0].cityHint, '成都');
+});
+
+test('aggregateRestaurants: city 缺失(LLM 没读出具体城市)时 cityHint 为 null', () => {
+  const r = aggregateRestaurants([{ name: 'Y', city: null, dishes: [], quote: 'q', geo: null, createdAt: 't', postId: 1, postUrl: 'u', regionName: '上海' }]);
+  assert.strictEqual(r[0].cityHint, null);
 });
 
 test('aggregateRestaurants: region 取众数,不一致时以出现次数最多的为准', () => {
