@@ -346,6 +346,30 @@ function makeCitation(m) {
   };
 }
 
+// 按最终答案内容挑选 sources，而非"先累积先展示"。
+// 背景：citations 池是检索管线各环节 top-k 截断的副产品，push 顺序与
+// "答案实际引用了什么"无关——曾出现答案明确引用的原话被挤出展示列表，
+// 用户点开"来源消息"核实不到依据，误判为编造（实际只是采样漏了）。
+// 用完整消息正文（非 60 字预览）对答案文本做一次 BM25 打分精选 top-N；
+// 打分全零时退回原始顺序，保证有输出而不是空列表。
+function selectRelevantSources(answer, citations, allMessages, limit = 8) {
+  const byId = new Map();
+  for (const c of citations) if (c.id != null) byId.set(c.id, c);
+  const unique = [...byId.values()];
+  if (!unique.length || !answer) return unique.slice(0, limit);
+
+  const msgById = new Map(allMessages.map(m => [String(m.id), m]));
+  const docs = unique.map(c => {
+    const m = msgById.get(String(c.id));
+    return m ? msgText(m) : c.preview || '';
+  });
+
+  const hits = bm25Search(docs, answer, { limit: unique.length });
+  const positive = hits.filter(h => h.score > 0);
+  const ordered = (positive.length ? positive : hits).map(h => unique[h.idx]);
+  return ordered.slice(0, limit);
+}
+
 const ZERO_HIT_HINT = (n) =>
   `范围内有 ${n} 条消息但关键词无命中。建议:1) 把长关键词拆成 2 字短词 2) 补充同义词/英文缩写 3) 用 count_messages 换关键词探测话题分布在哪些日期`;
 
@@ -400,13 +424,14 @@ async function searchByChunks({ msgs, keywords, query, config, question, ledger,
   hits = kept.slice(0, 8);
 
   const snippets = [];
-  const citations = [];
+  const windowCitations = [];
+  const hitCitations = [];
   for (const h of hits) {
     const c = chunks[h.idx];
-    // 块内小 BM25 定位真正命中的消息(引用要指向消息,不是块)
-    const inner = bm25Search(c.msgs.map(msgText), query, { limit: 2 });
+    // 块内小 BM25 定位真正的关键词命中点(回给模型的 hitIds 用这个,精确)
+    const inner = bm25Search(c.msgs.map(msgText), query, { limit: 4 });
     const hitIdxs = inner.length ? inner.map(x => x.idx) : [0];
-    for (const i of hitIdxs.slice(0, 2)) citations.push(makeCitation(c.msgs[i]));
+    for (const i of hitIdxs) hitCitations.push(makeCitation(c.msgs[i]));
 
     // 块即上下文;超长块取首个命中 ±8 条,防吃 token
     let snippetMsgs = c.msgs;
@@ -414,10 +439,15 @@ async function searchByChunks({ msgs, keywords, query, config, question, ledger,
       const center = hitIdxs[0];
       snippetMsgs = c.msgs.slice(Math.max(0, center - 8), center + 9);
     }
+    // ledger.citations(供最终 sources 精选)覆盖 LLM 实际读到的整个 snippet
+    // 窗口，不止关键词命中的那几条——答案可能引用窗口内任意一句(同
+    // get_context 的教训:只记命中点会漏掉真正被引用但不含查询词的那条)
+    for (const wm of snippetMsgs) windowCitations.push(makeCitation(wm));
+
     const header = c.annotation ? `【话题标注】${c.annotation}\n` : '';
     snippets.push(header + snippetMsgs.map(formatMessage).join('\n'));
   }
-  ledger.citations.push(...citations);
+  ledger.citations.push(...windowCitations);
   ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length, chunked: true });
   ledger.totalMatches += hits.length;
   if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
@@ -429,7 +459,7 @@ async function searchByChunks({ msgs, keywords, query, config, question, ledger,
     totalInRange: msgs.length,
     reranked,
     dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
-    hitIds: citations.slice(0, 8),
+    hitIds: hitCitations.slice(0, 8),
     snippets,
     ...(personNote ? { personNote } : {}),
   };
@@ -466,10 +496,14 @@ async function searchFlat({ msgs, keywords, query, config, question, ledger, per
   }
   const snippets = merged.slice(0, 8).map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
 
-  // 真实引用:top 命中的消息 id/日期/预览。同时作为 hitIds 回给模型,
-  // 供 get_context 按 id 下钻——模型无法从纯文本 snippets 得知消息 id。
-  const citations = hits.slice(0, 8).map(h => makeCitation(msgs[h.idx]));
-  ledger.citations.push(...citations);
+  // 回给模型的 hitIds 只含真正的关键词命中点，供 get_context 精确下钻;
+  // ledger.citations 则覆盖整个 snippet 窗口(供最终 sources 精选用)——
+  // 答案可能引用窗口内任意一句,只记命中点会让真正被引用的内容漏出引用池
+  // (同 get_context 的教训)
+  const hitCitations = hits.slice(0, 8).map(h => makeCitation(msgs[h.idx]));
+  for (const [s, e] of merged.slice(0, 8)) {
+    for (const wm of msgs.slice(s, e)) ledger.citations.push(makeCitation(wm));
+  }
 
   ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length });
   ledger.totalMatches += hits.length;
@@ -482,7 +516,7 @@ async function searchFlat({ msgs, keywords, query, config, question, ledger, per
     totalInRange: msgs.length,
     reranked,
     dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
-    hitIds: citations,
+    hitIds: hitCitations,
     snippets,
     ...(personNote ? { personNote } : {}),
   };
@@ -542,13 +576,10 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
     }
     const [start, end] = expandContext(allMessages, idx, { maxSpan });
     const slice = allMessages.slice(start, end);
-    const m = allMessages[idx];
-    ledger.citations.push({
-      id: m.id,
-      date: msgDate(m),
-      user: m.user,
-      preview: (m.content || m.share?.title || '').slice(0, 60),
-    });
+    // 整个窗口都读给了 LLM，不能只记锚点消息——回答可能引用窗口内任意一条，
+    // 只存锚点会让 selectRelevantSources 无从选起（曾复现：答案引用的正是
+    // 窗口里非锚点的一条，因未入池而没能出现在 sources）
+    for (const wm of slice) ledger.citations.push(makeCitation(wm));
     ledger.searchHistory.push({ context: true, messageId });
     return {
       found: true,
@@ -781,15 +812,11 @@ export async function askAgent(question, allMessages, aiConfigOverride, opts = {
     const result = await conversationLoop(question, allMessages, aiConfig, opts);
 
     const keywords = [...new Set(result.toolCallLog.flatMap(tc => tc.keywords || []))];
-    // 真实消息引用（按 id 去重，最多 8 条）——前端可据 id 跳转到原消息
-    const seenIds = new Set();
-    const sources = [];
-    for (const c of result.ledger.citations || []) {
-      if (c.id == null || seenIds.has(c.id)) continue;
-      seenIds.add(c.id);
-      sources.push({ id: c.id, date: c.date, user: c.user, preview: c.preview });
-      if (sources.length >= 8) break;
-    }
+    // 真实消息引用：按答案内容从累积的 citations 池里精选（见
+    // selectRelevantSources 顶部注释），而非"先累积先展示"——
+    // 保证前端"来源消息"点开能核实到答案真正的依据。
+    const sources = selectRelevantSources(result.answer, result.ledger.citations || [], allMessages, 8)
+      .map(c => ({ id: c.id, date: c.date, user: c.user, preview: c.preview }));
 
     return {
       ok: true,

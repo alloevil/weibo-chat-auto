@@ -62,8 +62,10 @@ test('get_context: 按 id 定位,时间断层截断上下文', async () => {
   // 40 分钟断层:话题一(1-4)不应包含话题二(5-6)
   assert.strictEqual(r.range.count, 4);
   assert.ok(r.messages.every(m => !m.includes('冲牙器')));
-  assert.strictEqual(led.citations.length, 1);
-  assert.strictEqual(led.citations[0].id, 2);
+  // citations 覆盖整个返回窗口(4 条),而非只记锚点——答案可能引用窗口内
+  // 任意一句，只记锚点会让真正被引用的内容漏出引用池
+  assert.strictEqual(led.citations.length, 4);
+  assert.deepStrictEqual(led.citations.map(c => c.id), [1, 2, 3, 4]);
 });
 
 test('get_context: id 不存在返回可操作 hint', async () => {
