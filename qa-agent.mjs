@@ -37,6 +37,7 @@ class IterationBudget {
     this.maxTotal = maxTotal;
     this._used = 0;
     this._graceCall = false;
+    this._graceGranted = false;
   }
 
   consume() {
@@ -49,8 +50,13 @@ class IterationBudget {
     if (this._used > 0) this._used--;
   }
 
+  // grace 全程只发放一次。consumeGrace() 会把 _graceCall 复位，若允许反复
+  // enableGrace() 则 shouldContinue 恒为真，主循环（唯一的成本闸门）永不退出。
   enableGrace() {
+    if (this._graceGranted) return false;
+    this._graceGranted = true;
     this._graceCall = true;
+    return true;
   }
 
   get used() { return this._used; }
@@ -783,10 +789,8 @@ async function conversationLoop(question, allMessages, config, opts) {
       });
     }
 
-    // Grace call: if budget just exhausted, allow one more iteration for model to wrap up
-    if (budget.remaining === 0 && !budget._graceCall) {
-      budget.enableGrace();
-    }
+    // Grace call: 预算刚耗尽时多给一轮让模型收尾（enableGrace 自身保证只发一次）
+    if (budget.remaining === 0) budget.enableGrace();
   }
 
   // Budget exhausted — return last assistant content
