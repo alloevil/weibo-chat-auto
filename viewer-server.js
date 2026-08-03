@@ -37,6 +37,31 @@ const messageStore = require('./lib/load-messages');
 // 登录态预检与归档器共用同一判据（接口 error_code，见 lib/weibo-auth）
 const weiboAuth = require('./lib/weibo-auth');
 
+// —— 会话保活 ——
+// api.weibo.com 的响应从不下发 Set-Cookie，而服务端把 webim 登录态与
+// weibo.com 的 24 小时滚动会话（WBPSESS）绑在一起：只归档不保活，一天后
+// 就 21301（2026-07-29 起"扫码→活一天→再死"即此因）。viewer 常驻期间
+// 每 30 分钟续一次期，结果存 authState 供 /api/auth-status 查询。
+const authState = { ok: null, code: 0, checkedAt: 0, renewedTotal: 0, error: '' };
+async function keepAliveTick(reason = '定时') {
+    try {
+        const r = await weiboAuth.refreshSession();
+        const wasDead = authState.ok === false;
+        authState.ok = r.ok;
+        authState.code = r.code;
+        authState.error = '';
+        if (r.renewed) {
+            authState.renewedTotal += r.renewed;
+            console.log(`[keepalive] 会话续期 ${r.renewed} 项（${reason}）`);
+        }
+        if (!r.ok && !wasDead) console.error('[keepalive] 微博登录态已失效（21301），需要重新扫码');
+    } catch (e) {
+        authState.error = e.message; // 网络失败不改判登录态，只记录
+    }
+    authState.checkedAt = Date.now();
+}
+setInterval(keepAliveTick, 30 * 60 * 1000).unref();
+
 function getGroupDir(groupName) {
     return messageStore.getGroupDir(OUTPUT_DIR, groupName);
 }
@@ -324,6 +349,13 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // 登录态（服务端 keepalive 每 30 分钟维护；前端轮询，失效即提示扫码）
+    if (url.pathname === '/api/auth-status') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(authState));
+        return;
+    }
+
     // Sync: trigger archiver
     if (url.pathname === '/api/sync' && req.method === 'POST') {
         (async () => {
@@ -331,7 +363,11 @@ const server = http.createServer((req, res) => {
         // 归档器空跑几分钟后只报一句 "code 1"。探测本身失败（断网、接口
         // 抖动）不拦路 —— 那种情况交给归档器自己判定。
         try {
-            if (await weiboAuth.probeAuthCodeHttp(loadCookies()) === weiboAuth.UNAUTHENTICATED_CODE) {
+            const code = await weiboAuth.probeAuthCodeHttp(loadCookies());
+            authState.ok = code !== weiboAuth.UNAUTHENTICATED_CODE;
+            authState.code = code;
+            authState.checkedAt = Date.now();
+            if (!authState.ok) {
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ ok: false, needLogin: true, error: '微博 Cookie 已失效，请重新扫码登录' }));
                 return;
@@ -897,7 +933,11 @@ const server = http.createServer((req, res) => {
         try {
             const modPath = require('path').join(__dirname, 'lib', 'browser-login.js');
             const { browserLogin } = require(modPath);
-            browserLogin().then(reply).catch(e => reply({ ok: false, error: e.message }));
+            // 扫码成功后立即保活一次：拿到全新会话的同时把 24h 滚动 Cookie 也续上
+            browserLogin().then(async (r) => {
+                if (r.ok) await keepAliveTick('扫码登录');
+                reply(r);
+            }).catch(e => reply({ ok: false, error: e.message }));
         } catch (e) {
             reply({ ok: false, error: '浏览器登录不可用：' + e.message });
         }
@@ -993,6 +1033,7 @@ server.on('error', (err) => {
 server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Weibo Group Chat Viewer: ${url}`);
+    keepAliveTick('启动');
     // 自动打开浏览器（设 NO_OPEN=1 可禁用）
     if (!process.env.NO_OPEN) {
         const opener = process.platform === 'darwin' ? 'open'

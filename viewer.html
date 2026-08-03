@@ -62,6 +62,8 @@ button, select, input { font-family: inherit; }
 .sync-btn { height: 28px; padding: 0 12px; margin-left: 8px; border: 1px solid transparent; border-radius: 8px; background: var(--primary); color: var(--on-primary); cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; }
 .sync-btn:hover { background: var(--primary-hover); }
 .sync-btn.syncing { background: var(--surface-2); color: var(--ink-subtle); border-color: var(--hairline); cursor: wait; }
+.auth-banner { margin: 8px 12px 0; padding: 8px 12px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.4; cursor: pointer; }
+.auth-banner:hover { filter: brightness(1.1); }
 .schedule-select { height: 28px; padding: 0 8px; margin-left: 8px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink-subtle); cursor: pointer; font-size: 12px; font-weight: 500; appearance: none; -webkit-appearance: none; padding-right: 20px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8f98'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
 .schedule-select:hover { background-color: var(--surface-2); border-color: var(--hairline-strong); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8f98'/%3E%3C/svg%3E"); }
 
@@ -420,6 +422,7 @@ button, select, input { font-family: inherit; }
         <button class="ai-btn" id="aiSettingsBtn" onclick="openAiSettings()">⚙️ AI</button>
         <button class="ai-btn" id="loginBtn" onclick="doLogin()" title="登录微博以更新Cookie">🔑 登录</button>
     </div>
+    <div class="auth-banner" id="authBanner" style="display:none" onclick="doLogin()">⚠ 微博登录已失效，定时归档已停摆 — 点此重新扫码</div>
     <div class="calendar" id="calendar"></div>
 </div>
 
@@ -952,7 +955,7 @@ async function doLogin() {
         try {
             const r = await fetch('/api/browser-login', { method: 'POST' });
             const d = await r.json();
-            if (d.ok) showToast('✓ 登录成功，已保存 ' + d.count + ' 个 Cookie', 'success', 4000);
+            if (d.ok) { showToast('✓ 登录成功，已保存 ' + d.count + ' 个 Cookie', 'success', 4000); checkAuthStatus(); }
             else showToast('登录失败：' + (d.error || '未知错误'), 'error', 5000);
         } catch (e) {
             showToast('登录失败：' + e.message, 'error', 5000);
@@ -973,9 +976,21 @@ async function doLogin() {
         showToast('登录请求失败: ' + e.message, 'error');
     }
 }
+// 登录态横幅：服务端 keepalive 每 30 分钟验一次登录态，这里轮询结果。
+// 失效第一时间给出扫码入口，而不是等到下次点 Sync 才发现归档早已停摆。
+async function checkAuthStatus() {
+    try {
+        const s = await (await fetch('/api/auth-status')).json();
+        document.getElementById('authBanner').style.display = s.ok === false ? '' : 'none';
+    } catch { /* 服务端不可达时不动横幅 */ }
+}
+setInterval(checkAuthStatus, 5 * 60 * 1000);
+checkAuthStatus();
+
 window.addEventListener('cookies-saved', (e) => {
     const count = (e.detail && e.detail.count) || 0;
     showToast('✓ 登录态已刷新（' + count + ' 个 Cookie），可以同步了', 'success', 4000);
+    checkAuthStatus();
 });
 
 function closeAiSettings() {

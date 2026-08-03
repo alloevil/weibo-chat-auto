@@ -902,6 +902,15 @@ async function main() {
         console.log('下次运行将自动使用已保存的登录状态');
     }
 
+    // 会话保活：归档全程只碰 api.weibo.com（从不下发 Set-Cookie），weibo.com
+    // 侧的 24h 滚动会话必须单独续，否则次日就 21301 要求重新扫码
+    try {
+        const r = await weiboAuth.refreshSession();
+        if (r.renewed) console.log(`[keepalive] 已续期 ${r.renewed} 项会话 Cookie`);
+    } catch (e) {
+        console.log(`[keepalive] 会话续期失败（不影响本轮归档）: ${e.message}`);
+    }
+
     // 关闭浏览器
     } finally {
         await browser.close().catch(() => {});
