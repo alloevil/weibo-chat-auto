@@ -864,6 +864,8 @@ async function syncNow() {
             showToast(`✓ 同步完成，归档 ${data.archived} 个群${skipNote}`, 'success');
         } else {
             showToast('同步失败：' + (data.error || '未知错误'), 'error', 8000);
+            // Cookie 失效 → 直接拉起对应端的扫码流程（桌面端开登录窗，浏览器端开可见 Chrome）
+            if (data.needLogin) doLogin();
         }
     } catch (e) {
         showToast('同步出错：' + e.message, 'error', 8000);

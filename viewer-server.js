@@ -34,6 +34,8 @@ function absorbSetCookies(proxyRes, requestUrl) {
 
 // 消息加载与缓存统一走 lib/load-messages（eval/索引脚本共用同一实现）
 const messageStore = require('./lib/load-messages');
+// 登录态预检与归档器共用同一判据（接口 error_code，见 lib/weibo-auth）
+const weiboAuth = require('./lib/weibo-auth');
 
 function getGroupDir(groupName) {
     return messageStore.getGroupDir(OUTPUT_DIR, groupName);
@@ -324,6 +326,18 @@ const server = http.createServer((req, res) => {
 
     // Sync: trigger archiver
     if (url.pathname === '/api/sync' && req.method === 'POST') {
+        (async () => {
+        // 预检登录态：Cookie 已死时秒级明确失败并引导重新扫码，而不是让
+        // 归档器空跑几分钟后只报一句 "code 1"。探测本身失败（断网、接口
+        // 抖动）不拦路 —— 那种情况交给归档器自己判定。
+        try {
+            if (await weiboAuth.probeAuthCodeHttp(loadCookies()) === weiboAuth.UNAUTHENTICATED_CODE) {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: false, needLogin: true, error: '微博 Cookie 已失效，请重新扫码登录' }));
+                return;
+            }
+        } catch { /* 探测失败不拦路 */ }
+
         // Invalidate all message caches
         messageStore.clearCaches();
         const isBundled = !process.execPath.endsWith('node') && !process.execPath.endsWith('bun');
@@ -366,27 +380,27 @@ const server = http.createServer((req, res) => {
 
             if (code !== 0) {
                 console.error('[sync] archiver exited with code', code);
-                res.end(JSON.stringify({ ok: false, error: `归档器异常退出（code ${code}）` }));
+                // 归档器对 Cookie 失效有明确输出并 exit 1（v1.11.0 起），直接引导重新扫码
+                if (out.includes('Cookie 已失效')) {
+                    res.end(JSON.stringify({ ok: false, needLogin: true, error: '微博 Cookie 已失效，请重新扫码登录' }));
+                    return;
+                }
+                // 归档器兜底打印 "错误: <Error 类名>: <原因>"（如 "2/3 个群未归档: …"），
+                // 把最后一条真实原因带给前端，而不是只报退出码
+                const reasons = out.match(/错误: \w*Error: [^\n]+/g);
+                const reason = reasons
+                    ? reasons[reasons.length - 1].replace(/^错误: \w*Error: /, '')
+                    : `归档器异常退出（code ${code}）`;
+                res.end(JSON.stringify({ ok: false, error: reason }));
                 return;
             }
 
-            // 归档器可能 exit 0 但实际失败（Cookie 过期、未找到群聊）
-            if (out.includes('需要登录') || out.includes('扫描登录') || out.includes('登录失败')) {
-                res.end(JSON.stringify({ ok: false, error: 'Cookie 已过期，请点击 🔑 登录 重新扫码' }));
-                return;
-            }
-
-            // 统计成功归档的群数和被跳过的群
-            const archived = (out.match(/已保存到:/g) || []).length;
-            const skipped = (out.match(/跳过此群/g) || []).length;
-
-            if (archived === 0 && skipped > 0) {
-                res.end(JSON.stringify({ ok: false, error: `所有群同步失败（${skipped} 个群未找到，可能 Cookie 已过期）` }));
-                return;
-            }
-
-            console.log(`[sync] done (archived=${archived}, skipped=${skipped})`);
-            res.end(JSON.stringify({ ok: true, archived, skipped }));
+            // 退出码 0 即全部群归档成功：有群被跳过时归档器以非 0 退出（v1.11.0 起），
+            // 不再从输出里猜"是否其实失败了"。旧标志串（"已保存到:"、"需要登录"）
+            // 归档器已不再打印，靠它们计数会把成功同步报成 0 个群。
+            const archived = (out.match(/--- 归档群聊:/g) || []).length;
+            console.log(`[sync] done (archived=${archived})`);
+            res.end(JSON.stringify({ ok: true, archived, skipped: 0 }));
         });
         child.on('error', (err) => {
             clearTimeout(timer);
@@ -394,6 +408,7 @@ const server = http.createServer((req, res) => {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ ok: false, error: err.message }));
         });
+        })();
         return;
     }
 
