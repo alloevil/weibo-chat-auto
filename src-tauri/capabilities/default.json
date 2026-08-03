@@ -7,19 +7,6 @@
   },
   "permissions": [
     "core:default",
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        { "name": "viewer-server", "sidecar": true, "args": true }
-      ]
-    },
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        { "name": "viewer-server", "sidecar": true, "args": true }
-      ]
-    },
-    "shell:allow-kill",
     "shell:default"
   ]
 }

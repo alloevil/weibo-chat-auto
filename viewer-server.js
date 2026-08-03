@@ -606,7 +606,12 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/summary' && req.method === 'GET') {
         const group = url.searchParams.get('group') || '';
         const date = url.searchParams.get('date') || '';
-        if (!date) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'Missing date' })); return; }
+        // summary_${date}.json 会被写盘，date 必须先校验（否则可穿越出 output/ 任意写）
+        if (!messageStore.isValidDate(date)) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: 'Invalid date' }));
+            return;
+        }
 
         const AI_CONFIG_PATH = path.join(__dirname, 'ai-config.json');
         let aiConfig;
@@ -968,7 +973,9 @@ server.on('error', (err) => {
     throw err;
 });
 
-server.listen(PORT, () => {
+// 只监听回环地址：归档内容与 /api/request-login 等写操作都无鉴权，
+// 绑 0.0.0.0 会让同网段任意主机读取全部聊天记录并远程触发登录弹窗。
+server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Weibo Group Chat Viewer: ${url}`);
     // 自动打开浏览器（设 NO_OPEN=1 可禁用）
