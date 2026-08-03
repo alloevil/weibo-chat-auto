@@ -158,13 +158,19 @@ npm run view
 <details>
 <summary><b>Cookie 维护</b></summary>
 
-Cookie 有时效（约几天～两周），但**归档器每次成功运行都会自动续期**：
+Cookie 有时效（约几天～两周）。归档器每次成功运行都会顺带续期，但**续期只在归档真的跑通时发生** —— 微博侧使会话失效后（换设备、改密码、风控）就必须重新扫码。
 
 | 方式 | 效果 |
 | --- | --- |
-| ✅ 保持定时任务运行 | Cookie 自动续期，基本不会过期（推荐） |
+| ✅ 保持定时任务运行 | 每轮归档顺带续期，大幅延长有效期 |
 | 🖱 每天点一次 Sync Now | 手动保活 |
 | 🔄 `npm run save-cookies` | 已过期时重新扫码（不影响已归档数据） |
+
+Cookie 失效时归档器会**明确报错并以退出码 1 退出**，提示去跑 `npm run save-cookies`；它不会假装成功。定时任务的日志在 `logs/archive.log`，出现 `Cookie 已失效` 即需扫码：
+
+```bash
+grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
+```
 
 </details>
 

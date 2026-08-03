@@ -5,6 +5,8 @@ const https = require('https');
 const { exec, spawn } = require('child_process');
 const { resolveChromePath } = require('./lib/chrome-path');
 const cookieStore = require('./lib/cookie-store');
+const { formatLocalDate, formatLocalTime, writeJsonAtomic, mergeIntoDayFile } = require('./lib/day-file');
+const weiboAuth = require('./lib/weibo-auth');
 
 // 配置
 const CONFIG = {
@@ -28,29 +30,19 @@ function getGroupStateFile(groupName) {
     if (!fs.existsSync(stateDir)) fs.mkdirSync(stateDir, { recursive: true });
     return path.join(stateDir, `last-archive-state_${safe}.json`);
 }
-
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// 检测是否需要登录。
-// 主判据是 API：webim 接口未登录时返回 error_code 21301（"auth by Null spi!"），
-// 登录后即便查询不存在的群也只报业务错误（如 21201 群不存在）。这不依赖页面
-// 文案/DOM 结构，微博改版也不受影响。API 探测失败时退回 URL/标题/文案检测。
-async function checkLoginRequired(page) {
-    // 1) API 判据（在页面上下文 fetch，同源自动带 Cookie）
-    try {
-        const code = await page.evaluate(async () => {
-            const resp = await fetch(
-                '/webim/groupchat/query_messages.json?convert_emoji=1&query_sender=1&count=1&id=0&max_mid=0&source=209678993',
-                { credentials: 'include' }
-            );
-            const data = await resp.json();
-            return data.error_code || 0;
-        });
-        if (code === 21301) return true;   // 未鉴权
-        if (code > 0) return false;        // 其他业务错误码 → 已鉴权
-    } catch { /* API 探测失败，退回启发式 */ }
+// headless 下没有窗口，"等待手动操作"之类的交互兜底一律跳过。
+// 调试时 HEADLESS=0 npm run archive 可开出真实窗口。
+const HEADLESS = process.env.HEADLESS !== '0';
 
-    // 2) 启发式兜底：URL / 标题 / 页面文案
+// 检测是否需要登录。判据见 lib/weibo-auth.js（接口 error_code，不猜 DOM）；
+// 探测本身失败时才退回 URL/标题/文案启发式。
+async function checkLoginRequired(page) {
+    const authed = await weiboAuth.isAuthenticated(page);
+    if (authed !== null) return !authed;
+
+    // 启发式兜底：URL / 标题 / 页面文案
     return await page.evaluate(() => {
         if (location.href.includes('login') || location.href.includes('passport')) return true;
         const title = document.title || '';
@@ -66,8 +58,20 @@ async function checkLoginRequired(page) {
     });
 }
 
-// 等待登录完成
+// 等待扫码登录完成
 async function waitForLogin(page) {
+    if (HEADLESS) {
+        // headless 没有窗口可供扫码，等下去只会浪费 5 分钟后仍然失败。
+        console.error('');
+        console.error('========================================');
+        console.error('  微博 Cookie 已失效，需要重新扫码登录');
+        console.error('  当前是 headless 模式，没有窗口可以扫码，本次归档中止。');
+        console.error('  请运行:  npm run save-cookies');
+        console.error('========================================');
+        console.error('');
+        return false;
+    }
+
     console.log('');
     console.log('========================================');
     console.log('  需要登录微博');
@@ -76,45 +80,19 @@ async function waitForLogin(page) {
     console.log('========================================');
     console.log('');
 
-    // 等待：URL 不再包含 login/passport，且页面出现聊天相关内容
-    const maxWait = 300000; // 5 分钟
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < maxWait) {
-        await delay(3000);
-
-        const loggedIn = await page.evaluate(() => {
-            const url = location.href;
-            // 不在登录页
-            if (url.includes('login') || url.includes('passport')) return false;
-            // 页面标题不包含登录
-            const title = document.title || '';
-            if (title.includes('登录') || title.includes('login')) return false;
-            // 找到聊天相关元素
-            const has = document.querySelector('[class*="chat"]') ||
-                       document.querySelector('[class*="session"]') ||
-                       document.querySelector('[class*="message"]') ||
-                       document.querySelector('[class*="weibo"]') ||
-                       document.querySelector('#app');
-            return !!has;
-        });
-
-        if (loggedIn) {
-            console.log('检测到已登录！');
-
-            // 等待页面完全加载
-            await delay(3000);
-
-            // 保存完整 Cookie（cookie-store 会校验 SUB，无登录态时拒绝写入）
-            const cookies = cookieStore.filterWeiboCookies(await page.browser().cookies());
-            if (cookieStore.saveCookies(cookies, '扫码登录').ok) {
-                return true;
-            }
-            console.log('页面看似已加载但无 SUB 登录态，继续等待真正登录...');
-        }
+    if (!await weiboAuth.waitForAuth(page, { timeoutMs: 300000 })) {
+        console.log('等待登录超时（5分钟）');
+        return false;
     }
 
-    console.log('等待登录超时（5分钟）');
+    console.log('检测到已登录！');
+    await delay(3000);
+
+    // 保存完整 Cookie（cookie-store 会校验 SUB，无登录态时拒绝写入）
+    const cookies = cookieStore.filterWeiboCookies(await page.browser().cookies());
+    if (cookieStore.saveCookies(cookies, '扫码登录').ok) return true;
+
+    console.log('接口鉴权已通过但未取到 SUB Cookie');
     return false;
 }
 
@@ -284,7 +262,7 @@ async function main() {
     // 启动浏览器（使用保存的 Cookie 登录）
     console.log('启动浏览器...');
     const browser = await puppeteer.launch({
-        headless: 'new',
+        headless: HEADLESS ? 'new' : false,
         executablePath: CONFIG.chromePath,
         defaultViewport: null,
         protocolTimeout: 600000,
@@ -295,9 +273,15 @@ async function main() {
         ],
     });
 
-    const page = await browser.newPage();
-
+    // newPage() 必须在 try 内：它抛错（protocol error / target crash）时
+    // finally 不会执行，浏览器泄漏，而 runWithRetry 紧接着又 launch 一个。
+    let page;
+    // 被跳过的群 —— 归档器必须以非 0 退出码收场，否则 launchd/cron 看不出
+    // 它已经连着好几天什么都没抓到（历史上就这么静默失效过 3 天）。
+    const skippedGroups = [];
     try { // 确保任何异常都能关闭浏览器，防止僵尸 Chrome 进程
+    page = await browser.newPage();
+
     // 监听浏览器控制台输出
     page.on('console', msg => {
         if (msg.type() === 'error') console.log('[浏览器错误]', msg.text());
@@ -324,12 +308,19 @@ async function main() {
                 for (const m of msgList) {
                     const id = m?.id || m?.mid || m?.message_id || null;
                     if (id) {
+                        // 直接产出与其它两条来源同构的记录（含 timestamp）：
+                        // 缺 timestamp 会让下游 sort 得 NaN、按天分文件错位，
+                        // 并可能把 state 的 lastTimestamp 推成 Date.now()。
+                        const ts = typeof m.time === 'number' && m.time > 0 ? m.time * 1000 : Date.now();
                         networkMessages.push({
                             id,
                             from_uid: m.from_uid || m.from_user?.id || null,
                             user: m.from_user?.screen_name || m.from_user?.name || m.from_uid || '未知',
+                            timestamp: ts,
+                            time: formatLocalTime(ts),
+                            date: formatLocalDate(ts),
                             content: (m.content ?? m.text ?? m.message ?? '').replace(/[\r\n]+/g, ' ').trim(),
-                            time: typeof m.time === 'number' ? m.time * 1000 : Date.now(),
+                            type: m.type || m.msg_type || 'text',
                         });
                     }
                 }
@@ -389,9 +380,11 @@ async function main() {
     if (needLogin) {
         const loginOk = await waitForLogin(page);
         if (!loginOk) {
-            console.log('登录失败，退出');
-            await browser.close();
-            process.exit(1);
+            // 抛出而非 process.exit：后者会跳过 finally 里的 browser.close()，
+            // 留下僵尸 Chrome。标记 fatal 让 runWithRetry 不做无意义的重试。
+            const e = new Error('Cookie 已失效，需要重新扫码登录（npm run save-cookies）');
+            e.fatal = true;
+            throw e;
         }
 
         // 登录成功后重新导航到聊天页
@@ -453,7 +446,9 @@ async function main() {
 
     console.log('目标群聊:', GROUPS.join(', '));
 
-    for (const currentGroupName of GROUPS) {
+    // groupId -> 已归档的群名，用于检出"会话未切换"导致的串档
+    const archivedGroupIds = new Map();
+    for (const [groupIdx, currentGroupName] of GROUPS.entries()) {
     networkMessages = []; // 每个群独立，不累积上一个群的网络层消息
     const groupDir = getGroupOutputDir(currentGroupName);
     const stateFile = getGroupStateFile(currentGroupName);
@@ -463,6 +458,10 @@ async function main() {
     console.log(`\n--- 归档群聊: ${currentGroupName} ---`);
     console.log(`查找群聊: ${currentGroupName}...`);
     await delay(1000);
+
+    // 点击前的快照：切群后的 group id 必须来自点击之后新产生的请求。
+    // 否则点击没真正切换会话时会沿用上一个群的 id，把它的消息写进本群目录。
+    const urlCountBeforeClick = capturedApiUrls.length;
 
     const groupClicked = await page.evaluate((groupName) => {
         // 方法1: 查找所有文本内容完全匹配的叶子元素
@@ -506,6 +505,10 @@ async function main() {
         // 等待页面可能的导航和加载
         try { await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }); } catch {}
         await delay(3000);
+    } else if (HEADLESS) {
+        // headless 下没有窗口可供人操作，等 60 秒纯属浪费；
+        // 群 id 解析不到会在下面跳过此群。
+        console.log(`⚠ 未找到群聊 "${currentGroupName}"（headless 无窗口，不等待手动操作）`);
     } else {
         console.log('⚠ 未找到群聊，请手动点击');
         console.log('等待 60 秒供手动操作...');
@@ -526,6 +529,7 @@ async function main() {
         }
         if (!scriptInjected) {
             console.log('⚠ 脚本注入失败，跳过此群');
+            skippedGroups.push(`${currentGroupName}(脚本注入失败)`);
             continue;
         }
         console.log('✓ 脚本重新注入成功');
@@ -541,10 +545,7 @@ async function main() {
     console.log('等待 API 请求...');
     let groupId = null;
 
-    // 记录捕获前的 URL 数量，用于检测新请求
-    const prevCount = capturedApiUrls.length;
-
-    // 从最近捕获的 URL 中查找 group ID（向后搜索，取最新）
+    // 从捕获的 URL 中向后搜索 group ID（取最新的一个）
     function findGroupIdFromUrls(startIdx) {
         for (let j = capturedApiUrls.length - 1; j >= (startIdx || 0); j--) {
             const match = capturedApiUrls[j].match(/[?&]id=(\d+)/);
@@ -553,29 +554,36 @@ async function main() {
         return null;
     }
 
-    // 先检查已有 URL 中最新的（适用于第一个群 - 页面加载时的请求）
-    groupId = findGroupIdFromUrls(0);
-    if (groupId) {
-        console.log(`✓ 从已捕获 URL 获取群组 ID: ${groupId}`);
-    } else {
-        // 等待新请求出现
-        for (let i = 0; i < 20; i++) {
+    // 优先取点击之后新产生的请求 —— 那才确定是当前群的会话
+    groupId = findGroupIdFromUrls(urlCountBeforeClick);
+    if (!groupId) {
+        for (let i = 0; i < 20 && !groupId; i++) {
             await delay(1000);
-            if (capturedApiUrls.length > prevCount) {
-                groupId = findGroupIdFromUrls(prevCount);
-                if (groupId) {
-                    console.log(`✓ 从新 API 请求获取群组 ID: ${groupId}`);
-                    break;
-                }
-            }
+            groupId = findGroupIdFromUrls(urlCountBeforeClick);
         }
     }
-    // 使用从 clicked group 中提取的 group_id
+    if (groupId) {
+        console.log(`✓ 从切群后的 API 请求获取群组 ID: ${groupId}`);
+    } else if (groupIdx === 0) {
+        // 只有第一个群允许回退到页面加载时的请求：它本来就是默认打开的会话，
+        // 点击可能不产生新请求。第二个群往后回退就等于沿用上一个群的 id。
+        groupId = findGroupIdFromUrls(0);
+        if (groupId) console.log(`✓ 从页面加载时的 API 请求获取群组 ID: ${groupId}`);
+    }
 
     if (!groupId) {
-        console.log(`⚠ 无法获取群 "${currentGroupName}" 的 ID，跳过此群`);
+        console.log(`⚠ 无法获取群 "${currentGroupName}" 的 ID（切群后未捕获到 API 请求），跳过此群`);
+        skippedGroups.push(`${currentGroupName}(未取到群 ID)`);
         continue;
     }
+    // 串档护栏：同一轮里两个群解析出同一个 id，说明会话没真正切换
+    if (archivedGroupIds.has(groupId)) {
+        console.log(`⚠ 群 "${currentGroupName}" 解析出的 ID ${groupId} 已被 "${archivedGroupIds.get(groupId)}" 占用，`
+            + `说明会话未真正切换，跳过此群（避免把上一个群的消息写进本群目录）`);
+        skippedGroups.push(`${currentGroupName}(会话未切换)`);
+        continue;
+    }
+    archivedGroupIds.set(groupId, currentGroupName);
 
     // 等待初始消息加载
     let waitCount = 0;
@@ -705,8 +713,8 @@ async function main() {
             user: fromUser.screen_name || fromUser.name || m.from_uid || '未知用户',
             avatar: fromUser.avatar_large || fromUser.avatar_hd || fromUser.profile_image_url || '',
             timestamp: ts,
-            time: new Date(ts).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
-            date: new Date(ts).getFullYear() + '-' + String(new Date(ts).getMonth() + 1).padStart(2, '0') + '-' + String(new Date(ts).getDate()).padStart(2, '0'),
+            time: formatLocalTime(ts),
+            date: formatLocalDate(ts),
             content: (m.content ?? m.text ?? m.message ?? m.body ?? '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
             type: m.type || m.msg_type || 'text',
         };
@@ -728,121 +736,110 @@ async function main() {
     const MAX_PAGES = 500;
     const COUNT = 20;
 
+    // 分页从新到旧倒着走。只有"到达截止时间"或"没有更多消息"才算走完；
+    // 请求失败或撞上 MAX_PAGES 都是残缺。这个标志决定要不要推进 state ——
+    // 残缺时推进会在断点与上次截止时间之间留下永远补不回来的空洞。
+    let paginationComplete = false;
+    let paginationNote = '';
+
+    // 单页请求带一次重试。只重试 HTTP/解析本身，翻页推进逻辑保持单一实现
+    // （旧版把整套推进逻辑在 catch 里复制了一份，两份状态机极易走偏）。
+    async function fetchPage(url) {
+        try {
+            const resp = await httpsGet(url);
+            return { status: resp.status, data: JSON.parse(resp.body) };
+        } catch (e) {
+            console.log(`[API] 请求失败: ${e.message}，2 秒后重试`);
+            await delay(2000);
+            const resp = await httpsGet(url);
+            return { status: resp.status, data: JSON.parse(resp.body) };
+        }
+    }
+
     while (pageNum < MAX_PAGES) {
         let url = `https://api.weibo.com/webim/groupchat/query_messages.json?convert_emoji=1&query_sender=1&count=${COUNT}&id=${groupId}&max_mid=${maxMid || 0}`;
         url += `&source=209678993&t=${Date.now()}`;
 
+        let status, data;
         try {
-            const resp = await httpsGet(url);
-            const data = JSON.parse(resp.body);
-
-            if (pageNum === 0) {
-                console.log(`[API] 状态: ${resp.status}, keys: ${Object.keys(data).join(',')}`);
-            }
-
-            const rawMsgs = data.messages || data.data?.messages || data.data || [];
-            const msgList = Array.isArray(rawMsgs) ? rawMsgs : (Array.isArray(data.list) ? data.list : []);
-
-            if (msgList.length === 0) {
-                console.log('[API] 无更多消息');
-                break;
-            }
-
-            let added = 0;
-            for (const m of msgList) {
-                const n = normalizeMessage(m);
-                if (n && !messageIds.has(String(n.id))) {
-                    messageIds.add(String(n.id));
-                    allApiMessages.push(n);
-                    added++;
-                }
-            }
-
-            const firstMsg = msgList[0];
-            const firstId = String(firstMsg?.id || firstMsg?.mid || '');
-
-            // 时间截止
-            const pageOldestTs = (typeof firstMsg?.time === 'number' && firstMsg.time > 0) ? firstMsg.time * 1000 : Date.now();
-            if (stopTimestamp > 0 && pageOldestTs < stopTimestamp) {
-                console.log(`[API] 到达截止时间，停止 (消息时间=${new Date(pageOldestTs).toLocaleString('zh-CN')})`);
-                break;
-            }
-
-            if (pageNum % 10 === 0) {
-                console.log(`[API] 第${pageNum + 1}页: +${added} 总=${allApiMessages.length}`);
-            }
-
-            if (!firstId || firstId === maxMid) {
-                console.log('[API] 分页结束');
-                break;
-            }
-            maxMid = firstId;
-            pageNum++;
-
-            await delay(300);
+            ({ status, data } = await fetchPage(url));
         } catch (e) {
-            console.log(`[API] 请求失败: ${e.message}`);
-            // 重试一次
-            await delay(2000);
-            try {
-                const resp = await httpsGet(url);
-                const data = JSON.parse(resp.body);
-                const rawMsgs = data.messages || data.data?.messages || data.data || [];
-                const msgList = Array.isArray(rawMsgs) ? rawMsgs : [];
-                if (msgList.length === 0) break;
-                for (const m of msgList) {
-                    const n = normalizeMessage(m);
-                    if (n && !messageIds.has(String(n.id))) {
-                        messageIds.add(String(n.id));
-                        allApiMessages.push(n);
-                    }
-                }
-                const firstMsg = msgList[0];
-                const firstId = String(firstMsg?.id || firstMsg?.mid || '');
-                const pageOldestTs = (typeof firstMsg?.time === 'number' && firstMsg.time > 0) ? firstMsg.time * 1000 : Date.now();
-                if (stopTimestamp > 0 && pageOldestTs < stopTimestamp) break;
-                if (!firstId || firstId === maxMid) break;
-                maxMid = firstId;
-                pageNum++;
-                await delay(300);
-            } catch (e2) {
-                console.log(`[API] 重试也失败: ${e2.message}`);
-                break;
+            paginationNote = `请求失败: ${e.message}`;
+            console.log(`[API] 重试也失败: ${e.message}`);
+            break;
+        }
+
+        if (pageNum === 0) {
+            console.log(`[API] 状态: ${status}, keys: ${Object.keys(data).join(',')}`);
+        }
+
+        const rawMsgs = data.messages || data.data?.messages || data.data || [];
+        const msgList = Array.isArray(rawMsgs) ? rawMsgs : (Array.isArray(data.list) ? data.list : []);
+
+        if (msgList.length === 0) {
+            console.log('[API] 无更多消息');
+            paginationComplete = true;
+            break;
+        }
+
+        let added = 0;
+        for (const m of msgList) {
+            const n = normalizeMessage(m);
+            if (n && !messageIds.has(String(n.id))) {
+                messageIds.add(String(n.id));
+                allApiMessages.push(n);
+                added++;
             }
         }
+
+        const firstMsg = msgList[0];
+        const firstId = String(firstMsg?.id || firstMsg?.mid || '');
+
+        // 时间截止
+        const pageOldestTs = (typeof firstMsg?.time === 'number' && firstMsg.time > 0) ? firstMsg.time * 1000 : Date.now();
+        if (stopTimestamp > 0 && pageOldestTs < stopTimestamp) {
+            console.log(`[API] 到达截止时间，停止 (消息时间=${new Date(pageOldestTs).toLocaleString('zh-CN')})`);
+            paginationComplete = true;
+            break;
+        }
+
+        if (pageNum % 10 === 0) {
+            console.log(`[API] 第${pageNum + 1}页: +${added} 总=${allApiMessages.length}`);
+        }
+
+        if (!firstId || firstId === maxMid) {
+            console.log('[API] 分页结束');
+            paginationComplete = true;
+            break;
+        }
+        maxMid = firstId;
+        pageNum++;
+
+        await delay(300);
     }
 
-    console.log(`API 分页获取完成: ${allApiMessages.length} 条消息`);
+    if (!paginationComplete && !paginationNote) {
+        paginationNote = `撞上 MAX_PAGES=${MAX_PAGES} 上限`;
+    }
+    console.log(`API 分页获取完成: ${allApiMessages.length} 条消息`
+        + (paginationComplete ? '' : ` (未走完: ${paginationNote})`));
 
     // 合并 API 分页消息和已捕获的脚本层消息
     const scriptMessages = await page.evaluate(() => window.__ARCHIVER_STATE__?.getMessages() || []);
     console.log(`脚本层消息: ${scriptMessages.length} 条`);
     console.log(`网络层消息: ${networkMessages.length} 条`);
 
-    // 合并去重：API 分页 + 脚本层 + 网络层
+    // 合并去重：API 分页 + 脚本层 + 网络层。
+    // 三条来源已经是同构记录，整条存入即可 —— 旧版对脚本层显式重建对象、
+    // 只挑 8 个字段，把仅被页内 hook 捕获到的 pics/share/link/videoUrl/avatar
+    // 全部丢掉，落盘后 viewer 里就是空白气泡。
     const allMessages = new Map();
-    for (const m of allApiMessages) {
-        allMessages.set(String(m.id), m);
-    }
+    for (const m of allApiMessages) allMessages.set(String(m.id), m);
     for (const m of scriptMessages) {
-        if (!allMessages.has(String(m.id))) {
-            allMessages.set(String(m.id), {
-                id: m.id, from_uid: m.from_uid, user: m.user,
-                timestamp: m.timestamp, time: m.time, date: m.date,
-                content: m.content, type: m.type || 'text',
-            });
-        }
+        if (!allMessages.has(String(m.id))) allMessages.set(String(m.id), m);
     }
     for (const m of networkMessages) {
-        const key = String(m.id);
-        if (!allMessages.has(key)) {
-            const d = new Date(m.time);
-            allMessages.set(key, {
-                ...m,
-                time: d.toLocaleString('zh-CN', { hour12: false }),
-                date: d.toISOString().slice(0, 10),
-            });
-        }
+        if (!allMessages.has(String(m.id))) allMessages.set(String(m.id), m);
     }
 
     const messages = [...allMessages.values()].sort((a, b) => a.timestamp - b.timestamp);
@@ -856,48 +853,32 @@ async function main() {
             groups[date].push(msg);
         }
 
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const filepath = path.join(groupDir, `weibo_chat_${timestamp}.json`);
-
-        fs.writeFileSync(filepath, JSON.stringify({
-            exportTime: new Date().toISOString(),
-            totalMessages: messages.length,
-            days: Object.keys(groups).length,
-            messages: messages,
-        }, null, 2));
-
-        console.log(`已保存到: ${filepath}`);
-
         for (const [date, msgs] of Object.entries(groups)) {
+            // mergeIntoDayFile 负责：区分"文件不存在"与"解析失败"（后者备份成
+            // .corrupt.<ts> 而不是当空文件覆盖掉整天历史）+ 按 id 去重 + 原子落盘
             const dayFile = path.join(groupDir, `weibo_chat_${date}.json`);
-            let existingMsgs = [];
-            try {
-                const existingData = JSON.parse(fs.readFileSync(dayFile, 'utf-8'));
-                existingMsgs = Array.isArray(existingData) ? existingData : (existingData.messages || []);
-            } catch (e) {
-                // File doesn't exist or invalid, start fresh
-            }
-            // Merge and deduplicate by message ID
-            const merged = [...existingMsgs, ...msgs];
-            const deduped = [...new Map(merged.map(m => [m.id, m])).values()];
-            deduped.sort((a, b) => a.timestamp - b.timestamp);
-            fs.writeFileSync(dayFile, JSON.stringify(deduped, null, 2));
+            const { existing, total } = mergeIntoDayFile(dayFile, msgs);
+            console.log(`  ${date}: 原有 ${existing} + 本轮 ${msgs.length} → ${total} 条`);
         }
         console.log(`已按天拆分保存 ${Object.keys(groups).length} 个文件`);
 
-        // 删除时间戳全量文件（数据已拆分到按天文件中）
-        try { fs.unlinkSync(filepath); } catch {}
-
-        // 保存归档状态：记录最新消息的时间戳，下次从这里继续
-        const newestMsg = messages[messages.length - 1];
-        const newestTs = newestMsg?.timestamp;
-        const newState = {
-            lastRun: new Date().toISOString(),
-            lastMessageCount: messages.length,
-            lastTimestamp: (newestTs && !isNaN(newestTs)) ? newestTs : Date.now(),
-        };
-        fs.writeFileSync(stateFile, JSON.stringify(newState, null, 2));
-        console.log(`归档状态已保存 (截止: ${new Date(newState.lastTimestamp).toLocaleString('zh-CN')})`);
+        // 保存归档状态：记录最新消息的时间戳，下次从这里继续。
+        // 只有分页真正走完才推进 —— 否则断点与上次截止时间之间的消息会被
+        // 永久跳过（下次运行的 stopTimestamp 已经越过它们了）。
+        const newestTs = messages[messages.length - 1]?.timestamp;
+        if (!paginationComplete) {
+            console.warn(`⚠ 分页未走完(${paginationNote})，保留原有归档状态，下次运行会重新补齐这段区间`);
+        } else if (!Number.isFinite(newestTs)) {
+            console.warn('⚠ 最新消息缺少有效 timestamp，保留原有归档状态（不用 Date.now() 兜底，否则会跳过整段区间）');
+        } else {
+            const newState = {
+                lastRun: new Date().toISOString(),
+                lastMessageCount: messages.length,
+                lastTimestamp: newestTs,
+            };
+            writeJsonAtomic(stateFile, newState);
+            console.log(`归档状态已保存 (截止: ${new Date(newState.lastTimestamp).toLocaleString('zh-CN')})`);
+        }
 
         // 后台更新 QA 话题块索引(fire-and-forget:失败只警告,不影响归档;
         // 没跑成也无妨——qa-agent 检测到索引过期会自动降级为即时切块)
@@ -931,6 +912,11 @@ async function main() {
         exec('open -a "Google Chrome"');
     }
 
+    if (skippedGroups.length > 0) {
+        // 有群没归档成功就必须失败，否则调度器只会看到退出码 0
+        throw new Error(`${skippedGroups.length}/${GROUPS.length} 个群未归档: ${skippedGroups.join('、')}`);
+    }
+
     console.log('完成！');
 }
 
@@ -940,7 +926,8 @@ async function runWithRetry(maxRetries = 1) {
             await main();
             return;
         } catch (err) {
-            if (attempt < maxRetries) {
+            // Cookie 失效之类的致命错误重试也没用，只会白等 30 秒再开一次浏览器
+            if (attempt < maxRetries && !err.fatal) {
                 console.error(`尝试 ${attempt + 1} 失败:`, err.message);
                 console.log('30秒后重试...');
                 await new Promise(r => setTimeout(r, 30000));
