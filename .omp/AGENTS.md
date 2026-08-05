@@ -2,9 +2,9 @@
 
 微博群聊归档器 + 本地查看器 + Tauri 桌面壳。以下约定是历史事故换来的，改动前先读懂背后的"为什么"。
 
-## 架构卖点：零框架、零构建
+## 前端现状：零构建 vanilla 单文件
 
-- 前端是 vanilla HTML/CSS/JS 单文件（viewer.html 三段式：`<style>` → HTML → 一个大 `<script>`），改完刷新即生效。**不加 React/Vue/组件库/Tailwind/构建步骤**——单文件可携带是核心卖点。
+- 前端是 vanilla HTML/CSS/JS 单文件（viewer.html 三段式：`<style>` → HTML → 一个大 `<script>`），改完刷新即生效，无构建步骤。日常改动沿用现有 vanilla 模式即可；是否引入框架/构建由用户决定，不是既定禁区。
 - 设计系统 = 手写 CSS 自定义属性 tokens（`--primary`、`--surface-*`、`--hairline`、`--danger`）。新 UI 复用 tokens，不引新色值。
 - 全仓库 CommonJS（`"type": "commonjs"`），`.mjs` 仅限 qa-agent / eval / scripts 下的独立脚本。LSP 的"可转换为 ES module"提示是噪音，忽略。
 
