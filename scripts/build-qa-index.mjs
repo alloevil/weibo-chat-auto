@@ -64,7 +64,7 @@ export function parseAnnotationResponse(text, expectedCount) {
   return out;
 }
 
-async function annotateBatch(config, chunkTexts) {
+export async function annotateBatch(config, chunkTexts) {
   const resp = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },

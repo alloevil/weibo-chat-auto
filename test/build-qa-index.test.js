@@ -34,3 +34,39 @@ test('buildAnnotationPrompt: 包含块文本与行式格式说明', async () => 
     assert.match(p, /【块1】/);
     assert.match(p, /编号\|标注内容/);
 });
+
+test('annotateBatch: 请求形状与行式响应解析管道', async () => {
+    const { annotateBatch, buildAnnotationPrompt, parseAnnotationResponse } = await load();
+    const orig = global.fetch;
+    try {
+        const chunks = ['[10:00] a: 半导体聊天', '[11:00] b: 冲牙器聊天'];
+        const content = '0|话题:半导体\n1|话题:冲牙器';
+        let captured;
+        global.fetch = async (url, init) => {
+            captured = { url: String(url), init };
+            return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
+        };
+        const out = await annotateBatch({ baseUrl: 'https://llm.test/v1', apiKey: 'sk-k', model: 'gpt-x' }, chunks);
+
+        assert.strictEqual(captured.url, 'https://llm.test/v1/chat/completions');
+        assert.strictEqual(captured.init.headers['Authorization'], 'Bearer sk-k');
+        const body = JSON.parse(captured.init.body);
+        assert.strictEqual(body.model, 'gpt-x');
+        assert.strictEqual(body.messages[0].content, buildAnnotationPrompt(chunks));
+        // 期望数量必须与送入的块数一致，解析结果与直接解析 content 等价
+        assert.deepStrictEqual(out, parseAnnotationResponse(content, chunks.length));
+    } finally {
+        global.fetch = orig;
+    }
+});
+
+test('annotateBatch: 非 200 抛错并带状态码', async () => {
+    const { annotateBatch } = await load();
+    const orig = global.fetch;
+    try {
+        global.fetch = async () => ({ ok: false, status: 429 });
+        await assert.rejects(() => annotateBatch({ baseUrl: 'x', apiKey: 'k', model: 'm' }, ['块']), /429/);
+    } finally {
+        global.fetch = orig;
+    }
+});

@@ -75,3 +75,44 @@ test('formatReport: 对比模式输出 Δ', async () => {
   assert.match(report, /\+0\.20/);
   assert.match(report, /Δ avgOverall: 0\.200/);
 });
+
+test('judgeAnswer: 请求形状（端点/鉴权/模型/prompt）与响应解析', async () => {
+  const { judgeAnswer, buildJudgePrompt, parseJudgeResponse } = await load();
+  const orig = global.fetch;
+  try {
+    const content = '{"factual":1,"grounded":0.5,"complete":1,"reasoning":"引用完整"}';
+    const judgeArgs = { question: '问', answer: '答', sources: [{ date: '2026-07-03', user: 'tk', preview: '半导体还没跌到位' }], goldenFacts: ['没跌到位'] };
+    let captured;
+    global.fetch = async (url, init) => {
+      captured = { url: String(url), init };
+      return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
+    };
+    const scores = await judgeAnswer({ baseUrl: 'https://llm.test/v1', apiKey: 'sk-k', model: 'gpt-x' }, judgeArgs);
+
+    assert.strictEqual(captured.url, 'https://llm.test/v1/chat/completions');
+    assert.strictEqual(captured.init.headers['Authorization'], 'Bearer sk-k');
+    const body = JSON.parse(captured.init.body);
+    assert.strictEqual(body.model, 'gpt-x');
+    assert.strictEqual(body.stream, false);
+    // prompt 必须由 buildJudgePrompt 生成（含问题/来源/标准事实）
+    assert.strictEqual(body.messages[0].content, buildJudgePrompt(judgeArgs));
+    // 返回值必须等价于对 content 的解析结果（content 提取路径断了会在此暴露）
+    assert.deepStrictEqual(scores, parseJudgeResponse(content));
+  } finally {
+    global.fetch = orig;
+  }
+});
+
+test('judgeAnswer: 非 200 抛错并带状态码', async () => {
+  const { judgeAnswer } = await load();
+  const orig = global.fetch;
+  try {
+    global.fetch = async () => ({ ok: false, status: 503 });
+    await assert.rejects(
+      () => judgeAnswer({ baseUrl: 'x', apiKey: 'k', model: 'm' }, { question: 'q', answer: 'a', sources: [], goldenFacts: [] }),
+      /503/
+    );
+  } finally {
+    global.fetch = orig;
+  }
+});

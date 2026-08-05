@@ -119,7 +119,7 @@ export function summarize(perQuestion) {
 
 // ─── judge 调用 ─────────────────────────────────────────────────────────
 
-async function judgeAnswer(config, args) {
+export async function judgeAnswer(config, args) {
   const resp = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },

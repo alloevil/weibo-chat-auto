@@ -36,6 +36,8 @@ function absorbSetCookies(proxyRes, requestUrl) {
 const messageStore = require('./lib/load-messages');
 // 登录态预检与归档器共用同一判据（接口 error_code，见 lib/weibo-auth）
 const weiboAuth = require('./lib/weibo-auth');
+// 归档器输出 → 同步结果/进度 的解析规则统一在 lib/sync-report（有对应单测）
+const syncReport = require('./lib/sync-report');
 
 // —— 会话保活 ——
 // api.weibo.com 的响应从不下发 Set-Cookie，而服务端把 webim 登录态与
@@ -392,51 +394,19 @@ const server = http.createServer((req, res) => {
         const onChunk = (chunk) => {
             const text = chunk.toString();
             out += text;
-            // 从归档器输出提取人类可读的进度
-            for (const line of text.split('\n')) {
-                const m = line.match(/--- 归档群聊: (.+?) ---/);
-                if (m) {
-                    progress.current += 1;
-                    progress.stage = `正在归档「${m[1].trim()}」（${progress.current}/${progress.total || '?'}）`;
-                } else if (line.includes('目标群聊:')) {
-                    progress.total = (line.split(':')[1] || '').split(',').length;
-                } else if (line.includes('打开微博聊天页面')) {
-                    progress.stage = '打开微博聊天页…';
-                } else if (line.includes('API 分页获取完成')) {
-                    progress.stage = progress.stage.replace(/（/, '完成（');
-                }
-            }
+            // 从归档器输出提取人类可读的进度（解析规则见 lib/sync-report）
+            for (const line of text.split('\n')) syncReport.updateProgress(progress, line);
         };
         child.stdout.on('data', onChunk);
         child.stderr.on('data', onChunk);
         child.on('close', (code) => {
             clearTimeout(timer);
             progress.running = false;
+            const result = syncReport.buildSyncResult(code, out);
+            if (result.ok) console.log(`[sync] done (archived=${result.archived})`);
+            else console.error('[sync] archiver exited with code', code);
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-
-            if (code !== 0) {
-                console.error('[sync] archiver exited with code', code);
-                // 归档器对 Cookie 失效有明确输出并 exit 1（v1.11.0 起），直接引导重新扫码
-                if (out.includes('Cookie 已失效')) {
-                    res.end(JSON.stringify({ ok: false, needLogin: true, error: '微博 Cookie 已失效，请重新扫码登录' }));
-                    return;
-                }
-                // 归档器兜底打印 "错误: <Error 类名>: <原因>"（如 "2/3 个群未归档: …"），
-                // 把最后一条真实原因带给前端，而不是只报退出码
-                const reasons = out.match(/错误: \w*Error: [^\n]+/g);
-                const reason = reasons
-                    ? reasons[reasons.length - 1].replace(/^错误: \w*Error: /, '')
-                    : `归档器异常退出（code ${code}）`;
-                res.end(JSON.stringify({ ok: false, error: reason }));
-                return;
-            }
-
-            // 退出码 0 即全部群归档成功：有群被跳过时归档器以非 0 退出（v1.11.0 起），
-            // 不再从输出里猜"是否其实失败了"。旧标志串（"已保存到:"、"需要登录"）
-            // 归档器已不再打印，靠它们计数会把成功同步报成 0 个群。
-            const archived = (out.match(/--- 归档群聊:/g) || []).length;
-            console.log(`[sync] done (archived=${archived})`);
-            res.end(JSON.stringify({ ok: true, archived, skipped: 0 }));
+            res.end(JSON.stringify(result));
         });
         child.on('error', (err) => {
             clearTimeout(timer);
