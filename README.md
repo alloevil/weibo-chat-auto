@@ -299,7 +299,7 @@ weibo-chat-auto/
 ├── viewer-server.js         # 本地查看器服务器
 ├── viewer.html              # 查看器页面（单页应用，Linear 深色主题）
 ├── qa-agent.mjs             # Agentic Q&A 模块
-├── benchmark-qa.mjs         # Agent vs Legacy 对比测试
+├── eval/                    # 评测：questions.json + run-eval.mjs + benchmark-qa.mjs
 ├── src-tauri/               # Tauri v2 桌面应用（Rust）
 │   ├── src/lib.rs           # 窗口、sidecar 拉起、应用内登录
 │   └── tauri.conf.json
@@ -311,6 +311,7 @@ weibo-chat-auto/
 │   └── 群名/
 │       └── weibo_chat_2026-05-01.json
 ├── cache/images/            # 图片缓存（不提交）
+├── scripts/                 # 辅助脚本（QA 索引构建、渲染冒烟、截图）
 ├── docs/                    # 文档和截图
 │   └── agent-qa.md          # Agent Q&A 技术方案
 └── package.json

@@ -41,7 +41,7 @@ module.exports = [
             'no-irregular-whitespace': 'off',
         },
     },
-    // ES module 脚本（.mjs）：qa-agent.mjs / benchmark-qa.mjs / sidecar/build.mjs
+    // ES module 脚本（.mjs）：qa-agent.mjs / eval/*.mjs / sidecar/build.mjs
     {
         files: ['**/*.mjs'],
         languageOptions: {

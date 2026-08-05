@@ -1,8 +1,8 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
-const { resolveChromePath } = require('./lib/chrome-path');
+const { resolveChromePath } = require('../lib/chrome-path');
 let cfgChrome = '';
-try { cfgChrome = require('./config.json').chromePath; } catch { /* 靠探测 */ }
+try { cfgChrome = require('../config.json').chromePath; } catch { /* 靠探测 */ }
 
 (async () => {
     const browser = await puppeteer.launch({
@@ -31,7 +31,7 @@ try { cfgChrome = require('./config.json').chromePath; } catch { /* 靠探测 */
     ` });
     await new Promise(r => setTimeout(r, 500));
 
-    await page.screenshot({ path: path.join(__dirname, 'screenshot.png'), fullPage: false });
+    await page.screenshot({ path: path.join(__dirname, '..', 'screenshot.png'), fullPage: false });
     console.log('Screenshot saved');
     await browser.close();
 })();
