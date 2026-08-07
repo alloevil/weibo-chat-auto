@@ -432,7 +432,7 @@ const server = http.createServer((req, res) => {
                     cookieHeader: loadCookies(),
                 });
                 if (r.ok) {
-                    console.log(`[send] → ${group}: ${String(params.content).slice(0, 40)}`);
+                    console.log(`[send] → ${group}: ${String(params.content).slice(0, 40)} (mid=${r.messageId || '?'})`);
                     liveSync.tick();   // 不 await：发送响应不该等轮询往返
                 } else if (r.needLogin) {
                     authState.ok = false;

@@ -20,10 +20,11 @@ function fakeFetch(body, { status = 200, json = true } = {}) {
 }
 
 test('sendGroupMessage: 请求形状为 form-urlencoded 且带全部必需参数', async () => {
-    const impl = fakeFetch({ result: true });
+    const impl = fakeFetch({ result: true, id: 5329279252433540 });
     const r = await sm.sendGroupMessage({ groupId: '123', content: '  你好  ', cookieHeader: 'SUB=x', fetchImpl: impl });
 
     assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.messageId, '5329279252433540', '成功需透出已创建消息 id');
     const { url, init } = impl.calls[0];
     assert.strictEqual(url, 'https://api.weibo.com' + sm.SEND_PATH);
     assert.strictEqual(init.method, 'POST');
@@ -33,7 +34,13 @@ test('sendGroupMessage: 请求形状为 form-urlencoded 且带全部必需参数
     assert.strictEqual(params.get('id'), '123');
     assert.strictEqual(params.get('content'), '你好', '内容需 trim 后发送');
     assert.strictEqual(params.get('source'), '209678993');
+    assert.strictEqual(params.get('media_type'), '0');
     assert.ok(init.signal, '必须带超时 signal');
+
+    // 客户端标记不可省：实测缺 annotations 时接口回成功、消息随即被风控撤回，
+    // 群里只剩一条"你撤回了一条消息"。return_detail 让投递结果可确定判断。
+    assert.deepStrictEqual(JSON.parse(params.get('annotations')), { webchat: 1, clientid: '' });
+    assert.strictEqual(params.get('return_detail'), '1');
 });
 
 test('sendGroupMessage: HTTP 200 + result:false 必须判为失败', async () => {
