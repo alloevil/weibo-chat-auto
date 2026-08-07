@@ -665,6 +665,11 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived"></div>
         <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点 Sync">实时</span>
+        <select class="schedule-select" id="liveSelect" onchange="updateLiveConfig(this.value)"
+            title="实时同步会每 20 秒读取一次群消息；关闭后查看器完全不主动查询微博（原生客户端的未读提示不受影响）">
+            <option value="0">实时: 关闭</option>
+            <option value="1">实时: 开启</option>
+        </select>
         <select class="schedule-select" id="scheduleSelect" onchange="updateSchedule(this.value)" style="display:none">
             <option value="0">定时: 关闭</option>
             <option value="1800">定时: 30min</option>
@@ -2194,7 +2199,7 @@ function startLive() {
         try { event = JSON.parse(ev.data); } catch { return; }
         if (event.type === 'hello') {
             liveGroups = event.groups || [];
-            setLiveIndicator(liveGroups.length ? 'on' : 'off');
+            setLiveIndicator(event.enabled && liveGroups.length ? 'on' : 'off');
             updateComposer();
             return;
         }
@@ -2209,7 +2214,40 @@ function startLive() {
         document.getElementById('lastArchived').textContent = `Live: ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     };
 }
-startLive();
+function stopLive() {
+    if (!liveSource) return;
+    liveSource.close();     // 必须真的断开：留着连接服务端就仍算有订阅者
+    liveSource = null;
+    setLiveIndicator('off');
+}
+
+// 实时同步默认关闭：轮询要读群消息，可能影响原生客户端的未读提示，
+// 这个代价由用户显式选择承担。开关状态存在服务端（浏览器版与桌面版共享）。
+async function loadLiveConfig() {
+    try {
+        const c = await (await fetch('/api/live-config')).json();
+        document.getElementById('liveSelect').value = c.enabled ? '1' : '0';
+        liveGroups = c.groups || [];
+        if (c.enabled) startLive(); else { stopLive(); updateComposer(); }
+    } catch { /* 服务端不可达时保持现状 */ }
+}
+async function updateLiveConfig(val) {
+    const enabled = val === '1';
+    try {
+        const r = await (await fetch('/api/live-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        })).json();
+        if (!r.ok) { showToast('设置失败：' + (r.error || '未知错误'), 'error'); loadLiveConfig(); return; }
+        if (enabled) { startLive(); showToast('实时同步已开启（每 20 秒读取一次新消息）', 'success', 4000); }
+        else { stopLive(); showToast('实时同步已关闭，查看器不再主动查询微博', 'success', 4000); }
+    } catch (e) {
+        showToast('设置失败：' + e.message, 'error');
+        loadLiveConfig();
+    }
+}
+loadLiveConfig();
 
 // ── 聊天：发送到当前群 ────────────────────────────────────────────
 // 只在该群有可用会话 id（归档器记录过 groupId）时才显示输入框 ——

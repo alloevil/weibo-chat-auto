@@ -64,6 +64,7 @@
 - **发消息必须带 web 客户端标记**：`annotations={"webchat":1,"clientid":…}` + `return_detail=1`（`lib/send-message.js`）。少了 annotations，接口照样回 `result:true`，但消息随即被风控撤回，群里只留一条"你撤回了一条消息"——实测踩过。微博所有失败都是 HTTP 200，永远解析 body。
 - **实时同步与发言都依赖 `state.groupId`**：群会话 id 只有归档器点击切群时能解析，它写进 `state/last-archive-state_<群名>.json`；查看器没有浏览器，缺 id 的群自动跳过（`lib/live-sync.js` / `/api/send`）。改归档器的 state 写入要同步考虑这两处消费者。
 - **实时同步首轮只建游标不广播**：否则每个新订阅者一连上就把最近一页历史当"新消息"收一遍。轮询只在有 SSE 订阅者时运行。
+- **实时同步默认关闭，关闭即零请求**（`live-config.json` + `createLiveSync({isEnabled})`）：轮询要读群消息，而"读取是否推进微博侧已读游标"无法从外部证伪（`query_messages` 自带 `last_read_mid`，只能用同一接口观察），若真会推进就吃掉原生客户端的未读提示。因此关闭时不起定时器、前端不建 SSE、发送后也不催同步 —— 任何"顺手读一次"的新代码都必须过这道闸门。
 
 ## 构建与发布
 

@@ -205,3 +205,50 @@ test('groupByDate: 按 date 分桶，缺 date 归入 unknown', () => {
     assert.deepStrictEqual([...byDate.keys()].sort(), ['2026-08-07', '2026-08-08', 'unknown']);
     assert.deepStrictEqual(byDate.get('2026-08-07').map(m => m.id), [1, 3]);
 });
+test('createLiveSync: 开关关闭时一个请求都不发（保住原生客户端未读提示）', async () => {
+    const dir = tmpdir();
+    let calls = 0;
+    let enabled = false;
+    const live = ls.createLiveSync({
+        resolveGroups: () => [{ name: 'G', groupId: '123', dir }],
+        cookieHeader: () => 'x',
+        emit: () => {},
+        intervalMs: 60000,
+        isEnabled: () => enabled,
+        fetchImpl: async () => { calls++; return { json: async () => ({ messages: [raw(1, T0)] }) }; },
+    });
+
+    live.addSubscriber();
+    await live.tick();
+    assert.strictEqual(calls, 0, '关闭时轮询不得发起任何请求');
+    assert.strictEqual(live.running, false, '关闭时不得起定时器');
+
+    // 开关每轮重新求值：打开后 refresh() 立即起轮询，无需重启进程
+    enabled = true;
+    live.refresh();
+    assert.strictEqual(live.running, true);
+    await live.tick();
+    assert.ok(calls > 0, '开启后应正常轮询');
+
+    // 再关掉：定时器停、后续 tick 不再发请求
+    enabled = false;
+    live.refresh();
+    assert.strictEqual(live.running, false);
+    const before = calls;
+    await live.tick();
+    assert.strictEqual(calls, before, '关闭后 tick 必须是空操作');
+    live.stop();
+});
+
+test('createLiveSync: 关闭时即使有订阅者也不启动轮询', () => {
+    const live = ls.createLiveSync({
+        resolveGroups: () => [{ name: 'G', groupId: '1', dir: tmpdir() }],
+        cookieHeader: () => 'x',
+        emit: () => {},
+        isEnabled: () => false,
+        fetchImpl: async () => { throw new Error('不该被调用'); },
+    });
+    live.addSubscriber();
+    assert.strictEqual(live.running, false);
+    live.stop();
+});

@@ -66,6 +66,23 @@ function resolveLiveGroups() {
     }
     return out;
 }
+// 实时同步总开关。**默认关闭**：轮询会读取群消息，而"读取是否会推进微博侧的
+// 已读游标"无法从外部证伪（query_messages 的响应自带 last_read_mid，只能通过
+// 同一个接口观察它）。默认开着就有可能悄悄吃掉原生客户端的未读提示 ——
+// 这种代价必须由用户显式选择承担，而不是默认替他决定。
+// 持久化在 live-config.json（与 ai-config.json 同套路，不去改用户手写的 config.json）。
+const LIVE_CONFIG_PATH = path.join(__dirname, 'live-config.json');
+function readLiveEnabled() {
+    try {
+        return JSON.parse(fs.readFileSync(LIVE_CONFIG_PATH, 'utf-8')).enabled === true;
+    } catch {
+        return false;   // 文件缺失/损坏 → 关闭（保守侧）
+    }
+}
+function writeLiveEnabled(enabled) {
+    fs.writeFileSync(LIVE_CONFIG_PATH, JSON.stringify({ enabled: !!enabled }, null, 2), 'utf-8');
+}
+let liveEnabled = readLiveEnabled();
 
 const sseClients = new Set();
 function broadcast(event) {
@@ -89,6 +106,7 @@ function logLiveError(group, error) {
 const liveSync = createLiveSync({
     resolveGroups: resolveLiveGroups,
     cookieHeader: loadCookies,
+    isEnabled: () => liveEnabled,
     log: (m) => console.log(m),
     emit: (event) => {
         if (event.type === 'messages') {
@@ -446,7 +464,9 @@ const server = http.createServer((req, res) => {
                 });
                 if (r.ok) {
                     console.log(`[send] → ${group}: ${String(params.content).slice(0, 40)} (mid=${r.messageId || '?'})`);
-                    liveSync.tick();   // 不 await：发送响应不该等轮询往返
+                    // 实时同步关闭时不催轮询：那也是一次读取，会破坏"关掉就
+                    // 一个请求都不发"的承诺。此时自己发的消息等下次归档出现。
+                    if (liveEnabled) liveSync.tick();
                 } else if (r.needLogin) {
                     authState.ok = false;
                     authState.code = weiboAuth.UNAUTHENTICATED_CODE;
@@ -459,6 +479,34 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // 实时同步开关（默认关闭）。前端读它决定指示灯与轮询是否开启。
+    if (url.pathname === '/api/live-config') {
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, enabled: liveEnabled, groups: resolveLiveGroups().map(g => g.name) }));
+            return;
+        }
+        if (req.method === 'POST') {
+            let body = '';
+            req.on('data', c => { body += c; });
+            req.on('end', () => {
+                try {
+                    const { enabled } = JSON.parse(body);
+                    liveEnabled = !!enabled;
+                    writeLiveEnabled(liveEnabled);
+                    liveSync.refresh();   // 立即生效：开则起轮询，关则停
+                    console.log(`[live] 实时同步已${liveEnabled ? '开启' : '关闭'}`);
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true, enabled: liveEnabled }));
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: e.message }));
+                }
+            });
+            return;
+        }
+    }
+
     // 实时同步事件流（SSE）：新消息、登录态失效。首个订阅者触发轮询启动，
     // 最后一个断开即停止（没人看时不打微博接口）。
     if (url.pathname === '/api/live') {
@@ -468,7 +516,7 @@ const server = http.createServer((req, res) => {
             Connection: 'keep-alive',
             'X-Accel-Buffering': 'no',
         });
-        res.write(`data: ${JSON.stringify({ type: 'hello', groups: resolveLiveGroups().map(g => g.name), intervalMs: LIVE_INTERVAL_MS })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'hello', enabled: liveEnabled, groups: resolveLiveGroups().map(g => g.name), intervalMs: LIVE_INTERVAL_MS })}\n\n`);
         sseClients.add(res);
         liveSync.addSubscriber();
         // 心跳注释：浏览器与代理都会掐掉长时间静默的连接
