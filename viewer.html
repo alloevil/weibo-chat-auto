@@ -467,6 +467,85 @@ html[data-theme="qq2000"] ::-webkit-scrollbar-track { background: #ece9d8; }
 html[data-theme="qq2000"] ::-webkit-scrollbar-thumb { background: #d4d0c8; border: 1px solid; border-color: #fff #404040 #404040 #fff; }
 html[data-theme="qq2000"] * { scrollbar-width: auto; scrollbar-color: #d4d0c8 #ece9d8; }
 html[data-theme="qq2000"] ::selection { background: #0a246a; color: #fff; }
+
+/* ── 皮肤：QQ 2008（Vista / Web 2.0 光泽玻璃风）──────────────────
+   同一机制：token 覆盖 + 少量年代规则。亮蓝玻璃渐变、按钮顶部高光、
+   微软雅黑、4px 小圆角。 */
+html[data-theme="qq2008"] {
+    --primary: #1f81d0;
+    --primary-hover: #3f9ce8;
+    --primary-focus: #1663a8;
+    --on-primary: #ffffff;
+    --ink: #16334f;
+    --ink-muted: #2c4a68;
+    --ink-subtle: #587795;
+    --ink-tertiary: #8aa4bd;
+    --canvas: #d9ecfb;
+    --surface-1: #ffffff;
+    --surface-2: #eaf5fe;
+    --surface-3: #f4fafe;
+    --surface-4: #fbfdff;
+    --hairline: #b5d3ea;
+    --hairline-strong: #8db8dd;
+    --success: #3a9e3a;
+    --danger: #d9534f;
+    --primary-tint: rgba(31, 129, 208, 0.12);
+    --primary-tint-strong: rgba(31, 129, 208, 0.25);
+    color-scheme: light;
+}
+/* 2008 年的圆角还很克制 */
+html[data-theme="qq2008"] * { border-radius: 4px !important; }
+html[data-theme="qq2008"] body { font-family: "Microsoft YaHei", "微软雅黑", Verdana, Tahoma, sans-serif; letter-spacing: 0; }
+/* Vista 玻璃标题栏：上亮下渐变 + 中缝高光 */
+html[data-theme="qq2008"] .nav-top { background: linear-gradient(180deg, #f4fbff 0%, #d3eafc 45%, #aed7f6 46%, #c9e6fa 100%); }
+html[data-theme="qq2008"] .nav { border-bottom-color: var(--hairline-strong); }
+html[data-theme="qq2008"] .nav-title { color: #113f6d; text-shadow: 0 1px 0 rgba(255,255,255,.85); }
+html[data-theme="qq2008"] .nav-title::before { content: '🐧'; width: auto; height: auto; background: none; box-shadow: none; font-size: 15px; }
+html[data-theme="qq2008"] .nav-stats, html[data-theme="qq2008"] .nav-last-archived { color: #35608c; }
+/* 玻璃光泽按钮/下拉（顶部高光 + 中缝分界） */
+html[data-theme="qq2008"] .ai-btn, html[data-theme="qq2008"] .nav-date,
+html[data-theme="qq2008"] .nav-group-select, html[data-theme="qq2008"] .schedule-select,
+html[data-theme="qq2008"] .theme-select, html[data-theme="qq2008"] .stats-toggle,
+html[data-theme="qq2008"] .media-btn, html[data-theme="qq2008"] .summary-btn,
+html[data-theme="qq2008"] .search-nav-btn, html[data-theme="qq2008"] .user-clear button,
+html[data-theme="qq2008"] .modal-cancel {
+    background: linear-gradient(180deg, #ffffff 0%, #ecf6ff 45%, #d6ebfb 46%, #e8f4fd 100%);
+    color: #113f6d; border: 1px solid #7aa9d4;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(58,110,165,.2);
+}
+html[data-theme="qq2008"] .ai-btn:hover, html[data-theme="qq2008"] .nav-date:hover,
+html[data-theme="qq2008"] .stats-toggle:hover, html[data-theme="qq2008"] .media-btn:hover {
+    background: linear-gradient(180deg, #ffffff 0%, #f2faff 45%, #e2f2fe 46%, #f0f8fe 100%);
+    border-color: #5a94c8; color: #113f6d;
+}
+/* 主按钮：光泽蓝玻璃 */
+html[data-theme="qq2008"] .sync-btn, html[data-theme="qq2008"] .qa-send,
+html[data-theme="qq2008"] .modal-save, html[data-theme="qq2008"] .stats-toggle.active,
+html[data-theme="qq2008"] .media-btn.active {
+    background: linear-gradient(180deg, #6cb6f2 0%, #2f8de2 45%, #1a75cb 46%, #3d97e8 100%);
+    color: #fff; border: 1px solid #1663a8; text-shadow: 0 -1px 0 rgba(0,0,0,.2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+}
+html[data-theme="qq2008"] .sync-btn:hover, html[data-theme="qq2008"] .qa-send:hover, html[data-theme="qq2008"] .modal-save:hover {
+    background: linear-gradient(180deg, #83c4f7 0%, #43a0ec 45%, #2585da 46%, #55a8ef 100%);
+}
+/* 输入框：白底细蓝框 + 顶部内阴影 */
+html[data-theme="qq2008"] .search-input, html[data-theme="qq2008"] .qa-input,
+html[data-theme="qq2008"] .modal-field input[type="text"], html[data-theme="qq2008"] .modal-field input[type="password"] {
+    background: #fff; border: 1px solid #7aa9d4; box-shadow: inset 0 1px 3px rgba(58, 110, 165, .18);
+}
+/* 聊天区：白玻璃气泡 + 彩色昵称 */
+html[data-theme="qq2008"] .msg-content { background: linear-gradient(180deg, #ffffff, #f4faff); box-shadow: 0 1px 2px rgba(58, 110, 165, .12); }
+html[data-theme="qq2008"] .msg-user { color: var(--user-accent, #1f81d0); }
+/* 对话框标题条：玻璃渐变 */
+html[data-theme="qq2008"] .modal { box-shadow: 0 6px 24px rgba(20, 60, 100, .35); }
+html[data-theme="qq2008"] .modal h3 { background: linear-gradient(180deg, #f4fbff, #c9e6fa); color: #113f6d; font-size: 14px; padding: 6px 10px; margin: -24px -24px 16px; border-bottom: 1px solid var(--hairline-strong); }
+/* 圆润蓝滚动条 */
+html[data-theme="qq2008"] ::-webkit-scrollbar { width: 12px; height: 12px; }
+html[data-theme="qq2008"] ::-webkit-scrollbar-track { background: #e4f1fc; }
+html[data-theme="qq2008"] ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #a9d0f0, #7fb6e6); border: 1px solid #7aa9d4; }
+html[data-theme="qq2008"] * { scrollbar-width: auto; scrollbar-color: #8fc0ea #e4f1fc; }
+html[data-theme="qq2008"] ::selection { background: #2f8de2; color: #fff; }
 </style>
 <script>
 // 皮肤须在首帧前生效，避免闪一下深色（切换逻辑在页尾 applyTheme）
@@ -488,6 +567,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         <select class="schedule-select theme-select" id="themeSelect" onchange="applyTheme(this.value)" title="切换皮肤" style="margin-left:0">
             <option value="">皮肤: 深色</option>
             <option value="qq2000">皮肤: QQ 2000</option>
+            <option value="qq2008">皮肤: QQ 2008</option>
         </select>
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived"></div>
