@@ -29,17 +29,18 @@ jobs:
             node --check "$f"
           done
 
-      - name: Syntax-check inline script in viewer.html
+      - name: Syntax-check inline scripts in viewer.html
         run: |
           node -e "
             const fs = require('fs');
             const html = fs.readFileSync('viewer.html', 'utf8');
-            const m = html.match(/<script>([\s\S]*)<\/script>/);
-            if (!m) { console.error('No <script> block found in viewer.html'); process.exit(1); }
-            fs.writeFileSync('.viewer-inline.js', m[1]);
+            const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+            if (!blocks.length) { console.error('No <script> block found in viewer.html'); process.exit(1); }
+            blocks.forEach((m, i) => fs.writeFileSync('.viewer-inline-' + i + '.js', m[1]));
+            console.log(blocks.length + ' inline script block(s) extracted');
           "
-          node --check .viewer-inline.js
-          rm -f .viewer-inline.js
+          for f in .viewer-inline-*.js; do node --check "$f"; done
+          rm -f .viewer-inline-*.js
 
       - name: Lint
         run: npm run lint

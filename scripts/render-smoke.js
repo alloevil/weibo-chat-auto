@@ -36,6 +36,7 @@ function buildSandbox() {
             querySelectorAll() { return []; },
             addEventListener() {},
             createElement() { return makeEl(); },
+            documentElement: { dataset: {} },
             body: makeEl(),
             title: '',
         },
@@ -47,8 +48,10 @@ function buildSandbox() {
 }
 
 const html = fs.readFileSync(path.join(ROOT, 'viewer.html'), 'utf-8');
-const m = html.match(/<script>([\s\S]*)<\/script>/);
-if (!m) { console.error('未找到内联脚本'); process.exit(1); }
+// viewer.html 有多个内联 <script>（head 的皮肤预加载 + 主逻辑），取最长的主逻辑块
+const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(b => b[1]);
+const m = [null, blocks.sort((a, b) => b.length - a.length)[0]];
+if (!m[1]) { console.error('未找到内联脚本'); process.exit(1); }
 
 const groups = ['茧房建筑师协会', '猫咪AI研究', '赛博动物园w'];
 let failures = 0;

@@ -395,7 +395,83 @@ button, select, input { font-family: inherit; }
 .stats-word-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .stats-word { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 9999px; font-size: 14px; color: var(--ink); }
 .stats-word .count { font-size: 12px; color: var(--ink-subtle); }
+
+/* ── 皮肤：QQ 2000（世纪初 QQ 聊天室 / Win98 风）─────────────────
+   机制：html[data-theme="qq2000"] 覆盖 :root token + 少量年代感规则。
+   新皮肤照此格式追加一个块即可；切换器在 nav，选择存 localStorage。 */
+html[data-theme="qq2000"] {
+    --primary: #245edb;
+    --primary-hover: #316ac5;
+    --primary-focus: #0a246a;
+    --on-primary: #ffffff;
+    --ink: #000000;
+    --ink-muted: #1a1a1a;
+    --ink-subtle: #555555;
+    --ink-tertiary: #808080;
+    --canvas: #d4d0c8;
+    --surface-1: #ffffff;
+    --surface-2: #ece9d8;
+    --surface-3: #f5f4ef;
+    --surface-4: #fafaf7;
+    --hairline: #aca899;
+    --hairline-strong: #808080;
+    --success: #008000;
+    --danger: #cc0000;
+    --primary-tint: rgba(49, 106, 197, 0.15);
+    --primary-tint-strong: rgba(49, 106, 197, 0.30);
+    color-scheme: light;
+}
+/* 那个年代没有圆角和柔和阴影 */
+html[data-theme="qq2000"] * { border-radius: 0 !important; }
+html[data-theme="qq2000"] body { font-family: Tahoma, "MS Sans Serif", SimSun, "Songti SC", sans-serif; letter-spacing: 0; -webkit-font-smoothing: auto; }
+html[data-theme="qq2000"] .modal, html[data-theme="qq2000"] .toast { box-shadow: none; }
+/* 经典蓝色标题栏 */
+html[data-theme="qq2000"] .nav-top { background: linear-gradient(90deg, #0a246a, #a6caf0); }
+html[data-theme="qq2000"] .nav-title { color: #fff; }
+html[data-theme="qq2000"] .nav-title::before { content: '🐧'; width: auto; height: auto; background: none; box-shadow: none; font-size: 15px; }
+html[data-theme="qq2000"] .nav-stats, html[data-theme="qq2000"] .nav-last-archived { color: #d8e4f8; }
+/* 银色斜面按钮（按下翻转为凹陷） */
+html[data-theme="qq2000"] .sync-btn, html[data-theme="qq2000"] .ai-btn,
+html[data-theme="qq2000"] .nav-date, html[data-theme="qq2000"] .nav-group-select,
+html[data-theme="qq2000"] .schedule-select, html[data-theme="qq2000"] .theme-select,
+html[data-theme="qq2000"] .stats-toggle, html[data-theme="qq2000"] .media-btn,
+html[data-theme="qq2000"] .summary-btn, html[data-theme="qq2000"] .qa-send,
+html[data-theme="qq2000"] .search-nav-btn, html[data-theme="qq2000"] .cal-arrow,
+html[data-theme="qq2000"] .user-clear button, html[data-theme="qq2000"] .modal-actions button {
+    background: #d4d0c8; color: #000; background-image: none;
+    border: 1px solid; border-color: #fff #404040 #404040 #fff;
+    box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ece9d8;
+}
+html[data-theme="qq2000"] .sync-btn:active, html[data-theme="qq2000"] .ai-btn:active,
+html[data-theme="qq2000"] .stats-toggle:active, html[data-theme="qq2000"] .modal-actions button:active {
+    border-color: #404040 #fff #fff #404040; box-shadow: none;
+}
+html[data-theme="qq2000"] .stats-toggle.active, html[data-theme="qq2000"] .media-btn.active {
+    border-color: #404040 #fff #fff #404040; box-shadow: none; background: #ece9d8; color: #000;
+}
+/* 凹陷输入框 */
+html[data-theme="qq2000"] .search-input, html[data-theme="qq2000"] .qa-input,
+html[data-theme="qq2000"] .modal-field input[type="text"], html[data-theme="qq2000"] .modal-field input[type="password"] {
+    background: #fff; border: 1px solid; border-color: #404040 #fff #fff #404040;
+    box-shadow: inset 1px 1px 0 #808080;
+}
+/* 聊天区：白底细框气泡 + 彩色昵称（聊天室味）+ 经典链接蓝 */
+html[data-theme="qq2000"] .msg-content { box-shadow: none; font-size: 13px; }
+html[data-theme="qq2000"] .msg-user { color: var(--user-accent, #000080); }
+html[data-theme="qq2000"] .msg-link, html[data-theme="qq2000"] .summary-content a { color: #0000ee; text-decoration: underline; }
+/* 对话框标题条 */
+html[data-theme="qq2000"] .modal h3 { background: linear-gradient(90deg, #0a246a, #a6caf0); color: #fff; font-size: 13px; padding: 4px 8px; margin: -24px -24px 16px; }
+/* 粗壮银色滚动条 */
+html[data-theme="qq2000"] ::-webkit-scrollbar { width: 16px; height: 16px; }
+html[data-theme="qq2000"] ::-webkit-scrollbar-track { background: #ece9d8; }
+html[data-theme="qq2000"] ::-webkit-scrollbar-thumb { background: #d4d0c8; border: 1px solid; border-color: #fff #404040 #404040 #fff; }
+html[data-theme="qq2000"] * { scrollbar-width: auto; scrollbar-color: #d4d0c8 #ece9d8; }
+html[data-theme="qq2000"] ::selection { background: #0a246a; color: #fff; }
 </style>
+<script>
+// 皮肤须在首帧前生效，避免闪一下深色（切换逻辑在页尾 applyTheme）
+try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* 隐私模式无 localStorage */ }
+</script>
 </head>
 <body>
 
@@ -409,6 +485,10 @@ button, select, input { font-family: inherit; }
         <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
         <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="Select a date to view">Select Date</button>
         <button class="stats-toggle" id="statsToggle" onclick="toggleStats()">📊 Stats</button>
+        <select class="schedule-select theme-select" id="themeSelect" onchange="applyTheme(this.value)" title="切换皮肤" style="margin-left:0">
+            <option value="">皮肤: 深色</option>
+            <option value="qq2000">皮肤: QQ 2000</option>
+        </select>
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived"></div>
         <select class="schedule-select" id="scheduleSelect" onchange="updateSchedule(this.value)" style="display:none">
@@ -986,6 +1066,14 @@ async function checkAuthStatus() {
 }
 setInterval(checkAuthStatus, 5 * 60 * 1000);
 checkAuthStatus();
+
+// 皮肤切换：token 覆盖见 <style> 尾部的主题块；首帧前的应用在 <head> 内联脚本
+function applyTheme(name) {
+    if (name) document.documentElement.dataset.theme = name;
+    else delete document.documentElement.dataset.theme;
+    try { name ? localStorage.setItem('viewer-theme', name) : localStorage.removeItem('viewer-theme'); } catch { /* 隐私模式 */ }
+}
+document.getElementById('themeSelect').value = document.documentElement.dataset.theme || '';
 
 window.addEventListener('cookies-saved', (e) => {
     const count = (e.detail && e.detail.count) || 0;

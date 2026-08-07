@@ -23,7 +23,9 @@ function makeEl(id) {
 async function main() {
     const els = {};
     const sandbox = {
-        console, setTimeout, clearTimeout, setInterval, clearInterval,
+        console, setTimeout, clearTimeout, clearInterval,
+        // 内联脚本会注册轮询（auth 状态等）；unref 让 harness 打完结论能正常退出
+        setInterval(fn, ms) { const t = setInterval(fn, ms); t.unref?.(); return t; },
         requestAnimationFrame(cb) { cb(); },
         fetch: (url, opts) => fetch(BASE + url, opts),
         localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
@@ -36,6 +38,7 @@ async function main() {
             querySelectorAll() { return []; },
             addEventListener() {},
             createElement() { return makeEl(''); },
+            documentElement: { dataset: {} },
             body: makeEl('body'),
             title: '',
         },
@@ -46,7 +49,9 @@ async function main() {
     vm.createContext(sandbox);
 
     const html = fs.readFileSync(path.join(ROOT, 'viewer.html'), 'utf-8');
-    const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+    // viewer.html 有多个内联 <script>（head 的皮肤预加载 + 主逻辑），取最长的主逻辑块
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+        .map(b => b[1]).sort((a, b) => b.length - a.length)[0];
     // viewer.html 还通过 <script src> 加载 text-utils(挂到 window)
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'lib/text-utils.js'), 'utf-8'), sandbox, { filename: 'text-utils.js' });
     vm.runInContext(script, sandbox, { filename: 'viewer-inline.js' });
