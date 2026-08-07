@@ -28,6 +28,8 @@ function buildSandbox() {
         localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
         navigator: { userAgent: 'node-test' },
         location: { href: 'http://localhost/', search: '', reload() {} },
+        // 页面启动即订阅实时同步；harness 不联网，给个惰性 stub
+        EventSource: class { constructor() { this.readyState = 0; } close() {} },
         addEventListener() {},
         removeEventListener() {},
         document: {

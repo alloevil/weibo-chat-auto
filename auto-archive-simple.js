@@ -7,6 +7,7 @@ const { resolveChromePath } = require('./lib/chrome-path');
 const cookieStore = require('./lib/cookie-store');
 const { formatLocalDate, formatLocalTime, writeJsonAtomic, mergeIntoDayFile } = require('./lib/day-file');
 const weiboAuth = require('./lib/weibo-auth');
+const { normalizeMessage: sharedNormalizeMessage } = require('./lib/normalize-message');
 
 // 配置
 const CONFIG = {
@@ -637,96 +638,8 @@ async function main() {
         });
     }
 
-    function normalizeMessage(m) {
-        const id = m?.id || m?.mid || m?.message_id || null;
-        if (!id) return null;
-        const ts = (typeof m.time === 'number' && m.time > 0) ? m.time * 1000 :
-            (m.created_at ? Date.parse(m.created_at) : Date.now());
-        const fromUser = m.from_user || {};
-
-        // 提取图片 URL
-        const pics = [];
-        if (m.pic_urls && Array.isArray(m.pic_urls)) {
-            m.pic_urls.forEach(p => {
-                const u = p.url || p.pic || p.large?.url || (typeof p === 'string' ? p : null);
-                if (u) pics.push(u.replace(/^http:/, 'https:'));
-            });
-        }
-        if (pics.length === 0 && m.pic) {
-            pics.push(String(m.pic).replace(/^http:/, 'https:'));
-        }
-
-        // 从 fids 构建图片 URL（media_type=1 的图片消息）
-        if (pics.length === 0 && m.fids && Array.isArray(m.fids)) {
-            m.fids.forEach(fid => {
-                pics.push('https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=' + fid);
-            });
-        }
-
-        // 提取分享内容（url_objects，media_type=14 时有值）
-        let shareInfo = null;
-        if (m.url_objects && m.url_objects.length > 0) {
-            const uo = m.url_objects[0];
-            const info = uo.info || {};
-            const status = uo.status || {};
-            const statusUser = status.user || {};
-            const picIds = status.pic_ids || [];
-
-            // 构建图片 URL（微博图片 CDN 格式）
-            const picUrls = picIds.map(pid =>
-                `https://wx1.sinaimg.cn/large/${pid}.jpg`
-            );
-
-            shareInfo = {
-                url: uo.url_ori || info.url_long || info.url_short || '',
-                title: info.title || (status.text || '').substring(0, 100),
-                description: info.description || '',
-                author: statusUser.screen_name || '',
-                authorAvatar: statusUser.avatar_hd || statusUser.avatar_large || '',
-                text: (status.text || '').replace(/<[^>]+>/g, '').replace(/[\r\n]+/g, ' ').substring(0, 300),
-                pics: picUrls,
-                reposts: status.reposts_count || 0,
-                comments: status.comments_count || 0,
-                likes: status.attitudes_count || 0,
-                region: status.region_name || '',
-                created: status.created_at || '',
-            };
-        }
-
-        // 提取附加 URL
-        let extraUrl = '';
-        if (m.url) extraUrl = String(m.url).replace(/^http:/, 'https:');
-        if (!extraUrl && m.short_url) extraUrl = String(m.short_url).replace(/^http:/, 'https:');
-
-        // 从 url_objects 提取流媒体 URL（视频消息）
-        let videoUrl = '';
-        if (m.url_objects && m.url_objects.length > 0) {
-            const uo = m.url_objects[0];
-            const info = uo.info || {};
-            videoUrl = info.video_url || info.url_short || info.url_long || uo.url_ori || '';
-            videoUrl = videoUrl.replace(/^http:/, 'https:');
-        }
-
-        const result = {
-            id,
-            from_uid: m.from_uid || fromUser.id || fromUser.idstr || null,
-            user: fromUser.screen_name || fromUser.name || m.from_uid || '未知用户',
-            avatar: fromUser.avatar_large || fromUser.avatar_hd || fromUser.profile_image_url || '',
-            timestamp: ts,
-            time: formatLocalTime(ts),
-            date: formatLocalDate(ts),
-            content: (m.content ?? m.text ?? m.message ?? m.body ?? '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(),
-            type: m.type || m.msg_type || 'text',
-        };
-
-        // 只在有值时添加额外字段
-        if (pics.length > 0) result.pics = pics;
-        if (shareInfo) result.share = shareInfo;
-        if (extraUrl && !result.content.includes(extraUrl)) result.link = extraUrl;
-        if (videoUrl) result.videoUrl = videoUrl;
-
-        return result;
-    }
+    // 标准化实现统一在 lib/normalize-message（实时同步共用同一份，字段必须逐一致）
+    const normalizeMessage = sharedNormalizeMessage;
 
     // API 分页获取（Node.js 端，不依赖浏览器 fetch）
     const allApiMessages = [];
@@ -875,6 +788,9 @@ async function main() {
                 lastRun: new Date().toISOString(),
                 lastMessageCount: messages.length,
                 lastTimestamp: newestTs,
+                // groupId 供查看器的实时同步用：它没有浏览器可点，只能靠归档器
+                // 把切群时解析到的会话 id 记下来（缺失时实时同步对该群自动关闭）
+                groupId: String(groupId),
             };
             writeJsonAtomic(stateFile, newState);
             console.log(`归档状态已保存 (截止: ${new Date(newState.lastTimestamp).toLocaleString('zh-CN')})`);

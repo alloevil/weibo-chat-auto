@@ -29,6 +29,8 @@ async function main() {
         requestAnimationFrame(cb) { cb(); },
         fetch: (url, opts) => fetch(BASE + url, opts),
         localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+        // 页面启动即订阅实时同步；harness 只验证切群逻辑，给个惰性 stub
+        EventSource: class { constructor() { this.readyState = 0; } close() {} },
         navigator: { userAgent: 'node-test' },
         location: { href: BASE + '/', search: '', reload() {} },
         addEventListener() {}, removeEventListener() {},

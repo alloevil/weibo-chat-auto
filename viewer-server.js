@@ -38,6 +38,61 @@ const messageStore = require('./lib/load-messages');
 const weiboAuth = require('./lib/weibo-auth');
 // 归档器输出 → 同步结果/进度 的解析规则统一在 lib/sync-report（有对应单测）
 const syncReport = require('./lib/sync-report');
+// 实时同步（lib/live-sync）：查看器常驻期间轮询 webim，把新消息并入日文件并
+// 通过 SSE 推给页面。只在有订阅者时轮询，没人看不打接口。
+const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('./lib/live-sync');
+// 发消息（写操作）统一走 lib/send-message：微博失败也回 HTTP 200，必须解析 body
+const { sendGroupMessage } = require('./lib/send-message');
+
+/** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
+function readGroupState(groupName) {
+    const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
+    try {
+        return JSON.parse(fs.readFileSync(path.join(__dirname, 'state', `last-archive-state_${safe}.json`), 'utf-8'));
+    } catch {
+        return null;
+    }
+}
+
+/** 可实时同步的群：output/ 下有数据且 state 里有 groupId。 */
+function resolveLiveGroups() {
+    const out = [];
+    if (!fs.existsSync(OUTPUT_DIR)) return out;
+    for (const entry of fs.readdirSync(OUTPUT_DIR, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const st = readGroupState(entry.name);
+        if (!st?.groupId) continue;
+        out.push({ name: entry.name, groupId: String(st.groupId), dir: path.join(OUTPUT_DIR, entry.name) });
+    }
+    return out;
+}
+
+const sseClients = new Set();
+function broadcast(event) {
+    const payload = `data: ${JSON.stringify(event)}\n\n`;
+    for (const res of sseClients) {
+        try { res.write(payload); } catch { sseClients.delete(res); }
+    }
+}
+
+const liveSync = createLiveSync({
+    resolveGroups: resolveLiveGroups,
+    cookieHeader: loadCookies,
+    log: (m) => console.log(m),
+    emit: (event) => {
+        if (event.type === 'messages') {
+            // 缓存必须先失效：前端收到事件后会重新拉 /api/messages，
+            // 不清缓存会拿到不含新消息的旧快照
+            messageStore.clearCaches();
+            authState.ok = true;
+        } else if (event.type === 'auth' && event.ok === false) {
+            authState.ok = false;
+            authState.code = weiboAuth.UNAUTHENTICATED_CODE;
+            authState.checkedAt = Date.now();
+        }
+        broadcast(event);
+    },
+});
 
 // —— 会话保活 ——
 // api.weibo.com 的响应从不下发 Set-Cookie，而服务端把 webim 登录态与
@@ -348,6 +403,71 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ dates }));
+        return;
+    }
+
+    // 发送群聊消息。写操作 —— 与 API 无鉴权、只绑 127.0.0.1 是同一套前提。
+    // 成功后立刻催一轮实时同步：自己发的消息走与他人消息完全相同的入库路径，
+    // 不在本地伪造回显（两条来源会打架）。
+    if (url.pathname === '/api/send' && req.method === 'POST') {
+        let body = '';
+        req.on('data', c => { body += c; if (body.length > 1e5) req.destroy(); });
+        req.on('end', async () => {
+            const reply = (r) => {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(r));
+            };
+            let params;
+            try { params = JSON.parse(body); } catch { reply({ ok: false, error: '参数解析失败' }); return; }
+            const group = params.group || '';
+            const target = resolveLiveGroups().find(g => g.name === group);
+            if (!target) {
+                reply({ ok: false, error: `群「${group}」没有可用的会话 id，先跑一次归档（Sync Now）让它被记录` });
+                return;
+            }
+            try {
+                const r = await sendGroupMessage({
+                    groupId: target.groupId,
+                    content: params.content,
+                    cookieHeader: loadCookies(),
+                });
+                if (r.ok) {
+                    console.log(`[send] → ${group}: ${String(params.content).slice(0, 40)}`);
+                    liveSync.tick();   // 不 await：发送响应不该等轮询往返
+                } else if (r.needLogin) {
+                    authState.ok = false;
+                    authState.code = weiboAuth.UNAUTHENTICATED_CODE;
+                }
+                reply(r.ok ? { ok: true } : { ok: false, needLogin: r.needLogin, error: r.error });
+            } catch (e) {
+                reply({ ok: false, error: `发送请求失败: ${e.message}` });
+            }
+        });
+        return;
+    }
+
+    // 实时同步事件流（SSE）：新消息、登录态失效。首个订阅者触发轮询启动，
+    // 最后一个断开即停止（没人看时不打微博接口）。
+    if (url.pathname === '/api/live') {
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        });
+        res.write(`data: ${JSON.stringify({ type: 'hello', groups: resolveLiveGroups().map(g => g.name), intervalMs: LIVE_INTERVAL_MS })}\n\n`);
+        sseClients.add(res);
+        liveSync.addSubscriber();
+        // 心跳注释：浏览器与代理都会掐掉长时间静默的连接
+        const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* 已断开 */ } }, 25000);
+        beat.unref?.();
+        const cleanup = () => {
+            if (!sseClients.delete(res)) return;   // 只在首次断开时结算订阅数
+            clearInterval(beat);
+            liveSync.removeSubscriber();
+        };
+        req.on('close', cleanup);
+        req.on('error', cleanup);
         return;
     }
 

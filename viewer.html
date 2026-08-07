@@ -64,6 +64,22 @@ button, select, input { font-family: inherit; }
 .sync-btn.syncing { background: var(--surface-2); color: var(--ink-subtle); border-color: var(--hairline); cursor: wait; }
 .auth-banner { margin: 8px 12px 0; padding: 8px 12px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.4; cursor: pointer; }
 .auth-banner:hover { filter: brightness(1.1); }
+.live-dot { display: none; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-subtle); white-space: nowrap; }
+.live-dot.on { display: inline-flex; }
+.live-dot::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: livePulse 2s ease-in-out infinite; }
+.live-dot.stale::before { background: var(--ink-tertiary); animation: none; }
+@keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+/* 聊天输入区（发送到当前群） */
+.composer { display: none; align-items: flex-end; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--hairline); background: var(--surface-1); flex-shrink: 0; }
+.composer.on { display: flex; }
+.composer textarea { flex: 1; min-height: 38px; max-height: 120px; padding: 9px 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); color: var(--ink); font-size: 14px; line-height: 1.4; font-family: inherit; resize: none; outline: none; transition: border-color .15s; }
+.composer textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-tint); }
+.composer textarea:disabled { opacity: .6; cursor: wait; }
+.composer-send { height: 38px; padding: 0 18px; border: none; border-radius: 10px; background: var(--primary); color: var(--on-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; white-space: nowrap; }
+.composer-send:hover { background: var(--primary-hover); }
+.composer-send:disabled { opacity: .5; cursor: wait; }
+.composer-hint { font-size: 11px; color: var(--ink-tertiary); padding: 0 16px 6px; display: none; }
+.composer-hint.on { display: block; }
 .schedule-select { height: 28px; padding: 0 8px; margin-left: 8px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink-subtle); cursor: pointer; font-size: 12px; font-weight: 500; appearance: none; -webkit-appearance: none; padding-right: 20px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8f98'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
 .schedule-select:hover { background-color: var(--surface-2); border-color: var(--hairline-strong); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a8f98'/%3E%3C/svg%3E"); }
 
@@ -648,6 +664,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         </select>
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived"></div>
+        <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点 Sync">实时</span>
         <select class="schedule-select" id="scheduleSelect" onchange="updateSchedule(this.value)" style="display:none">
             <option value="0">定时: 关闭</option>
             <option value="1800">定时: 30min</option>
@@ -735,6 +752,12 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         </div>
         <div class="messages" id="messages"></div>
         <div class="stats-panel" id="statsPanel"></div>
+        <div class="composer-hint" id="composerHint"></div>
+        <div class="composer" id="composer">
+            <textarea id="composerInput" rows="1" placeholder="发送到当前群聊…（Enter 发送，Shift+Enter 换行）"
+                oninput="autoGrowComposer(this)" onkeydown="composerKeydown(event)"></textarea>
+            <button class="composer-send" id="composerSend" onclick="sendChatMessage()">发送</button>
+        </div>
     </div>
     <div class="context-panel" id="contextPanel">
         <div class="ctx-header">
@@ -1059,6 +1082,7 @@ function switchGroup(groupId) {
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     loadData();
     updateQaBar();
+    updateComposer();
 }
 
 let toastTimer = null;
@@ -1998,6 +2022,7 @@ function toggleStats() {
         filterEl.style.display = '';
         statsEl.classList.remove('show');
     }
+    updateComposer();   // 统计视图下隐藏输入框
 }
 
 function renderStats() {
@@ -2146,6 +2171,97 @@ async function checkForUpdates() {
     } catch {}
 }
 setInterval(checkForUpdates, 60000);
+
+// ── 实时同步（SSE）────────────────────────────────────────────────
+// 服务端 lib/live-sync 轮询 webim 并把新消息并入日文件，这里只负责
+// 收到事件后重新拉当天数据 —— 复用 loadMessages 这条已验证的渲染路径，
+// 不在前端另写一套消息合并/渲染逻辑（那才是状态不同步 bug 的来源）。
+let liveSource = null;
+function setLiveIndicator(state) {
+    const el = document.getElementById('liveDot');
+    el.classList.toggle('on', state !== 'off');
+    el.classList.toggle('stale', state === 'stale');
+    el.textContent = state === 'stale' ? '实时(断开)' : '实时';
+}
+function startLive() {
+    if (liveSource) return;
+    liveSource = new EventSource('/api/live');
+    liveSource.onopen = () => setLiveIndicator('on');
+    // EventSource 自带重连；断开期间标灰，重连成功回绿
+    liveSource.onerror = () => setLiveIndicator('stale');
+    liveSource.onmessage = async (ev) => {
+        let event;
+        try { event = JSON.parse(ev.data); } catch { return; }
+        if (event.type === 'hello') {
+            liveGroups = event.groups || [];
+            setLiveIndicator(liveGroups.length ? 'on' : 'off');
+            updateComposer();
+            return;
+        }
+        if (event.type === 'auth' && event.ok === false) { checkAuthStatus(); return; }
+        if (event.type !== 'messages') return;
+        // 只有当前正在看的群 + 当天有新消息才刷新，其它群静默入库
+        if (event.group !== currentGroup) { checkForUpdates(); return; }
+        if (!event.dates?.includes(selectedDate)) { await loadDates(); return; }
+        await loadMessages(true);
+        const dt = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        document.getElementById('lastArchived').textContent = `Live: ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    };
+}
+startLive();
+
+// ── 聊天：发送到当前群 ────────────────────────────────────────────
+// 只在该群有可用会话 id（归档器记录过 groupId）时才显示输入框 ——
+// 否则点了也只能报错。发出去的消息不在本地伪造回显：实时同步下一轮会把它
+// 按与他人消息相同的路径拉回，避免两条来源打架。
+let liveGroups = [];
+function updateComposer() {
+    const canSend = liveGroups.includes(currentGroup);
+    document.getElementById('composer').classList.toggle('on', canSend && !statsView);
+    const hint = document.getElementById('composerHint');
+    const needArchive = !canSend && !statsView && liveGroups.length >= 0 && currentGroup;
+    hint.classList.toggle('on', needArchive);
+    if (needArchive) hint.textContent = `「${currentGroup}」暂不可发送：先点 Sync Now 跑一次归档，记录群会话 id 后即可实时收发`;
+}
+function autoGrowComposer(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+function composerKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {   // 中文输入法组字中的 Enter 不算发送
+        e.preventDefault();
+        sendChatMessage();
+    }
+}
+async function sendChatMessage() {
+    const input = document.getElementById('composerInput');
+    const btn = document.getElementById('composerSend');
+    const content = input.value.trim();
+    if (!content) return;
+    input.disabled = btn.disabled = true;
+    try {
+        const r = await (await fetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ group: currentGroup, content }),
+        })).json();
+        if (r.ok) {
+            input.value = '';
+            autoGrowComposer(input);
+            showToast('✓ 已发送', 'success', 2000);
+        } else {
+            // 失败时保留输入内容，方便重发
+            showToast('发送失败：' + (r.error || '未知错误'), 'error', 6000);
+            if (r.needLogin) { checkAuthStatus(); doLogin(); }
+        }
+    } catch (e) {
+        showToast('发送出错：' + e.message, 'error', 6000);
+    } finally {
+        input.disabled = btn.disabled = false;
+        input.focus();
+    }
+}
 </script>
 </body>
 </html>

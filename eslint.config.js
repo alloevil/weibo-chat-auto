@@ -29,6 +29,7 @@ module.exports = [
                 URL: 'readonly',
                 fetch: 'readonly',
                 AbortSignal: 'readonly',
+                URLSearchParams: 'readonly',
             },
         },
         rules: {
