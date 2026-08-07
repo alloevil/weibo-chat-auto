@@ -546,6 +546,82 @@ html[data-theme="qq2008"] ::-webkit-scrollbar-track { background: #e4f1fc; }
 html[data-theme="qq2008"] ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #a9d0f0, #7fb6e6); border: 1px solid #7aa9d4; }
 html[data-theme="qq2008"] * { scrollbar-width: auto; scrollbar-color: #8fc0ea #e4f1fc; }
 html[data-theme="qq2008"] ::selection { background: #2f8de2; color: #fff; }
+
+/* ── 皮肤：QQ 2012（轻白微渐变，拟物到扁平的分水岭）───────────────
+   白色主导 + 天空蓝点缀；标志性元素是顶部那条"皮肤图"天空横幅。
+   按钮是 Bootstrap 2 式的极淡渐变，往前一步就是 2013 的纯扁平。 */
+html[data-theme="qq2012"] {
+    --primary: #1e9fe4;
+    --primary-hover: #45b1ee;
+    --primary-focus: #1782c0;
+    --on-primary: #ffffff;
+    --ink: #333333;
+    --ink-muted: #4a5a68;
+    --ink-subtle: #7a8b99;
+    --ink-tertiary: #a5b3bf;
+    --canvas: #f2f7fb;
+    --surface-1: #ffffff;
+    --surface-2: #e8f4fc;
+    --surface-3: #f6fafd;
+    --surface-4: #fbfdfe;
+    --hairline: #dcebf5;
+    --hairline-strong: #c8dcec;
+    --success: #52a552;
+    --danger: #e25b4d;
+    --primary-tint: rgba(30, 159, 228, 0.10);
+    --primary-tint-strong: rgba(30, 159, 228, 0.22);
+    color-scheme: light;
+}
+html[data-theme="qq2012"] * { border-radius: 5px !important; }
+html[data-theme="qq2012"] body { font-family: "Microsoft YaHei", "微软雅黑", "Segoe UI", Verdana, sans-serif; letter-spacing: 0; }
+/* 标志性天空皮肤横幅（QQ2012 的换肤区），下面全白 */
+html[data-theme="qq2012"] .nav-top { background: linear-gradient(160deg, #bfe3fa 0%, #8ecdf3 55%, #a5d8f7 100%); }
+html[data-theme="qq2012"] .nav { border-bottom-color: var(--hairline-strong); }
+html[data-theme="qq2012"] .nav-title { color: #fff; text-shadow: 0 1px 2px rgba(23, 100, 150, .45); }
+html[data-theme="qq2012"] .nav-title::before { content: '🐧'; width: auto; height: auto; background: none; box-shadow: none; font-size: 15px; }
+html[data-theme="qq2012"] .nav-stats, html[data-theme="qq2012"] .nav-last-archived { color: #eaf6ff; text-shadow: 0 1px 1px rgba(23, 100, 150, .35); }
+/* Bootstrap 2 式按钮：极淡渐变 + 1px 浅边框，hover 纯色浅蓝填充 */
+html[data-theme="qq2012"] .ai-btn, html[data-theme="qq2012"] .nav-date,
+html[data-theme="qq2012"] .nav-group-select, html[data-theme="qq2012"] .schedule-select,
+html[data-theme="qq2012"] .theme-select, html[data-theme="qq2012"] .stats-toggle,
+html[data-theme="qq2012"] .media-btn, html[data-theme="qq2012"] .summary-btn,
+html[data-theme="qq2012"] .search-nav-btn, html[data-theme="qq2012"] .user-clear button,
+html[data-theme="qq2012"] .modal-cancel {
+    background: linear-gradient(180deg, #ffffff, #f0f6fb);
+    color: #4a6274; border: 1px solid #c8dcec; box-shadow: none;
+}
+html[data-theme="qq2012"] .ai-btn:hover, html[data-theme="qq2012"] .nav-date:hover,
+html[data-theme="qq2012"] .stats-toggle:hover, html[data-theme="qq2012"] .media-btn:hover,
+html[data-theme="qq2012"] .summary-btn:hover, html[data-theme="qq2012"] .user-clear button:hover {
+    background: #e8f4fc; border-color: #9fc8e8; color: #1782c0;
+}
+/* 主按钮：两停靠点的克制蓝渐变 */
+html[data-theme="qq2012"] .sync-btn, html[data-theme="qq2012"] .qa-send,
+html[data-theme="qq2012"] .modal-save, html[data-theme="qq2012"] .stats-toggle.active,
+html[data-theme="qq2012"] .media-btn.active {
+    background: linear-gradient(180deg, #3fb0f0, #1e9fe4);
+    color: #fff; border: 1px solid #1782c0; box-shadow: none; text-shadow: none;
+}
+html[data-theme="qq2012"] .sync-btn:hover, html[data-theme="qq2012"] .qa-send:hover, html[data-theme="qq2012"] .modal-save:hover {
+    background: linear-gradient(180deg, #55bcf4, #35aaee);
+}
+/* 输入框：白底浅框 */
+html[data-theme="qq2012"] .search-input, html[data-theme="qq2012"] .qa-input,
+html[data-theme="qq2012"] .modal-field input[type="text"], html[data-theme="qq2012"] .modal-field input[type="password"] {
+    background: #fff; border: 1px solid #c8dcec; box-shadow: none;
+}
+/* 聊天区：白底极浅描边，无渐变无阴影 */
+html[data-theme="qq2012"] .msg-content { background: #fff; box-shadow: none; border-color: #dcebf5; }
+html[data-theme="qq2012"] .msg-user { color: var(--user-accent, #1e9fe4); }
+html[data-theme="qq2012"] .modal { box-shadow: 0 4px 18px rgba(60, 100, 130, .22); }
+html[data-theme="qq2012"] .modal h3 { background: linear-gradient(160deg, #bfe3fa, #8ecdf3); color: #fff; text-shadow: 0 1px 2px rgba(23, 100, 150, .45); font-size: 14px; padding: 6px 10px; margin: -24px -24px 16px; }
+/* 细扁平滚动条 */
+html[data-theme="qq2012"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+html[data-theme="qq2012"] ::-webkit-scrollbar-track { background: #f2f7fb; }
+html[data-theme="qq2012"] ::-webkit-scrollbar-thumb { background: #c5dcee; border: 2px solid #f2f7fb; }
+html[data-theme="qq2012"] ::-webkit-scrollbar-thumb:hover { background: #9fc8e8; }
+html[data-theme="qq2012"] * { scrollbar-width: thin; scrollbar-color: #c5dcee #f2f7fb; }
+html[data-theme="qq2012"] ::selection { background: #1e9fe4; color: #fff; }
 </style>
 <script>
 // 皮肤须在首帧前生效，避免闪一下深色（切换逻辑在页尾 applyTheme）
@@ -568,6 +644,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             <option value="">皮肤: 深色</option>
             <option value="qq2000">皮肤: QQ 2000</option>
             <option value="qq2008">皮肤: QQ 2008</option>
+            <option value="qq2012">皮肤: QQ 2012</option>
         </select>
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived"></div>
