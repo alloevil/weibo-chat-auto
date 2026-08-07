@@ -61,6 +61,9 @@
 - **归档器失败必须以非零退出码收场**（Cookie 失效、有群被跳过都算失败）；exit 0 = 全部群归档成功。`/api/sync` 依赖此契约解析结果（`lib/sync-report.js`，有单测；改归档器输出格式要同步改它和测试）。
 - **日文件写入只走 `lib/day-file.js`**：本地时区零填充、原子写、损坏备份 `.corrupt.<ts>`。
 - 会话保活：weibo.com 的 24h 滚动会话（WBPSESS）靠 `weiboAuth.refreshSession()` 续期（viewer 每 30 分钟 + 归档器每轮跑完）。
+- **发消息必须带 web 客户端标记**：`annotations={"webchat":1,"clientid":…}` + `return_detail=1`（`lib/send-message.js`）。少了 annotations，接口照样回 `result:true`，但消息随即被风控撤回，群里只留一条"你撤回了一条消息"——实测踩过。微博所有失败都是 HTTP 200，永远解析 body。
+- **实时同步与发言都依赖 `state.groupId`**：群会话 id 只有归档器点击切群时能解析，它写进 `state/last-archive-state_<群名>.json`；查看器没有浏览器，缺 id 的群自动跳过（`lib/live-sync.js` / `/api/send`）。改归档器的 state 写入要同步考虑这两处消费者。
+- **实时同步首轮只建游标不广播**：否则每个新订阅者一连上就把最近一页历史当"新消息"收一遍。轮询只在有 SSE 订阅者时运行。
 
 ## 构建与发布
 
