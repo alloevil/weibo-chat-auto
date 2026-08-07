@@ -75,6 +75,17 @@ function broadcast(event) {
     }
 }
 
+// 轮询错误对用户是静默的（网络抖动不该弹提示），但完全不落日志就等于
+// 实时同步哑掉了也查不出来。同一群同一错误 5 分钟内只记一次，避免刷屏。
+const liveErrorSeen = new Map();
+function logLiveError(group, error) {
+    const key = `${group}:${error}`;
+    const now = Date.now();
+    if (now - (liveErrorSeen.get(key) || 0) < 300000) return;
+    liveErrorSeen.set(key, now);
+    console.error(`[live] ${group} 轮询失败: ${error}`);
+}
+
 const liveSync = createLiveSync({
     resolveGroups: resolveLiveGroups,
     cookieHeader: loadCookies,
@@ -89,6 +100,8 @@ const liveSync = createLiveSync({
             authState.ok = false;
             authState.code = weiboAuth.UNAUTHENTICATED_CODE;
             authState.checkedAt = Date.now();
+        } else if (event.type === 'error') {
+            logLiveError(event.group, event.error);
         }
         broadcast(event);
     },
