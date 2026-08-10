@@ -252,3 +252,88 @@ test('createLiveSync: 关闭时即使有订阅者也不启动轮询', () => {
     assert.strictEqual(live.running, false);
     live.stop();
 });
+// ── 突发回补 ──────────────────────────────────────────────────────
+// 固定只拉最近一页会在突发时丢消息（实测茧房有 67 个 20 秒窗口超过 20 条）。
+// 这里用"按 max_mid 分页的假接口"验证：整页都是新消息时必须继续往回翻。
+
+/** 模拟真实接口的 max_mid 语义：返回比 max_mid 更老的最近 count 条（升序）。 */
+function pagedFetch(allRaw, { count = 20 } = {}) {
+    const asc = [...allRaw].sort((a, b) => a.id - b.id);
+    const calls = [];
+    const impl = async (url) => {
+        const maxMid = Number(new URL(url).searchParams.get('max_mid')) || 0;
+        calls.push(maxMid);
+        const pool = maxMid ? asc.filter(m => m.id < maxMid) : asc;
+        return { json: async () => ({ messages: pool.slice(-count) }) };
+    };
+    impl.calls = calls;
+    return impl;
+}
+
+test('pollGroupOnce: 一轮涌入超过一页时回补，不丢中间的消息', async () => {
+    const dir = tmpdir();
+    const g = mkGroup(dir);
+
+    // 先用最早的 5 条建游标
+    const seedMsgs = Array.from({ length: 5 }, (_, i) => raw(i + 1, T0 + i));
+    await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: pagedFetch(seedMsgs) });
+    assert.strictEqual(g.seen.size, 5);
+
+    // 随后一口气来了 45 条（远超单页 20）—— 全部都得广播且落盘
+    const allMsgs = Array.from({ length: 50 }, (_, i) => raw(i + 1, T0 + i));
+    const impl = pagedFetch(allMsgs);
+    const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
+
+    assert.strictEqual(r.newMessages.length, 45, '45 条新消息一条都不能少');
+    assert.deepStrictEqual(r.newMessages.map(m => m.id), allMsgs.slice(5).map(m => m.id),
+        '必须按时间升序、且正是未见过的那 45 条');
+    assert.strictEqual(r.caughtUp, true, '翻到与已见集重叠即算追上');
+    assert.ok(impl.calls.length >= 3, `应多次翻页，实际 ${impl.calls.length} 次`);
+    assert.strictEqual(impl.calls[0], 0, '第一页从最新拉起');
+    assert.ok(impl.calls[1] > 0, '后续页必须带 max_mid 往回翻');
+
+    // 落盘同样完整
+    const saved = JSON.parse(fs.readFileSync(path.join(dir, `weibo_chat_${r.newMessages[0].date}.json`), 'utf-8'));
+    assert.strictEqual(saved.length, 45);
+});
+
+test('pollGroupOnce: 回补有上限，撞上限时标记 truncated 而不是无限翻页', async () => {
+    const dir = tmpdir();
+    const g = mkGroup(dir);
+    await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: pagedFetch([raw(1, T0)]) });
+
+    // 远超回补上限（5 页 × 20 条）的历史，且没有任何一条是已见过的
+    const huge = Array.from({ length: 500 }, (_, i) => raw(i + 100, T0 + i));
+    const impl = pagedFetch(huge);
+    const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
+
+    assert.strictEqual(impl.calls.length, ls.MAX_BACKFILL_PAGES, '必须在上限处停下');
+    assert.strictEqual(r.newMessages.length, ls.MAX_BACKFILL_PAGES * 20);
+    assert.strictEqual(r.truncated, true, '截断必须自报，剩下的留给全量归档补');
+});
+
+test('pollGroupOnce: 首轮不因整页皆新而回补（只建游标，翻一页即止）', async () => {
+    const dir = tmpdir();
+    const g = mkGroup(dir);
+    const many = Array.from({ length: 200 }, (_, i) => raw(i + 1, T0 + i));
+    const impl = pagedFetch(many);
+
+    const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
+    assert.strictEqual(r.status, 'primed');
+    assert.strictEqual(impl.calls.length, 1, '首轮只为建游标，不该翻页');
+    assert.strictEqual(g.seen.size, 20);
+});
+
+test('pollGroupOnce: 回补途中 max_mid 不推进也不死循环', async () => {
+    const dir = tmpdir();
+    const g = mkGroup(dir);
+    g.primed = true;
+    g.seen.add('999');   // 有游标但与返回内容无交集
+    let calls = 0;
+    // 无论 max_mid 是什么都返回同一页（模拟接口忽略游标）
+    const impl = async () => { calls++; return { json: async () => ({ messages: [raw(7, T0)] }) }; };
+
+    const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
+    assert.ok(calls <= ls.MAX_BACKFILL_PAGES, `不得无限翻页，实际 ${calls} 次`);
+    assert.strictEqual(r.newMessages.length, 1, '重复页不得重复入库');
+});
