@@ -72,6 +72,17 @@ button, select, input { font-family: inherit; }
 .live-dot::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: livePulse 2s ease-in-out infinite; }
 .live-dot.stale::before { background: var(--ink-tertiary); animation: none; }
 @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+/* 筛选面板：Hours 热力图与媒体/噪声筛选默认收起，不占消息区的视觉空间。
+   折叠时若仍有筛选生效，导航按钮亮点 + 状态行负责说明原因。 */
+.tools-toggle { height: 32px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; position: relative; }
+.tools-toggle:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
+.tools-toggle.open { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+.tools-toggle.filtered::after { content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--primary-hover); border: 2px solid var(--canvas); }
+.tools-panel { display: none; padding: 2px 0 8px; border-bottom: 1px solid var(--hairline); flex-shrink: 0; }
+.tools-panel.show { display: block; }
+.tools-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px 0; }
+.tools-label { font-size: 12px; color: var(--ink-subtle); }
+.tools-noise-count { font-size: 12px; color: var(--ink-tertiary); }
 /* 聊天输入区（发送到当前群） */
 .composer { display: none; align-items: flex-end; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--hairline); background: var(--surface-1); flex-shrink: 0; }
 .composer.on { display: flex; }
@@ -658,32 +669,33 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 
 <div class="nav">
     <div class="nav-top">
-        <div class="nav-title">Weibo Group Chat Viewer</div>
+        <div class="nav-title" title="Weibo Group Chat Viewer">群聊归档</div>
         <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
         <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="Select a date to view">Select Date</button>
-        <button class="stats-toggle" id="statsToggle" onclick="toggleStats()">📊 Stats</button>
+        <button class="stats-toggle" id="statsToggle" onclick="toggleStats()">📊 统计</button>
+        <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
         <select class="schedule-select theme-select" id="themeSelect" onchange="applyTheme(this.value)" title="切换皮肤" style="margin-left:0">
-            <option value="">皮肤: 深色</option>
-            <option value="qq2000">皮肤: QQ 2000</option>
-            <option value="qq2008">皮肤: QQ 2008</option>
-            <option value="qq2012">皮肤: QQ 2012</option>
+            <option value="">🎨 深色</option>
+            <option value="qq2000">🎨 QQ 2000</option>
+            <option value="qq2008">🎨 QQ 2008</option>
+            <option value="qq2012">🎨 QQ 2012</option>
         </select>
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived"></div>
         <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点 Sync">实时</span>
         <select class="schedule-select" id="liveSelect" onchange="updateLiveConfig(this.value)"
             title="实时同步会每 20 秒读取一次群消息；关闭后查看器完全不主动查询微博（原生客户端的未读提示不受影响）">
-            <option value="0">实时: 关闭</option>
-            <option value="1">实时: 开启</option>
+            <option value="0">⚡ 实时: 关</option>
+            <option value="1">⚡ 实时: 开</option>
         </select>
         <select class="schedule-select" id="scheduleSelect" onchange="updateSchedule(this.value)" style="display:none">
-            <option value="0">定时: 关闭</option>
-            <option value="1800">定时: 30min</option>
-            <option value="3600">定时: 1h</option>
-            <option value="7200">定时: 2h</option>
-            <option value="14400">定时: 4h</option>
+            <option value="0">⏰ 定时: 关</option>
+            <option value="1800">⏰ 30 分</option>
+            <option value="3600">⏰ 1 小时</option>
+            <option value="7200">⏰ 2 小时</option>
+            <option value="14400">⏰ 4 小时</option>
         </select>
-        <button class="sync-btn" id="syncBtn" onclick="syncNow()">Sync Now</button>
+        <button class="sync-btn" id="syncBtn" onclick="syncNow()">同步</button>
         <button class="ai-btn" id="aiSettingsBtn" onclick="openAiSettings()">⚙️ AI</button>
         <button class="ai-btn" id="loginBtn" onclick="doLogin()" title="登录微博以更新Cookie">🔑 登录</button>
     </div>
@@ -728,12 +740,19 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         <div class="user-clear"><button onclick="clearUserFilter()">Clear Filter</button></div>
     </div>
     <div class="content">
-        <div class="hours-bar" id="hoursBar"></div>
-        <div class="search-bar" id="searchBar">
-            <div class="media-btns" id="mediaBar"></div>
-            <div class="noise-toggle" id="noiseToggle">
-                <div class="media-btn active" id="noiseBtnInline" onclick="toggleNoise()" data-tooltip="Hide greetings, red packets, and noise">Hide Noise</div>
+        <!-- 筛选面板：默认折叠，由导航的「🔍 筛选」开关控制 -->
+        <div class="tools-panel" id="toolsPanel">
+            <div class="hours-bar" id="hoursBar"></div>
+            <div class="tools-row">
+                <span class="tools-label">类型</span>
+                <div class="media-btns" id="mediaBar"></div>
+                <div class="noise-toggle" id="noiseToggle">
+                    <div class="media-btn active" id="noiseBtnInline" onclick="toggleNoise()" data-tooltip="Hide greetings, red packets, and noise">Hide Noise</div>
+                </div>
+                <span class="tools-noise-count" id="noiseCount"></span>
             </div>
+        </div>
+        <div class="search-bar" id="searchBar">
             <div class="search-input-wrap">
                 <span class="search-icon">🔍</span>
                 <input type="text" class="search-input" id="searchInput" placeholder="Search messages..." oninput="onSearchInput(this.value)">
@@ -1120,7 +1139,7 @@ function dismissToast() {
 
 async function syncNow() {
     const btn = document.getElementById('syncBtn');
-    btn.textContent = 'Syncing...';
+    btn.textContent = '同步中…';
     btn.classList.add('syncing');
     btn.disabled = true;
 
@@ -1151,7 +1170,7 @@ async function syncNow() {
         showToast('同步出错：' + e.message, 'error', 8000);
     }
     clearInterval(progressTimer);
-    btn.textContent = 'Sync Now';
+    btn.textContent = '同步';
     btn.classList.remove('syncing');
     btn.disabled = false;
 }
@@ -1646,8 +1665,8 @@ function renderHours() {
 
     el.innerHTML = `
         <div class="heatmap-header">
-            <span class="heatmap-title" data-tooltip="Click an hour to filter messages by time">Hours</span>
-            <button class="hours-clear" onclick="clearHours()">Clear</button>
+            <span class="heatmap-title" data-tooltip="点击某个时段只看该时段的消息">时段</span>
+            <button class="hours-clear" onclick="clearHours()">清除</button>
         </div>
         <div class="heatmap">${bars}</div>
         <div class="heatmap-labels">${labels}</div>
@@ -2012,18 +2031,23 @@ function renderAll() {
     if (mediaFilter !== 'all') {
         parts.push('Type: ' + (mediaLabels[mediaFilter] || mediaFilter));
     }
-    if (hideNoise) {
-        const noiseCount = allMessages.filter(m => {
-            if (m.date !== selectedDate) return false;
-            if (selectedHours.size > 0 && !selectedHours.has(new Date(m.timestamp).getHours())) return false;
-            if (selectedUsers.size > 0 && !selectedUsers.has(m.user)) return false;
-            if (!isNoise(m)) return false;
-            return true;
-        }).length;
-        parts.push(`Hidden noise: ${noiseCount}`);
-    }
+    // 噪声计数移进筛选面板：Hide Noise 默认开启，把它常驻成顶部横幅等于
+    // 每次打开都先看到一行"Hidden noise: N·Export"，纯属干扰阅读。
+    const noiseCount = hideNoise ? allMessages.filter(m => {
+        if (m.date !== selectedDate) return false;
+        if (selectedHours.size > 0 && !selectedHours.has(new Date(m.timestamp).getHours())) return false;
+        if (selectedUsers.size > 0 && !selectedUsers.has(m.user)) return false;
+        return isNoise(m);
+    }).length : 0;
+    document.getElementById('noiseCount').textContent = hideNoise
+        ? (noiseCount ? `已隐藏 ${noiseCount} 条噪声` : '无噪声消息')
+        : '噪声消息显示中';
+
+    // 状态行只解释"主动筛掉内容"的操作（默认的噪声过滤不算），
+    // 这样默认状态下消息区上方是干净的。
     bar.innerHTML = parts.map(p => `<span>${p}</span>`).join(' · ') + (parts.length ? ' · <span class="filter-export" onclick="exportMessages()">Export</span>' : '');
     bar.className = 'filter-bar' + (parts.length ? ' show' : '');
+    updateToolsIndicator(parts.length > 0);
 
     if (statsView) renderStats();
 }
@@ -2034,29 +2058,51 @@ function toggleStats() {
     document.getElementById('statsToggle').classList.toggle('active', statsView);
     const msgEl = document.getElementById('messages');
     const statsEl = document.getElementById('statsPanel');
-    const hoursEl = document.getElementById('hoursBar');
-    const mediaEl = document.getElementById('mediaBar');
+    // hours 与类型筛选现在都在筛选面板里，整块一起隐藏即可
+    const toolsEl = document.getElementById('toolsPanel');
     const searchEl = document.getElementById('searchBar');
     const filterEl = document.getElementById('filterBar');
 
     if (statsView) {
         msgEl.style.display = 'none';
-        hoursEl.style.display = 'none';
-        mediaEl.style.display = 'none';
+        toolsEl.style.display = 'none';
         searchEl.style.display = 'none';
         filterEl.style.display = 'none';
         statsEl.classList.add('show');
         renderStats();
     } else {
         msgEl.style.display = '';
-        hoursEl.style.display = '';
-        mediaEl.style.display = '';
+        toolsEl.style.display = '';   // 恢复由 .show 类决定是否展开
         searchEl.style.display = '';
         filterEl.style.display = '';
         statsEl.classList.remove('show');
     }
     updateComposer();   // 统计视图下隐藏输入框
 }
+
+// 筛选面板开关。默认折叠；状态存 localStorage，跨会话保持。
+function toggleTools() {
+    const panel = document.getElementById('toolsPanel');
+    const open = !panel.classList.contains('show');
+    panel.classList.toggle('show', open);
+    document.getElementById('toolsToggle').classList.toggle('open', open);
+    try { open ? localStorage.setItem('viewer-tools-open', '1') : localStorage.removeItem('viewer-tools-open'); } catch { /* 隐私模式 */ }
+    if (open) renderHours();   // 折叠期间可能换过日期，展开时重画
+}
+
+/** 面板折叠时用小圆点提示"仍有筛选生效"，否则会以为消息莫名变少了。 */
+function updateToolsIndicator(hasActiveFilter) {
+    document.getElementById('toolsToggle').classList.toggle('filtered', !!hasActiveFilter);
+}
+
+function restoreToolsState() {
+    let open = false;
+    try { open = localStorage.getItem('viewer-tools-open') === '1'; } catch { /* 隐私模式 */ }
+    if (!open) return;
+    document.getElementById('toolsPanel').classList.add('show');
+    document.getElementById('toolsToggle').classList.add('open');
+}
+restoreToolsState();
 
 function renderStats() {
     const filtered = getFiltered();
@@ -2299,7 +2345,7 @@ function updateComposer() {
     const hint = document.getElementById('composerHint');
     const needArchive = !canSend && !statsView && liveGroups.length >= 0 && currentGroup;
     hint.classList.toggle('on', needArchive);
-    if (needArchive) hint.textContent = `「${currentGroup}」暂不可发送：先点 Sync Now 跑一次归档，记录群会话 id 后即可实时收发`;
+    if (needArchive) hint.textContent = `「${currentGroup}」暂不可发送：先点「同步」跑一次归档，记录群会话 id 后即可实时收发`;
 }
 function autoGrowComposer(el) {
     el.style.height = 'auto';
