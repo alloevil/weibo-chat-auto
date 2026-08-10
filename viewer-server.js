@@ -45,6 +45,8 @@ const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('./lib
 const { sendGroupMessage } = require('./lib/send-message');
 // 跨站写操作拦截（CSRF）：只绑 127.0.0.1 不足以防护，见 lib/csrf-guard
 const { isCrossSiteRequest } = require('./lib/csrf-guard');
+// 图片缓存治理：cache/images 是纯优化（内容可再取），此前无淘汰策略涨到 688MB
+const { evictCache, isCacheable } = require('./lib/cache-store');
 
 /** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
 function readGroupState(groupName) {
@@ -740,7 +742,9 @@ const server = http.createServer((req, res) => {
             proxyRes.on('data', chunk => chunks.push(chunk));
             proxyRes.on('end', () => {
                 const buffer = Buffer.concat(chunks);
-                fs.writeFile(cacheFile, buffer, () => {});
+                // 超大条目不写缓存：代理把任何响应都按 ${fid}.jpg 落盘，视频也被
+                // 当图片缓存过（实测单个 75MB），白占空间还挤掉真正的图片
+                if (isCacheable(buffer.length)) fs.writeFile(cacheFile, buffer, () => {});
                 res.end(buffer);
             });
         });
@@ -1199,6 +1203,17 @@ server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Weibo Group Chat Viewer: ${url}`);
     keepAliveTick('启动');
+    // 图片缓存淘汰：启动时一次 + 每 6 小时一次。缓存内容都能从 CDN 再取，
+    // 所以淘汰是安全的；不做则只增不减（实测涨到 688MB）。
+    const evictTick = () => {
+        const r = evictCache(CACHE_DIR);
+        if (r.deleted > 0) {
+            console.log(`[cache] 淘汰 ${r.deleted} 个条目，释放 ${(r.freedBytes / 1048576).toFixed(0)} MB，`
+                + `剩余 ${(r.remainingBytes / 1048576).toFixed(0)} MB`);
+        }
+    };
+    evictTick();
+    setInterval(evictTick, 6 * 3600 * 1000).unref();
     // 自动打开浏览器（设 NO_OPEN=1 可禁用）
     if (!process.env.NO_OPEN) {
         const opener = process.platform === 'darwin' ? 'open'

@@ -14,6 +14,11 @@ const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// LLM 请求超时。没有超时的话，服务端挂住连接就能让一次问答永远悬着：
+// 前端转圈、迭代预算不会推进、Node 也不会自己放弃。
+const LLM_TIMEOUT_MS = 60000;      // 主循环调用（带工具，可能较慢）
+const RERANK_TIMEOUT_MS = 20000;   // 重排是纯打分，快得多
+
 function loadAiConfig() {
   const cfgPath = path.join(__dirname, 'ai-config.json');
   if (!fs.existsSync(cfgPath)) return null;
@@ -240,6 +245,8 @@ ${list}
       messages: [{ role: 'user', content: prompt }],
       stream: false,
     }),
+    // 没有超时的话，LLM 端挂住这条连接就能让整个问答请求永远卡着
+    signal: AbortSignal.timeout(RERANK_TIMEOUT_MS),
   });
   if (!resp.ok) throw new Error(`rerank API ${resp.status}`);
   const data = await resp.json();
@@ -683,6 +690,7 @@ async function callLLM(config, messages) {
       tools: TOOLS,
       stream: false,
     }),
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
 
   if (!resp.ok) {

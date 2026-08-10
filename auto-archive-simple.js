@@ -679,18 +679,30 @@ async function main() {
     let paginationComplete = false;
     let paginationNote = '';
 
-    // 单页请求带一次重试。只重试 HTTP/解析本身，翻页推进逻辑保持单一实现
+    // 单页请求的唯一入口。翻页推进逻辑保持单一实现
     // （旧版把整套推进逻辑在 catch 里复制了一份，两份状态机极易走偏）。
+    // 限流（429/418）与偶发 5xx 用指数退避重试；其余错误按原样单次重试。
+    // 之前撞上限流只会立刻重试一次然后放弃 —— 分页就此残缺，state 不推进，
+    // 下轮再来又是同样的节奏，等于反复撞墙。
     async function fetchPage(url) {
-        try {
-            const resp = await httpsGet(url);
-            return { status: resp.status, data: JSON.parse(resp.body) };
-        } catch (e) {
-            console.log(`[API] 请求失败: ${e.message}，2 秒后重试`);
-            await delay(2000);
-            const resp = await httpsGet(url);
-            return { status: resp.status, data: JSON.parse(resp.body) };
+        const RATE_LIMITED = new Set([429, 418]);
+        let lastErr = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+            if (attempt > 0) await delay(Math.min(2000 * 2 ** (attempt - 1), 16000));
+            try {
+                const resp = await httpsGet(url);
+                if (RATE_LIMITED.has(resp.status) || resp.status >= 500) {
+                    lastErr = new Error(`HTTP ${resp.status}`);
+                    console.log(`[API] ${RATE_LIMITED.has(resp.status) ? '被限流' : '服务端错误'} ${resp.status}，退避重试`);
+                    continue;
+                }
+                return { status: resp.status, data: JSON.parse(resp.body) };
+            } catch (e) {
+                lastErr = e;
+                console.log(`[API] 请求失败: ${e.message}，退避重试`);
+            }
         }
+        throw lastErr || new Error('fetchPage 未取到响应');
     }
 
     while (pageNum < MAX_PAGES) {
