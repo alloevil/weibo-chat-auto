@@ -43,6 +43,8 @@ const syncReport = require('./lib/sync-report');
 const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('./lib/live-sync');
 // 发消息（写操作）统一走 lib/send-message：微博失败也回 HTTP 200，必须解析 body
 const { sendGroupMessage } = require('./lib/send-message');
+// 跨站写操作拦截（CSRF）：只绑 127.0.0.1 不足以防护，见 lib/csrf-guard
+const { isCrossSiteRequest } = require('./lib/csrf-guard');
 
 /** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
 function readGroupState(groupName) {
@@ -363,6 +365,18 @@ function qaLegacy(question, allMessages, reply) {
 
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
+
+    // 跨站写操作一律拒绝。只绑 127.0.0.1 挡不住 CSRF：用户浏览的任意网页都能
+    // 用 text/plain 的跨站表单打这些端点（实测可利用），从而以用户身份发消息、
+    // 或改掉 AI 配置把聊天内容导向攻击者。判据见 lib/csrf-guard（有单测）。
+    // /api/summary 是 GET 但会写摘要文件并花 AI 额度，一并纳入。
+    const isWrite = req.method === 'POST' || url.pathname === '/api/summary';
+    if (isWrite && isCrossSiteRequest(req.headers)) {
+        console.error(`[security] 拒绝跨站请求 ${req.method} ${url.pathname} (origin=${req.headers.origin || '-'})`);
+        res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: '拒绝跨站请求' }));
+        return;
+    }
 
     // List available groups
     if (url.pathname === '/api/groups') {
