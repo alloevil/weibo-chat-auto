@@ -818,6 +818,8 @@ let months = [];        // ['2026-04', '2026-05']
 let monthDates = {};    // { '2026-05': ['2026-05-01', ...] }
 let selectedMonth = '';
 let selectedDate = '';
+// true = 停在最新那天（跨日自动跟随）；主动翻回旧日期时置 false，见 loadDates
+let followLatest = true;
 let selectedHours = new Set();
 let selectedUsers = new Set();
 let mediaFilter = 'all';
@@ -1083,6 +1085,9 @@ function switchGroup(groupId) {
     selectedUsers.clear();
     mediaFilter = 'all';
     searchQuery = '';
+    // 切群要落到新群的最新一天：清空选择并恢复跟随
+    selectedDate = '';
+    followLatest = true;
     const si = document.getElementById('searchInput'); if (si) si.value = '';
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     loadData();
@@ -1390,9 +1395,16 @@ async function askQuestion() {
     }
 }
 
+/** 选中的是否为已知的最新一天（决定跨日是否自动跟随）。 */
+function isLatestDate(d) {
+    const all = Object.keys(dateCounts).sort();
+    return d === all[all.length - 1];
+}
+
 function jumpToDate(date) {
     if (!date) return;
     selectedDate = date;
+    followLatest = isLatestDate(date);
     const month = date.slice(0, 7);
     if (monthDates[month]) selectedMonth = month;
     renderCalendar();
@@ -1452,10 +1464,19 @@ async function loadDates() {
     for (const m in monthDates) monthDates[m] = [...monthDates[m]].sort();
     months = Object.keys(monthDates).sort();
 
-    // Default to latest month and latest date
-    selectedMonth = months[months.length - 1];
-    const datesInMonth = monthDates[selectedMonth];
-    selectedDate = datesInMonth[datesInMonth.length - 1];
+    // 日期选择的"跟随"语义：loadDates 不只在初次加载时跑，60s 自动刷新与
+    // 实时同步事件也会调它。此前它无条件跳到最新日期 —— 一到半夜（今天的
+    // 日文件刚出现）正在读的那天就被拽走、滚动位置也丢。
+    //   · followLatest（默认，或主动选中了最新那天）→ 跨日自动跟随到新的一天，
+    //     符合"开着过夜"的直觉；
+    //   · 主动翻回旧日期 → 钉住不动，新数据只进日历（并提示一次）。
+    const latest = allDates[allDates.length - 1];
+    if (!selectedDate || followLatest || !allDates.includes(selectedDate)) {
+        selectedDate = latest;
+        followLatest = true;
+    }
+    selectedMonth = selectedDate.slice(0, 7);
+    if (!monthDates[selectedMonth]) selectedMonth = months[months.length - 1];
 
     renderCalendar();
 }
@@ -1561,6 +1582,7 @@ function changeMonth(delta) {
 
 function selectDate(d) {
     selectedDate = d;
+    followLatest = isLatestDate(d);
     selectedHours.clear();
     selectedUsers.clear();
     mediaFilter = 'all';
@@ -2182,6 +2204,7 @@ setInterval(checkForUpdates, 60000);
 // 收到事件后重新拉当天数据 —— 复用 loadMessages 这条已验证的渲染路径，
 // 不在前端另写一套消息合并/渲染逻辑（那才是状态不同步 bug 的来源）。
 let liveSource = null;
+let liveHintedDate = '';   // 跨日提示去重：同一目标日期只提示一次
 function setLiveIndicator(state) {
     const el = document.getElementById('liveDot');
     el.classList.toggle('on', state !== 'off');
@@ -2207,7 +2230,17 @@ function startLive() {
         if (event.type !== 'messages') return;
         // 只有当前正在看的群 + 当天有新消息才刷新，其它群静默入库
         if (event.group !== currentGroup) { checkForUpdates(); return; }
-        if (!event.dates?.includes(selectedDate)) { await loadDates(); return; }
+        // 新消息不在当前查看的日期（典型场景：跨过半夜）。不自动切走视图，
+        // 但要提示一次，否则会以为实时同步停了。同一目标日期只提示一次。
+        if (!event.dates?.includes(selectedDate)) {
+            await loadDates();
+            const target = event.dates?.[event.dates.length - 1];
+            if (target && target !== liveHintedDate) {
+                liveHintedDate = target;
+                showToast(`新消息已进入 ${target}（当前查看 ${selectedDate}，点日历切换）`, 'success', 6000);
+            }
+            return;
+        }
         await loadMessages(true);
         const dt = new Date();
         const pad = n => String(n).padStart(2, '0');
