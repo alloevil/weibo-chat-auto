@@ -59,6 +59,8 @@
 - **登录判据只认 webim 接口 `error_code`**（21301=未鉴权，其它业务码=已鉴权），绝不猜 DOM/URL/标题——猜 DOM 曾让归档器带失效 Cookie 静默空跑 3 天。唯一实现在 `lib/weibo-auth.js`。
 - **未登录时绝不吸收 Set-Cookie**：死会话下 weibo.com 派发游客 Cookie，吸收会污染 cookies.json。
 - **归档器失败必须以非零退出码收场**（Cookie 失效、有群被跳过都算失败）；exit 0 = 全部群归档成功。`/api/sync` 依赖此契约解析结果（`lib/sync-report.js`，有单测；改归档器输出格式要同步改它和测试）。
+- **"静默空跑"是本仓库反复出现的失效模式**，任何让某群产出 0 条却仍算成功的路径都是 bug。已踩过三次：`id=0`（页面探测请求带的，`"0"` 是 truthy 字符串）被当有效会话 id；点击失败时仍走"第一个群回退取默认会话 id"；分页遇 `error_code` 与"没有更多消息"同形（都没 messages 数组）被判为走完并推进断点。新增任何"取 id / 判完成"的分支都要先问：它失败时会不会长得像成功？
+- **单群失败先就地重试**（`GROUP_RETRIES`，见 auto-archive-simple.js）：网络抖动常砸在切群瞬间。单群异常不得中止整轮；跳过类错误标 `alreadyRetried`，避免 runWithRetry 再把整轮重跑一遍。已完成的群 id 只在归档走完后登记，否则重试会误触串档护栏。
 - **日文件写入只走 `lib/day-file.js`**：本地时区零填充、原子写、损坏备份 `.corrupt.<ts>`。
 - 会话保活：weibo.com 的 24h 滚动会话（WBPSESS）靠 `weiboAuth.refreshSession()` 续期（viewer 每 30 分钟 + 归档器每轮跑完）。
 - **发消息必须带 web 客户端标记**：`annotations={"webchat":1,"clientid":…}` + `return_detail=1`（`lib/send-message.js`）。少了 annotations，接口照样回 `result:true`，但消息随即被风控撤回，群里只留一条"你撤回了一条消息"——实测踩过。微博所有失败都是 HTTP 200，永远解析 body。
