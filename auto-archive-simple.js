@@ -37,6 +37,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 // 调试时 HEADLESS=0 npm run archive 可开出真实窗口。
 const HEADLESS = process.env.HEADLESS !== '0';
 
+// 单群失败的即时重试次数（1 = 最多再试一次）。网络抖动砸在切群瞬间时，
+// 重试单群远比让整轮失败、30 秒后重跑全部群划算。
+const GROUP_RETRIES = 1;
+const GROUP_RETRY_DELAY_MS = 8000;
+
 // 检测是否需要登录。判据见 lib/weibo-auth.js（接口 error_code，不猜 DOM）；
 // 探测本身失败时才退回 URL/标题/文案启发式。
 async function checkLoginRequired(page) {
@@ -450,6 +455,18 @@ async function main() {
     // groupId -> 已归档的群名，用于检出"会话未切换"导致的串档
     const archivedGroupIds = new Map();
     for (const [groupIdx, currentGroupName] of GROUPS.entries()) {
+    // 单群即时重试 + 单群失败隔离。
+    // 网络抖动（net::ERR_NETWORK_CHANGED 之类）会让切群瞬间的页面请求整批失败：
+    // 抓不到 group id → 整群被跳过；抖动后的残留异常还会把整轮打断，于是
+    // runWithRetry 30 秒后重跑全部群。实测 2026-08-09 04:09 那轮就是这样，
+    // 两个群一个被跳过、一个把整轮带崩。重试单群比重跑整轮便宜得多。
+    let groupDone = false;
+    for (let attempt = 0; attempt <= GROUP_RETRIES && !groupDone; attempt++) {
+    try {
+    if (attempt > 0) {
+        console.log(`↻ 重试「${currentGroupName}」（第 ${attempt + 1}/${GROUP_RETRIES + 1} 次）`);
+        await delay(GROUP_RETRY_DELAY_MS);
+    }
     networkMessages = []; // 每个群独立，不累积上一个群的网络层消息
     const groupDir = getGroupOutputDir(currentGroupName);
     const stateFile = getGroupStateFile(currentGroupName);
@@ -529,9 +546,10 @@ async function main() {
             console.log('脚本注入出错:', e.message);
         }
         if (!scriptInjected) {
-            console.log('⚠ 脚本注入失败，跳过此群');
+            console.log('⚠ 脚本注入失败');
+            if (attempt < GROUP_RETRIES) continue;   // 页面可能只是还没稳，再来一次
             skippedGroups.push(`${currentGroupName}(脚本注入失败)`);
-            continue;
+            break;
         }
         console.log('✓ 脚本重新注入成功');
     }
@@ -546,11 +564,14 @@ async function main() {
     console.log('等待 API 请求...');
     let groupId = null;
 
-    // 从捕获的 URL 中向后搜索 group ID（取最新的一个）
+    // 从捕获的 URL 中向后搜索 group ID（取最新的一个）。
+    // id=0 必须排除：页面加载时的探测请求就带 id=0，而它是字符串 "0" —— truthy，
+    // 会一路当成有效会话 id 用下去，查询必然返回"群不存在"，于是 0 条消息、
+    // 不落盘、退出码 0，整群静默空跑（实测踩过）。
     function findGroupIdFromUrls(startIdx) {
         for (let j = capturedApiUrls.length - 1; j >= (startIdx || 0); j--) {
             const match = capturedApiUrls[j].match(/[?&]id=(\d+)/);
-            if (match) return match[1];
+            if (match && match[1] !== '0') return match[1];
         }
         return null;
     }
@@ -565,26 +586,29 @@ async function main() {
     }
     if (groupId) {
         console.log(`✓ 从切群后的 API 请求获取群组 ID: ${groupId}`);
-    } else if (groupIdx === 0) {
-        // 只有第一个群允许回退到页面加载时的请求：它本来就是默认打开的会话，
-        // 点击可能不产生新请求。第二个群往后回退就等于沿用上一个群的 id。
+    } else if (groupIdx === 0 && groupClicked.found) {
+        // 只有第一个群、且确实点到了它，才允许回退到页面加载时的请求：
+        // 它本来就是默认打开的会话，点击可能不产生新请求。
+        // 没点到就回退是危险的 —— 那等于把"默认打开的随便哪个会话"的消息
+        // 记到这个群名下；第二个群往后回退同理（会沿用上一个群的 id）。
         groupId = findGroupIdFromUrls(0);
         if (groupId) console.log(`✓ 从页面加载时的 API 请求获取群组 ID: ${groupId}`);
     }
 
     if (!groupId) {
-        console.log(`⚠ 无法获取群 "${currentGroupName}" 的 ID（切群后未捕获到 API 请求），跳过此群`);
+        console.log(`⚠ 无法获取群 "${currentGroupName}" 的 ID（切群后未捕获到 API 请求）`);
+        if (attempt < GROUP_RETRIES) continue;   // 网络抖动最常砸在这里
         skippedGroups.push(`${currentGroupName}(未取到群 ID)`);
-        continue;
+        break;
     }
     // 串档护栏：同一轮里两个群解析出同一个 id，说明会话没真正切换
     if (archivedGroupIds.has(groupId)) {
         console.log(`⚠ 群 "${currentGroupName}" 解析出的 ID ${groupId} 已被 "${archivedGroupIds.get(groupId)}" 占用，`
             + `说明会话未真正切换，跳过此群（避免把上一个群的消息写进本群目录）`);
+        if (attempt < GROUP_RETRIES) continue;   // 再点一次，会话可能就切过去了
         skippedGroups.push(`${currentGroupName}(会话未切换)`);
-        continue;
+        break;
     }
-    archivedGroupIds.set(groupId, currentGroupName);
 
     // 等待初始消息加载
     let waitCount = 0;
@@ -685,6 +709,14 @@ async function main() {
         if (pageNum === 0) {
             console.log(`[API] 状态: ${status}, keys: ${Object.keys(data).join(',')}`);
         }
+        // 接口用 error_code 表达失败，HTTP 一律 200，且失败响应没有 messages。
+        // 不单独识别就会被下面当成"无更多消息" → 标记分页走完 → 0 条也算成功，
+        // 整轮以退出码 0 收场（"群不存在"、限流都会这样静默空跑）。
+        if (data.error_code) {
+            paginationNote = `接口错误 ${data.error_code}: ${data.error || ''}`;
+            console.log(`[API] ${paginationNote}`);
+            break;
+        }
 
         const rawMsgs = data.messages || data.data?.messages || data.data || [];
         const msgList = Array.isArray(rawMsgs) ? rawMsgs : (Array.isArray(data.list) ? data.list : []);
@@ -736,6 +768,13 @@ async function main() {
     }
     console.log(`API 分页获取完成: ${allApiMessages.length} 条消息`
         + (paginationComplete ? '' : ` (未走完: ${paginationNote})`));
+
+    // 一条都没抓到、而且分页是被错误打断的 → 本群这一轮是失败而不是"没有新消息"。
+    // 抛出去交给单群重试；重试仍不行才计入 skippedGroups（退出码非 0）。
+    // 不抛的话这种情况和"群里确实没新消息"长得一模一样，于是静默空跑。
+    if (allApiMessages.length === 0 && !paginationComplete) {
+        throw new Error(`未取到任何消息（${paginationNote}）`);
+    }
 
     // 合并 API 分页消息和已捕获的脚本层消息
     const scriptMessages = await page.evaluate(() => window.__ARCHIVER_STATE__?.getMessages() || []);
@@ -811,6 +850,19 @@ async function main() {
         }
     }
 
+    // 记录已完成的群 id：只在归档真正走完后登记，否则失败重试时会把自己
+    // 上一次尝试的 id 当成"别的群占用了"，误判成串档。
+    archivedGroupIds.set(groupId, currentGroupName);
+    groupDone = true;
+
+    } catch (e) {
+        if (e.fatal) throw e;   // Cookie 失效之类：重试无意义，立即上抛
+        console.error(`✗ 群「${currentGroupName}」本次失败: ${e.message}`);
+        if (attempt >= GROUP_RETRIES) {
+            skippedGroups.push(`${currentGroupName}(${e.message.slice(0, 60)})`);
+        }
+    }
+    } // end retry attempts
     } // end for each group
 
     // 保存 Cookie（cookie-store 校验 SUB，失效会话不会覆盖有效登录）
@@ -838,8 +890,12 @@ async function main() {
     }
 
     if (skippedGroups.length > 0) {
-        // 有群没归档成功就必须失败，否则调度器只会看到退出码 0
-        throw new Error(`${skippedGroups.length}/${GROUPS.length} 个群未归档: ${skippedGroups.join('、')}`);
+        // 有群没归档成功就必须失败，否则调度器只会看到退出码 0。
+        // 但整轮重跑没有意义：每个群都已就地重试过（GROUP_RETRIES），
+        // 重跑只会把成功的群再抓一遍、再等 30 秒。
+        const e = new Error(`${skippedGroups.length}/${GROUPS.length} 个群未归档: ${skippedGroups.join('、')}`);
+        e.alreadyRetried = true;
+        throw e;
     }
 
     console.log('完成！');
@@ -851,8 +907,9 @@ async function runWithRetry(maxRetries = 1) {
             await main();
             return;
         } catch (err) {
-            // Cookie 失效之类的致命错误重试也没用，只会白等 30 秒再开一次浏览器
-            if (attempt < maxRetries && !err.fatal) {
+            // 重试无意义的两类错误：Cookie 失效（fatal）、单群已就地重试过
+            // （alreadyRetried）—— 都只会白等 30 秒再开一次浏览器
+            if (attempt < maxRetries && !err.fatal && !err.alreadyRetried) {
                 console.error(`尝试 ${attempt + 1} 失败:`, err.message);
                 console.log('30秒后重试...');
                 await new Promise(r => setTimeout(r, 30000));
