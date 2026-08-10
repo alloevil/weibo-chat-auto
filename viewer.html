@@ -49,7 +49,10 @@ button, select, input { font-family: inherit; }
 
 /* Top nav */
 .nav { border-bottom: 1px solid var(--hairline); flex-shrink: 0; background: var(--canvas); position: relative; z-index: 20; }
-.nav-top { display: flex; align-items: center; padding: 0 16px; height: 56px; gap: 10px; }
+/* 允许换行：控件已有 9 个（群/日期/统计/皮肤/实时/定时/Sync/AI/登录），
+   在 1280 宽下原先会溢出到视口外 1654px —— AI 与登录按钮直接点不到。
+   flex-wrap 让它们掉到第二行，任何控件都不会因窗口变窄而消失。 */
+.nav-top { display: flex; flex-wrap: wrap; align-items: center; padding: 8px 16px; min-height: 56px; gap: 10px; row-gap: 8px; }
 .nav-top > * { flex-shrink: 0; white-space: nowrap; }
 .nav-title { font-size: 17px; font-weight: 600; letter-spacing: -0.4px; display: flex; align-items: center; gap: 8px; white-space: nowrap; margin-right: 4px; }
 .nav-title::before { content: ''; width: 16px; height: 16px; border-radius: 5px; background: linear-gradient(135deg, var(--primary-hover), var(--primary)); box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset; flex-shrink: 0; }
@@ -319,15 +322,18 @@ button, select, input { font-family: inherit; }
 .msg-user { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.35; }
 .msg-time { font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; }
 .msg-body { min-width: 0; }
-.msg-content { display: inline-block; max-width: min(100%, 480px); padding: 8px 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, var(--hairline-strong)) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.03); font-size: 15px; line-height: 1.5; color: var(--ink); word-break: break-word; overflow-wrap: anywhere; transition: border-color .12s, background .12s; }
+/* 气泡宽度随视口伸缩：硬顶 480px 在 1920 宽屏上会让消息区右侧空掉一千多像素，
+   但也不能放到全宽 —— 上千像素的一行中文没法读。46vw 在 1920 下约 880px，
+   在 1280 下退回 480px 下限；min(100%) 保证上下文面板展开时自动收窄。 */
+.msg-content { display: inline-block; max-width: min(100%, max(480px, 46vw)); padding: 8px 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, var(--hairline-strong)) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.03); font-size: 15px; line-height: 1.5; color: var(--ink); word-break: break-word; overflow-wrap: anywhere; transition: border-color .12s, background .12s; }
 .msg-item:hover .msg-content { background: var(--surface-2); border-color: var(--hairline-strong); }
-.msg-content img { max-width: 300px; max-height: 200px; border-radius: 12px; margin-top: 8px; vertical-align: middle; }
+.msg-content img { max-width: min(100%, max(300px, 22vw)); max-height: min(60vh, max(200px, 18vw)); border-radius: 12px; margin-top: 8px; vertical-align: middle; }
 .msg-link { color: var(--primary-hover); text-decoration: none; word-break: break-all; }
 .msg-link:hover { text-decoration: underline; }
-.msg-img { max-width: 300px; max-height: 200px; border-radius: 12px; margin-top: 6px; display: block; }
+.msg-img { max-width: min(100%, max(300px, 22vw)); max-height: min(60vh, max(200px, 18vw)); border-radius: 12px; margin-top: 6px; display: block; }
 .msg-attach { margin-top: 8px; }
 .msg-pics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.msg-pics img { max-width: 200px; max-height: 160px; border-radius: 12px; object-fit: cover; cursor: pointer; }
+.msg-pics img { max-width: min(100%, max(200px, 15vw)); max-height: max(160px, 13vw); border-radius: 12px; object-fit: cover; cursor: pointer; }
 .msg-pics img:hover { filter: brightness(1.1); }
 .msg-file { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; border: 1px solid var(--hairline); }
 .msg-file-icon { font-size: 24px; }
