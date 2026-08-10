@@ -83,6 +83,19 @@ button, select, input { font-family: inherit; }
 .tools-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px 0; }
 .tools-label { font-size: 12px; color: var(--ink-subtle); }
 .tools-noise-count { font-size: 12px; color: var(--ink-tertiary); }
+/* 设置弹窗：分节承载皮肤/同步/账号/AI —— 导航只留高频操作（群、日期、统计、筛选、同步） */
+.modal-wide { width: 520px; max-height: 86vh; overflow-y: auto; }
+.settings-section { padding: 12px 0; border-top: 1px solid var(--hairline); }
+.settings-section:first-of-type { border-top: none; padding-top: 0; }
+.settings-section-title { font-size: 12px; font-weight: 600; color: var(--ink-subtle); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; }
+.settings-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.settings-row label { flex: 1; font-size: 14px; color: var(--ink); }
+.settings-row select { margin-left: 0; min-width: 150px; }
+.settings-hint { font-size: 12px; color: var(--ink-tertiary); line-height: 1.5; margin-bottom: 6px; }
+.settings-auth { flex: 1; font-size: 13px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; }
+.settings-auth::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-tertiary); flex-shrink: 0; }
+.settings-auth.ok::before { background: var(--success); }
+.settings-auth.bad::before { background: var(--danger); }
 /* 聊天输入区（发送到当前群） */
 .composer { display: none; align-items: flex-end; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--hairline); background: var(--surface-1); flex-shrink: 0; }
 .composer.on { display: flex; }
@@ -674,61 +687,91 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="Select a date to view">Select Date</button>
         <button class="stats-toggle" id="statsToggle" onclick="toggleStats()">📊 统计</button>
         <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
-        <select class="schedule-select theme-select" id="themeSelect" onchange="applyTheme(this.value)" title="切换皮肤" style="margin-left:0">
-            <option value="">🎨 深色</option>
-            <option value="qq2000">🎨 QQ 2000</option>
-            <option value="qq2008">🎨 QQ 2008</option>
-            <option value="qq2012">🎨 QQ 2012</option>
-        </select>
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived"></div>
-        <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点 Sync">实时</span>
-        <select class="schedule-select" id="liveSelect" onchange="updateLiveConfig(this.value)"
-            title="实时同步会每 20 秒读取一次群消息；关闭后查看器完全不主动查询微博（原生客户端的未读提示不受影响）">
-            <option value="0">⚡ 实时: 关</option>
-            <option value="1">⚡ 实时: 开</option>
-        </select>
-        <select class="schedule-select" id="scheduleSelect" onchange="updateSchedule(this.value)" style="display:none">
-            <option value="0">⏰ 定时: 关</option>
-            <option value="1800">⏰ 30 分</option>
-            <option value="3600">⏰ 1 小时</option>
-            <option value="7200">⏰ 2 小时</option>
-            <option value="14400">⏰ 4 小时</option>
-        </select>
+        <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点同步">实时</span>
         <button class="sync-btn" id="syncBtn" onclick="syncNow()">同步</button>
-        <button class="ai-btn" id="aiSettingsBtn" onclick="openAiSettings()">⚙️ AI</button>
-        <button class="ai-btn" id="loginBtn" onclick="doLogin()" title="登录微博以更新Cookie">🔑 登录</button>
+        <button class="ai-btn" id="settingsBtn" onclick="openSettings()">⚙️ 设置</button>
     </div>
     <div class="auth-banner" id="authBanner" style="display:none" onclick="doLogin()">⚠ 微博登录已失效，定时归档已停摆 — 点此重新扫码</div>
     <div class="calendar" id="calendar"></div>
 </div>
 
-<!-- AI Settings Modal -->
-<div class="modal-overlay" id="aiModal" onclick="if(event.target===this)closeAiSettings()">
-    <div class="modal">
-        <h3>AI 摘要设置</h3>
-        <div class="modal-field">
-            <label>API Base URL</label>
-            <input type="text" id="aiBaseUrl" placeholder="https://api.deepseek.com/v1">
-        </div>
-        <div class="modal-field">
-            <label>API Key</label>
-            <input type="password" id="aiApiKey" placeholder="sk-xxx">
-        </div>
-        <div class="modal-field">
-            <label>模型名称</label>
-            <input type="text" id="aiModel" placeholder="deepseek-chat">
-        </div>
-        <div class="modal-field">
-            <label>多模态（Vision）</label>
-            <div class="switch-wrap">
-                <input type="checkbox" id="aiVision">
-                <span style="font-size:12px;color:var(--ink-subtle)">启用后会将图片发送给模型分析</span>
+<!-- 设置：皮肤 / 同步 / 微博账号 / AI 都在这里，导航只留高频操作 -->
+<div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)closeSettings()">
+    <div class="modal modal-wide">
+        <h3>设置</h3>
+
+        <div class="settings-section">
+            <div class="settings-section-title">外观</div>
+            <div class="settings-row">
+                <label for="themeSelect">皮肤</label>
+                <select class="schedule-select" id="themeSelect" onchange="applyTheme(this.value)">
+                    <option value="">深色（Linear）</option>
+                    <option value="qq2000">QQ 2000 复古</option>
+                    <option value="qq2008">QQ 2008 玻璃</option>
+                    <option value="qq2012">QQ 2012 轻白</option>
+                </select>
             </div>
         </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">同步</div>
+            <div class="settings-row">
+                <label for="liveSelect">实时同步</label>
+                <select class="schedule-select" id="liveSelect" onchange="updateLiveConfig(this.value)">
+                    <option value="0">关闭</option>
+                    <option value="1">开启</option>
+                </select>
+            </div>
+            <div class="settings-hint">每 20 秒读取一次群消息，新消息自动出现。关闭后查看器完全不主动查询微博（原生客户端的未读提示不受影响）。</div>
+            <div class="settings-row" id="scheduleRow" style="display:none">
+                <label for="scheduleSelect">定时归档</label>
+                <select class="schedule-select" id="scheduleSelect" onchange="updateSchedule(this.value)">
+                    <option value="0">关闭</option>
+                    <option value="1800">每 30 分钟</option>
+                    <option value="3600">每 1 小时</option>
+                    <option value="7200">每 2 小时</option>
+                    <option value="14400">每 4 小时</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">微博账号</div>
+            <div class="settings-row">
+                <span class="settings-auth" id="settingsAuth">检测中…</span>
+                <button class="ai-btn" id="loginBtn" onclick="doLogin()" title="扫码登录以更新 Cookie">🔑 重新扫码</button>
+            </div>
+            <div class="settings-hint">登录态失效时导航下方会出现红色横幅，点它同样可以扫码。</div>
+        </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">AI（摘要与问答）</div>
+            <div class="modal-field">
+                <label>API Base URL</label>
+                <input type="text" id="aiBaseUrl" placeholder="https://api.deepseek.com/v1">
+            </div>
+            <div class="modal-field">
+                <label>API Key</label>
+                <input type="password" id="aiApiKey" placeholder="sk-xxx">
+            </div>
+            <div class="modal-field">
+                <label>模型名称</label>
+                <input type="text" id="aiModel" placeholder="deepseek-chat">
+            </div>
+            <div class="modal-field">
+                <label>多模态（Vision）</label>
+                <div class="switch-wrap">
+                    <input type="checkbox" id="aiVision">
+                    <span style="font-size:12px;color:var(--ink-subtle)">启用后会将图片发送给模型分析</span>
+                </div>
+            </div>
+        </div>
+
         <div class="modal-actions">
-            <button class="modal-cancel" onclick="closeAiSettings()">取消</button>
-            <button class="modal-save" onclick="saveAiSettings()">保存</button>
+            <button class="modal-cancel" onclick="closeSettings()">关闭</button>
+            <button class="modal-save" onclick="saveAiSettings()">保存 AI 配置</button>
         </div>
     </div>
 </div>
@@ -1179,9 +1222,11 @@ async function loadSchedule() {
     try {
         const resp = await fetch('/api/schedule');
         const data = await resp.json();
+        // 整行一起隐藏：只藏 select 会留下一个孤零零的"定时归档"标签
+        const row = document.getElementById('scheduleRow');
         const sel = document.getElementById('scheduleSelect');
-        if (!data.supported) { sel.style.display = 'none'; return; }
-        sel.style.display = '';
+        if (!data.supported) { row.style.display = 'none'; return; }
+        row.style.display = '';
         sel.value = data.enabled ? String(data.interval) : '0';
     } catch {}
 }
@@ -1229,8 +1274,9 @@ function updateSummaryBar() {
     }
 }
 
-function openAiSettings() {
-    document.getElementById('aiModal').classList.add('show');
+function openSettings() {
+    document.getElementById('settingsModal').classList.add('show');
+    checkAuthStatus();   // 打开时刷新账号状态那一行
     fetch('/api/ai-config').then(r => r.json()).then(data => {
         if (data.ok && data.config) {
             document.getElementById('aiBaseUrl').value = data.config.baseUrl || '';
@@ -1278,6 +1324,14 @@ async function checkAuthStatus() {
     try {
         const s = await (await fetch('/api/auth-status')).json();
         document.getElementById('authBanner').style.display = s.ok === false ? '' : 'none';
+        // 设置里的账号状态行：登录按钮搬进设置后，得让它旁边有个明确的状态
+        const el = document.getElementById('settingsAuth');
+        const checked = s.checkedAt ? new Date(s.checkedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '';
+        el.classList.toggle('ok', s.ok === true);
+        el.classList.toggle('bad', s.ok === false);
+        el.textContent = s.ok === false ? '登录态已失效，需要重新扫码'
+            : s.ok === true ? `登录正常${checked ? `（${checked} 校验）` : ''}`
+            : '状态未知';
     } catch { /* 服务端不可达时不动横幅 */ }
 }
 setInterval(checkAuthStatus, 5 * 60 * 1000);
@@ -1297,8 +1351,8 @@ window.addEventListener('cookies-saved', (e) => {
     checkAuthStatus();
 });
 
-function closeAiSettings() {
-    document.getElementById('aiModal').classList.remove('show');
+function closeSettings() {
+    document.getElementById('settingsModal').classList.remove('show');
 }
 
 async function saveAiSettings() {
@@ -1316,7 +1370,7 @@ async function saveAiSettings() {
         const data = await resp.json();
         if (data.ok) {
             showToast('AI 设置已保存', 'success');
-            closeAiSettings();
+            closeSettings();
             checkAiConfig();
         } else {
             showToast('保存失败：' + (data.error || ''), 'error', 8000);
