@@ -47,6 +47,8 @@ const { sendGroupMessage } = require('./lib/send-message');
 const { isCrossSiteRequest } = require('./lib/csrf-guard');
 // 图片缓存治理：cache/images 是纯优化（内容可再取），此前无淘汰策略涨到 688MB
 const { evictCache, isCacheable } = require('./lib/cache-store');
+// 定时归档任务的发现/解析（按程序路径认领，不硬编码 label）见 lib/launch-agents
+const { findArchiveAgents, describeSchedule } = require('./lib/launch-agents');
 
 /** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
 function readGroupState(groupName) {
@@ -630,23 +632,36 @@ const server = http.createServer((req, res) => {
             return;
         }
 
-        const PLIST_LABEL = 'com.allo.weibo-chat-archive';
-        const PLIST_PATH = path.join(process.env.HOME, 'Library/LaunchAgents', `${PLIST_LABEL}.plist`);
+        // 纳管所有指向本项目归档器的 launchd 任务，而不是硬编码一个 label。
+        // 之前只认 'com.allo.weibo-chat-archive'，而历史 setup.sh 装的是
+        // 'com.allo.weibo-archive'（日历触发每天 04:00）：界面显示"定时: 关闭"，
+        // 任务却每天半夜照跑，归档读消息把微博客户端的未读提示清掉了（实测踩过）。
+        const CANONICAL_LABEL = 'com.allo.weibo-chat-archive';
+        const AGENT_DIR = path.join(process.env.HOME || '', 'Library/LaunchAgents');
+        const CANONICAL_PATH = path.join(AGENT_DIR, `${CANONICAL_LABEL}.plist`);
+        const agents = findArchiveAgents(AGENT_DIR, fs);
+
+        /** 哪些任务当前真的被 launchd 加载了。 */
+        const loadedLabels = (cb) => {
+            exec('launchctl list', (err, stdout) => {
+                if (err) return cb([]);
+                cb(agents.filter(a => stdout.includes(a.label)).map(a => a.label));
+            });
+        };
 
         if (req.method === 'GET') {
-            let interval = 0;
-            let enabled = false;
-            try {
-                const content = fs.readFileSync(PLIST_PATH, 'utf-8');
-                const match = content.match(/<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/);
-                if (match) interval = parseInt(match[1], 10);
-                enabled = true;
-            } catch {}
-            // Check if actually loaded
-            exec(`launchctl list ${PLIST_LABEL} 2>/dev/null`, (err) => {
-                if (err) enabled = false;
+            loadedLabels((loaded) => {
+                const active = agents.filter(a => loaded.includes(a.label));
+                // interval 供下拉回显；日历触发型没有 interval，用 describe 说明真实节奏
+                const withInterval = active.find(a => a.interval > 0);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ supported: true, enabled, interval }));
+                res.end(JSON.stringify({
+                    supported: true,
+                    enabled: active.length > 0,
+                    interval: withInterval ? withInterval.interval : 0,
+                    jobs: active.map(a => ({ label: a.label, schedule: describeSchedule(a) })),
+                    known: agents.map(a => a.label),
+                }));
             });
             return;
         }
@@ -663,20 +678,20 @@ const server = http.createServer((req, res) => {
                         return;
                     }
 
-                    const unload = `launchctl unload "${PLIST_PATH}" 2>/dev/null`;
+                    // 关闭必须卸载全部任务：只卸自己那一个，用户以为关了、别的还在跑
+                    const unloadAll = agents.map(a => `launchctl unload "${a.file}" 2>/dev/null`).join('; ') || 'true';
 
                     if (interval === 0) {
-                        // Disable: just unload
-                        exec(unload, () => {
+                        exec(unloadAll, () => {
+                            console.log(`[schedule] 已停用 ${agents.length} 个定时归档任务`);
                             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                             res.end(JSON.stringify({ ok: true, enabled: false, interval: 0 }));
                         });
                         return;
                     }
 
-                    // Update plist with new interval
                     let content;
-                    try { content = fs.readFileSync(PLIST_PATH, 'utf-8'); } catch {
+                    try { content = fs.readFileSync(CANONICAL_PATH, 'utf-8'); } catch {
                         res.writeHead(404, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ ok: false, error: 'Plist not found. Run setup.sh first.' }));
                         return;
@@ -685,15 +700,16 @@ const server = http.createServer((req, res) => {
                         /(<key>StartInterval<\/key>\s*<integer>)\d+(<\/integer>)/,
                         `$1${interval}$2`
                     );
-                    fs.writeFileSync(PLIST_PATH, content, 'utf-8');
+                    fs.writeFileSync(CANONICAL_PATH, content, 'utf-8');
 
-                    // Reload
-                    exec(`${unload}; launchctl load "${PLIST_PATH}"`, (err) => {
+                    // 先全卸再只加载 canonical：避免两个任务同时归档（会互相抢会话）
+                    exec(`${unloadAll}; launchctl load "${CANONICAL_PATH}"`, (err) => {
                         if (err) {
                             res.writeHead(500, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ ok: false, error: err.message }));
                             return;
                         }
+                        console.log(`[schedule] 定时归档已设为每 ${interval} 秒（仅 ${CANONICAL_LABEL}）`);
                         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                         res.end(JSON.stringify({ ok: true, enabled: true, interval }));
                     });

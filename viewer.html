@@ -92,6 +92,7 @@ button, select, input { font-family: inherit; }
 .settings-row label { flex: 1; font-size: 14px; color: var(--ink); }
 .settings-row select { margin-left: 0; min-width: 150px; }
 .settings-hint { font-size: 12px; color: var(--ink-tertiary); line-height: 1.5; margin-bottom: 6px; }
+.settings-hint.on { display: block !important; color: var(--primary-hover); }
 .settings-auth { flex: 1; font-size: 13px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; }
 .settings-auth::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-tertiary); flex-shrink: 0; }
 .settings-auth.ok::before { background: var(--success); }
@@ -735,6 +736,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                     <option value="14400">每 4 小时</option>
                 </select>
             </div>
+            <div class="settings-hint" id="scheduleNote" style="display:none"></div>
         </div>
 
         <div class="settings-section">
@@ -1227,7 +1229,18 @@ async function loadSchedule() {
         const sel = document.getElementById('scheduleSelect');
         if (!data.supported) { row.style.display = 'none'; return; }
         row.style.display = '';
-        sel.value = data.enabled ? String(data.interval) : '0';
+        // 显示真实在跑的任务：日历触发型（每天 04:00）没有 interval，
+        // 只回显下拉值会让界面继续撒谎 —— 那正是"以为关了却每天半夜跑"的原因
+        sel.value = data.interval > 0 ? String(data.interval) : '0';
+        const note = document.getElementById('scheduleNote');
+        if (data.enabled) {
+            const desc = (data.jobs || []).map(j => j.schedule).join('、') || '已启用';
+            note.textContent = `当前生效：${desc}（归档会读取群消息，可能清掉微博客户端的未读提示）`;
+            note.classList.add('on');
+        } else {
+            note.textContent = '';
+            note.classList.remove('on');
+        }
     } catch {}
 }
 
@@ -1241,7 +1254,8 @@ async function updateSchedule(val) {
         });
         const data = await resp.json();
         if (data.ok) {
-            showToast(interval === 0 ? '定时归档已关闭' : `定时归档已设为每 ${interval/60} 分钟`, 'success');
+            showToast(interval === 0 ? '定时归档已关闭' : `定时归档已设为每 ${interval / 60} 分钟`, 'success');
+            loadSchedule();   // 成功也要回读真实状态，否则"当前生效"那行会留着过期文案
         } else {
             showToast('设置失败：' + (data.error || '未知错误'), 'error', 8000);
             loadSchedule();
