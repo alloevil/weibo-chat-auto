@@ -53,8 +53,15 @@ button, select, input { font-family: inherit; }
    在 1280 宽下原先会溢出到视口外 1654px —— AI 与登录按钮直接点不到。
    flex-wrap 让它们掉到第二行，任何控件都不会因窗口变窄而消失。 */
 .nav-top { display: flex; flex-wrap: wrap; align-items: center; padding: 8px 16px; min-height: 56px; gap: 10px; row-gap: 8px; }
+/* 搜索/提问区参与伸缩，其余控件保持原尺寸 */
 .nav-top > * { flex-shrink: 0; white-space: nowrap; }
-.nav-title { font-size: 17px; font-weight: 600; letter-spacing: -0.4px; display: flex; align-items: center; gap: 8px; white-space: nowrap; margin-right: 4px; }
+.nav-search { display: flex; align-items: center; gap: 8px; flex: 1 1 340px; min-width: 260px; }
+.nav-search .search-input-wrap { flex: 1 1 auto; max-width: none; min-width: 140px; }
+.nav-search .qa-inline { flex: 1 1 auto; margin-left: 0; min-width: 150px; }
+.nav-search .qa-inline .qa-input { flex: 1 1 auto; width: auto; min-width: 0; }
+.nav-search .qa-inline .qa-input:focus { width: auto; }
+/* 标题只留标识色块：文字占 90px 而窗口标题已经写着了 */
+.nav-title { display: flex; align-items: center; white-space: nowrap; }
 .nav-title::before { content: ''; width: 16px; height: 16px; border-radius: 5px; background: linear-gradient(135deg, var(--primary-hover), var(--primary)); box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset; flex-shrink: 0; }
 .nav-date { height: 32px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; }
 .nav-date:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
@@ -683,16 +690,35 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 
 <div class="nav">
     <div class="nav-top">
-        <div class="nav-title" title="Weibo Group Chat Viewer">群聊归档</div>
+        <div class="nav-title" title="微博群聊归档"></div>
         <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
         <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="选择要查看的日期">选择日期</button>
-        <button class="stats-toggle" id="statsToggle" onclick="toggleStats()">📊 统计</button>
+        <!-- 搜索与提问是主操作，放在最上一行并自适应拉伸（原先独占第二行，中间还空一大片） -->
+        <div class="nav-search" id="navSearch">
+            <div class="search-input-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="search-input" id="searchInput" placeholder="搜索消息…" oninput="onSearchInput(this.value)">
+                <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+            </div>
+            <div class="search-count" id="searchCount">
+                <span id="searchCountText"></span>
+                <div class="search-nav" id="searchNav">
+                    <button class="search-nav-btn" onclick="navigateSearch(-1)" title="上一处">▲</button>
+                    <button class="search-nav-btn" onclick="navigateSearch(1)" title="下一处">▼</button>
+                </div>
+            </div>
+            <div class="qa-inline" id="qaInline">
+                <input class="qa-input" id="qaInput" placeholder="问问群历史…" onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
+                <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
+            </div>
+        </div>
+        <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="统计面板">📊</button>
         <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
         <div class="nav-stats" id="stats"></div>
-        <div class="nav-last-archived" id="lastArchived"></div>
+        <div class="nav-last-archived" id="lastArchived" title="上次归档时间"></div>
         <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点同步">实时</span>
         <button class="sync-btn" id="syncBtn" onclick="syncNow()">同步</button>
-        <button class="ai-btn" id="settingsBtn" onclick="openSettings()">⚙️ 设置</button>
+        <button class="ai-btn" id="settingsBtn" onclick="openSettings()">⚙️</button>
     </div>
     <div class="auth-banner" id="authBanner" style="display:none" onclick="doLogin()">⚠ 微博登录已失效，定时归档已停摆 — 点此重新扫码</div>
     <div class="calendar" id="calendar"></div>
@@ -795,24 +821,6 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                     <div class="media-btn active" id="noiseBtnInline" onclick="toggleNoise()" data-tooltip="隐藏问候、红包等噪声消息">隐藏噪声</div>
                 </div>
                 <span class="tools-noise-count" id="noiseCount"></span>
-            </div>
-        </div>
-        <div class="search-bar" id="searchBar">
-            <div class="search-input-wrap">
-                <span class="search-icon">🔍</span>
-                <input type="text" class="search-input" id="searchInput" placeholder="搜索消息…" oninput="onSearchInput(this.value)">
-                <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
-            </div>
-            <div class="search-count" id="searchCount">
-                <span id="searchCountText"></span>
-                <div class="search-nav" id="searchNav">
-                    <button class="search-nav-btn" onclick="navigateSearch(-1)" title="Previous">▲</button>
-                    <button class="search-nav-btn" onclick="navigateSearch(1)" title="Next">▼</button>
-                </div>
-            </div>
-            <div class="qa-inline" id="qaInline">
-                <input class="qa-input" id="qaInput" placeholder="问问群历史..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
-                <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
             </div>
         </div>
         <div class="filter-bar" id="filterBar"></div>
@@ -1127,7 +1135,8 @@ async function loadGroups() {
         const dt = new Date(data.lastArchived);
         const pad = n => String(n).padStart(2, '0');
         const timeStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-        document.getElementById('lastArchived').textContent = `上次归档 ${timeStr}`;
+        // 压成 🕐 HH:MM：完整日期占 150px，挤在单行导航里不值当（悬浮有说明）
+        document.getElementById('lastArchived').textContent = `🕐 ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     }
 
     const sel = document.getElementById('groupSelect');
@@ -1203,7 +1212,7 @@ async function syncNow() {
             await loadData();
             const dt = new Date();
             const pad = n => String(n).padStart(2, '0');
-            document.getElementById('lastArchived').textContent = `已同步 ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+            document.getElementById('lastArchived').textContent = `✓ ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
             const skipNote = data.skipped ? `（${data.skipped} 个群跳过）` : '';
             showToast(`✓ 同步完成，归档 ${data.archived} 个群${skipNote}`, 'success');
         } else {
@@ -2149,7 +2158,7 @@ function toggleStats() {
     const statsEl = document.getElementById('statsPanel');
     // hours 与类型筛选现在都在筛选面板里，整块一起隐藏即可
     const toolsEl = document.getElementById('toolsPanel');
-    const searchEl = document.getElementById('searchBar');
+    const searchEl = document.getElementById('navSearch');   // 搜索/提问已上移到导航行
     const filterEl = document.getElementById('filterBar');
 
     if (statsView) {
@@ -2334,7 +2343,7 @@ async function checkForUpdates() {
             await loadMessages(true);
             const dt = new Date(data.lastArchived);
             const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-            document.getElementById('lastArchived').textContent = `上次归档 ${timeStr}`;
+            document.getElementById('lastArchived').textContent = `🕐 ${timeStr}`;
         }
     } catch {}
 }
@@ -2385,7 +2394,7 @@ function startLive() {
         await loadMessages(true);
         const dt = new Date();
         const pad = n => String(n).padStart(2, '0');
-        document.getElementById('lastArchived').textContent = `实时 ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        document.getElementById('lastArchived').textContent = `⚡ ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     };
 }
 function stopLive() {
