@@ -289,10 +289,10 @@ button, select, input { font-family: inherit; }
 .nav-top [data-tooltip]::after, .sidebar-header[data-tooltip]::after { bottom: auto; top: calc(100% + 6px); }
 
 /* Filter status */
-.filter-bar { padding: 0 16px; height: 0; overflow: hidden; transition: height .2s; font-size: 13px; color: var(--ink-subtle); display: flex; align-items: center; }
-.filter-bar.show { height: 36px; border-bottom: 1px solid var(--hairline); }
-.filter-bar span { color: var(--primary-hover); }
-.filter-export { cursor: pointer; text-decoration: underline; }
+.filter-bar { padding: 0 16px; height: 0; overflow: hidden; transition: height .2s; font-size: 13px; color: var(--ink-subtle); display: flex; align-items: center; gap: 12px; }
+.filter-bar.show { height: 34px; border-bottom: 1px solid var(--hairline); }
+.filter-summary { flex: 1; color: var(--primary-hover); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-export { cursor: pointer; text-decoration: underline; color: var(--ink-subtle); flex-shrink: 0; }
 .filter-export:hover { color: var(--ink); }
 
 /* Search */
@@ -685,7 +685,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
     <div class="nav-top">
         <div class="nav-title" title="Weibo Group Chat Viewer">群聊归档</div>
         <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
-        <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="Select a date to view">Select Date</button>
+        <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="选择要查看的日期">选择日期</button>
         <button class="stats-toggle" id="statsToggle" onclick="toggleStats()">📊 统计</button>
         <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
         <div class="nav-stats" id="stats"></div>
@@ -780,9 +780,9 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 
 <div class="main">
     <div class="sidebar">
-        <div class="sidebar-header" data-tooltip="Click a user to filter their messages">Members</div>
+        <div class="sidebar-header" data-tooltip="点击成员只看他的消息">成员</div>
         <div class="user-list" id="userList"></div>
-        <div class="user-clear"><button onclick="clearUserFilter()">Clear Filter</button></div>
+        <div class="user-clear"><button onclick="clearUserFilter()">清除成员筛选</button></div>
     </div>
     <div class="content">
         <!-- 筛选面板：默认折叠，由导航的「🔍 筛选」开关控制 -->
@@ -792,7 +792,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                 <span class="tools-label">类型</span>
                 <div class="media-btns" id="mediaBar"></div>
                 <div class="noise-toggle" id="noiseToggle">
-                    <div class="media-btn active" id="noiseBtnInline" onclick="toggleNoise()" data-tooltip="Hide greetings, red packets, and noise">Hide Noise</div>
+                    <div class="media-btn active" id="noiseBtnInline" onclick="toggleNoise()" data-tooltip="隐藏问候、红包等噪声消息">隐藏噪声</div>
                 </div>
                 <span class="tools-noise-count" id="noiseCount"></span>
             </div>
@@ -800,7 +800,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         <div class="search-bar" id="searchBar">
             <div class="search-input-wrap">
                 <span class="search-icon">🔍</span>
-                <input type="text" class="search-input" id="searchInput" placeholder="Search messages..." oninput="onSearchInput(this.value)">
+                <input type="text" class="search-input" id="searchInput" placeholder="搜索消息…" oninput="onSearchInput(this.value)">
                 <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
             </div>
             <div class="search-count" id="searchCount">
@@ -1111,7 +1111,7 @@ function processForward(text) {
 }
 
 // Weekday
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 function getWeekday(dateStr) {
     return WEEKDAYS[new Date(dateStr + 'T00:00:00').getDay()];
@@ -1127,7 +1127,7 @@ async function loadGroups() {
         const dt = new Date(data.lastArchived);
         const pad = n => String(n).padStart(2, '0');
         const timeStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-        document.getElementById('lastArchived').textContent = `Last archived: ${timeStr}`;
+        document.getElementById('lastArchived').textContent = `上次归档 ${timeStr}`;
     }
 
     const sel = document.getElementById('groupSelect');
@@ -1203,7 +1203,7 @@ async function syncNow() {
             await loadData();
             const dt = new Date();
             const pad = n => String(n).padStart(2, '0');
-            document.getElementById('lastArchived').textContent = `Synced: ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+            document.getElementById('lastArchived').textContent = `已同步 ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
             const skipNote = data.skipped ? `（${data.skipped} 个群跳过）` : '';
             showToast(`✓ 同步完成，归档 ${data.archived} 个群${skipNote}`, 'success');
         } else {
@@ -1592,7 +1592,7 @@ async function loadMessages(preserveScroll) {
 function updateDateToggle() {
     const el = document.getElementById('dateToggle');
     if (!selectedDate) {
-        el.textContent = 'Select Date';
+        el.textContent = '选择日期';
         return;
     }
     el.textContent = `${selectedDate} ${getWeekday(selectedDate)} ${calendarOpen ? '▲' : '▼'}`;
@@ -1627,7 +1627,7 @@ function renderCalendar() {
 
     // 星期头
     html += '<div class="cal-grid">';
-    for (const w of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
+    for (const w of ['日', '一', '二', '三', '四', '五', '六']) {
         html += `<div class="cal-weekday">${w}</div>`;
     }
 
@@ -1760,10 +1760,10 @@ function clearHours() {
 // 媒体筛选
 function renderMediaBar() {
     const types = [
-        { key: 'all', label: 'All', tip: 'Show all messages' },
-        { key: 'pics', label: 'Photos', tip: 'Show messages with photos' },
-        { key: 'video', label: 'Video', tip: 'Show messages with videos' },
-        { key: 'link', label: 'Links', tip: 'Show messages with links or shares' },
+        { key: 'all', label: '全部', tip: '显示全部消息' },
+        { key: 'pics', label: '图片', tip: '只看含图片的消息' },
+        { key: 'video', label: '视频', tip: '只看含视频的消息' },
+        { key: 'link', label: '链接', tip: '只看含链接或分享的消息' },
     ];
     document.getElementById('mediaBar').innerHTML = types.map(t =>
         `<div class="media-btn ${mediaFilter === t.key ? 'active' : ''}" onclick="setMediaFilter('${t.key}')" data-tooltip="${t.tip}">${t.label}</div>`
@@ -1787,6 +1787,21 @@ function toggleNoise() {
 function toggleUser(user) {
     if (selectedUsers.has(user)) selectedUsers.delete(user);
     else selectedUsers.add(user);
+    renderUserList();
+    renderAll();
+}
+
+/** 一键清空所有筛选（状态行的「清除」入口）：只显示"已筛选"却不给出路，
+    用户还得自己回筛选面板一个个取消。 */
+function clearAllFilters() {
+    selectedHours.clear();
+    selectedUsers.clear();
+    mediaFilter = 'all';
+    searchQuery = '';
+    const si = document.getElementById('searchInput'); if (si) si.value = '';
+    const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
+    renderHours();
+    renderMediaBar();
     renderUserList();
     renderAll();
 }
@@ -1921,7 +1936,7 @@ function renderUserList() {
 function renderMessages(msgs) {
     const el = document.getElementById('messages');
     if (msgs.length === 0) {
-        el.innerHTML = '<div class="empty">No messages</div>';
+        el.innerHTML = '<div class="empty">没有消息</div>';
         return;
     }
     // 构建内容索引（供引用跳转 + 显示原作者：规范化前缀 → {id, user}）
@@ -1999,7 +2014,7 @@ function renderMessages(msgs) {
             const text = (s.text && s.text !== s.title) ? `<div class="share-text">${processEmoji(escapeHtml(s.text))}</div>` : '';
             const desc = s.description ? `<div class="share-desc">${escapeHtml(s.description)}</div>` : '';
             const picsHtml = s.pics && s.pics.length > 0 ? '<div class="msg-pics">' + s.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>' : '';
-            const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? 'Reposts ' + s.reposts : ''} ${s.comments ? 'Comments ' + s.comments : ''} ${s.likes ? 'Likes ' + s.likes : ''}</div>` : '';
+            const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? '转发 ' + s.reposts : ''} ${s.comments ? '评论 ' + s.comments : ''} ${s.likes ? '赞 ' + s.likes : ''}</div>` : '';
             const link = s.url ? `<a class="share-link" href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>` : '';
             attach += `<div class="share-card">${author}${title ? '<div class="share-title">' + title + '</div>' : ''}${text}${desc}${picsHtml}${stats}${link}</div>`;
         }
@@ -2065,8 +2080,8 @@ function renderAll() {
 
     const users = new Set(filtered.map(m => m.user));
     const newCount = filtered.filter(m => m.timestamp > lastVisitTimestamp).length;
-    const newInfo = newCount > 0 ? ` · <span style="color:var(--primary-hover)">${newCount} new</span>` : '';
-    document.getElementById('stats').innerHTML = `${filtered.length} msgs · ${users.size} members${newInfo}`;
+    const newInfo = newCount > 0 ? ` · <span style="color:var(--primary-hover)">${newCount} 条新消息</span>` : '';
+    document.getElementById('stats').innerHTML = `${filtered.length} 条 · ${users.size} 人${newInfo}`;
     updateDateToggle();
 
     // 搜索：不过滤，改为高亮 + 定位到第一处匹配
@@ -2087,17 +2102,17 @@ function renderAll() {
     const bar = document.getElementById('filterBar');
     const parts = [];
     if (searchQuery) {
-        parts.push('Search: "' + searchQuery + '"');
+        parts.push('搜索「' + searchQuery + '」');
     }
     if (selectedHours.size > 0) {
-        parts.push('Hours: ' + [...selectedHours].sort((a,b)=>a-b).map(h => String(h).padStart(2,'0')+':00').join(', '));
+        parts.push('时段 ' + [...selectedHours].sort((a, b) => a - b).map(h => String(h).padStart(2, '0') + ':00').join('、'));
     }
     if (selectedUsers.size > 0) {
-        parts.push('User: ' + [...selectedUsers].join(', '));
+        parts.push('成员 ' + [...selectedUsers].join('、'));
     }
-    const mediaLabels = { pics: 'Photos', video: 'Video', link: 'Links' };
+    const mediaLabels = { pics: '图片', video: '视频', link: '链接' };
     if (mediaFilter !== 'all') {
-        parts.push('Type: ' + (mediaLabels[mediaFilter] || mediaFilter));
+        parts.push('类型 ' + (mediaLabels[mediaFilter] || mediaFilter));
     }
     // 噪声计数移进筛选面板：Hide Noise 默认开启，把它常驻成顶部横幅等于
     // 每次打开都先看到一行"Hidden noise: N·Export"，纯属干扰阅读。
@@ -2113,7 +2128,13 @@ function renderAll() {
 
     // 状态行只解释"主动筛掉内容"的操作（默认的噪声过滤不算），
     // 这样默认状态下消息区上方是干净的。
-    bar.innerHTML = parts.map(p => `<span>${p}</span>`).join(' · ') + (parts.length ? ' · <span class="filter-export" onclick="exportMessages()">Export</span>' : '');
+    // 这行是筛选生效时的唯一解释，顺手给出"清除"与"导出"两个动作 ——
+    // 只显示状态不给出路，用户还得自己回筛选面板一个个取消。
+    bar.innerHTML = parts.length
+        ? `<span class="filter-summary">已筛选：${parts.join(' · ')}</span>`
+            + '<span class="filter-export" onclick="clearAllFilters()">清除</span>'
+            + '<span class="filter-export" onclick="exportMessages()">导出</span>'
+        : '';
     bar.className = 'filter-bar' + (parts.length ? ' show' : '');
     updateToolsIndicator(parts.length > 0);
 
@@ -2313,7 +2334,7 @@ async function checkForUpdates() {
             await loadMessages(true);
             const dt = new Date(data.lastArchived);
             const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-            document.getElementById('lastArchived').textContent = `Last archived: ${timeStr}`;
+            document.getElementById('lastArchived').textContent = `上次归档 ${timeStr}`;
         }
     } catch {}
 }
@@ -2364,7 +2385,7 @@ function startLive() {
         await loadMessages(true);
         const dt = new Date();
         const pad = n => String(n).padStart(2, '0');
-        document.getElementById('lastArchived').textContent = `Live: ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        document.getElementById('lastArchived').textContent = `实时 ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     };
 }
 function stopLive() {
