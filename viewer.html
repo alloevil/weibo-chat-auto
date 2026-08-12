@@ -393,6 +393,8 @@ button, select, input { font-family: inherit; }
 .share-link { display: block; font-size: 12px; color: var(--primary-hover); margin-top: 4px; text-decoration: none; word-break: break-all; }
 .share-link:hover { text-decoration: underline; }
 .emoji { font-size: 1.2em; vertical-align: middle; }
+/* 图片型表情：与文字同高、随字号缩放；载入失败时 alt 会显示原标签 */
+.emoji-img { height: 1.3em; width: auto; vertical-align: -0.25em; margin: 0 1px; }
 .emoji-unknown { display: inline-block; padding: 1px 5px; margin: 0 1px; border-radius: 4px; background: var(--surface-3); color: var(--ink-subtle); font-size: 12px; vertical-align: middle; }
 .forward-quote { border-left: 3px solid var(--primary); margin: 4px 0 6px; padding: 8px 12px; background: var(--surface-2); border-radius: 0 6px 6px 0; font-size: 14px; color: var(--ink-muted); line-height: 1.45; }
 .forward-source { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--primary-tint); font-size: 12px; color: var(--primary-hover); }
@@ -1046,10 +1048,27 @@ function openContext(id) {
 
 
 // Process forwarded messages: "quoted content" - - - - - - reply
+// 表情映射（微博官方清单，标签 → 图片 URL）。内置 Unicode 表覆盖不到的
+// 部分靠它渲染成图片；拿不到就退化成显示 [标签]，不影响其它内容。
+let emojiMap = {};
+function resolveEmoji(tag) {
+    return emojiMap[tag] || null;
+}
+async function loadEmojiMap() {
+    try {
+        const d = await (await fetch('/api/emotions')).json();
+        if (d && d.map && Object.keys(d.map).length) {
+            emojiMap = d.map;
+            if (allMessages.length) renderAll();   // 清单晚到就重画一次
+        }
+    } catch { /* 拉不到就用内置表 */ }
+}
+loadEmojiMap();
+
 function processForward(text) {
     const SEP = ' - - - - - - - - - - - - - - - ';
     // 统一处理流程：escape → urls → mentions → emoji
-    const pipe = (s) => processEmoji(processMentions(processUrls(escapeHtml(s))));
+    const pipe = (s) => processEmoji(processMentions(processUrls(escapeHtml(s))), resolveEmoji);
 
     if (!text.includes(SEP) && !text.startsWith('「')) return pipe(text);
 
@@ -2020,7 +2039,7 @@ function renderMessages(msgs) {
             const s = m.share;
             const title = escapeHtml(s.title || s.url || '');
             const author = s.author ? `<div class="share-author">${escapeHtml(s.author)}</div>` : '';
-            const text = (s.text && s.text !== s.title) ? `<div class="share-text">${processEmoji(escapeHtml(s.text))}</div>` : '';
+            const text = (s.text && s.text !== s.title) ? `<div class="share-text">${processEmoji(escapeHtml(s.text), resolveEmoji)}</div>` : '';
             const desc = s.description ? `<div class="share-desc">${escapeHtml(s.description)}</div>` : '';
             const picsHtml = s.pics && s.pics.length > 0 ? '<div class="msg-pics">' + s.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>' : '';
             const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? '转发 ' + s.reposts : ''} ${s.comments ? '评论 ' + s.comments : ''} ${s.likes ? '赞 ' + s.likes : ''}</div>` : '';

@@ -49,6 +49,8 @@ const { isCrossSiteRequest } = require('./lib/csrf-guard');
 const { evictCache, isCacheable } = require('./lib/cache-store');
 // 定时归档任务的发现/解析（按程序路径认领，不硬编码 label）见 lib/launch-agents
 const { findArchiveAgents, describeSchedule } = require('./lib/launch-agents');
+// 表情清单：内置 Unicode 表只覆盖 83%，其余靠微博官方清单渲染成图片
+const { loadEmotions } = require('./lib/emotions');
 
 /** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
 function readGroupState(groupName) {
@@ -547,6 +549,27 @@ const server = http.createServer((req, res) => {
         };
         req.on('close', cleanup);
         req.on('error', cleanup);
+        return;
+    }
+
+    // 表情清单（标签 → 图片 URL）。磁盘缓存 7 天，网络失败退回旧缓存，
+    // 因此前端拿不到映射只会退化成显示 [标签]，不会白屏或报错。
+    if (url.pathname === '/api/emotions') {
+        loadEmotions(path.join(__dirname, 'cache', 'emotions.json'), { cookieHeader: loadCookies() })
+            .then(({ map, source, count }) => {
+                if (source === 'network') console.log(`[emotions] 已更新表情清单 ${count} 条`);
+                else if (source === 'empty') console.warn('[emotions] 表情清单拉取失败且无缓存，未知表情将显示为文字标签');
+                res.writeHead(200, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    // 前端每次加载都会取一次；缓存一天避免频繁请求（服务端另有 7 天磁盘缓存）
+                    'Cache-Control': 'private, max-age=86400',
+                });
+                res.end(JSON.stringify({ ok: true, source, count, map }));
+            })
+            .catch((e) => {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: false, error: e.message, map: {} }));
+            });
         return;
     }
 
