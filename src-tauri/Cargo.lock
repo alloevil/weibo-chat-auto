@@ -3981,7 +3981,7 @@ dependencies = [
 
 [[package]]
 name = "weibo-chat-viewer"
-version = "1.20.1"
+version = "1.20.2"
 dependencies = [
  "serde",
  "serde_json",
