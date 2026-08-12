@@ -42,7 +42,7 @@ const syncReport = require('./lib/sync-report');
 // 通过 SSE 推给页面。只在有订阅者时轮询，没人看不打接口。
 const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('./lib/live-sync');
 // 发消息（写操作）统一走 lib/send-message：微博失败也回 HTTP 200，必须解析 body
-const { sendGroupMessage } = require('./lib/send-message');
+const { sendGroupMessage, sendGroupImage } = require('./lib/send-message');
 // 跨站写操作拦截（CSRF）：只绑 127.0.0.1 不足以防护，见 lib/csrf-guard
 const { isCrossSiteRequest } = require('./lib/csrf-guard');
 // 图片缓存治理：cache/images 是纯优化（内容可再取），此前无淘汰策略涨到 688MB
@@ -53,6 +53,39 @@ const { findArchiveAgents, describeSchedule } = require('./lib/launch-agents');
 const { loadEmotions } = require('./lib/emotions');
 // 跨日期全量搜索（子串命中 + 时间倒序，与 AI 问答的 BM25 刻意分开）
 const { searchMessages } = require('./lib/search-messages');
+// 「提到我」与通知规则（纯判定，见 lib/notify-rules）
+const { buildNotifications } = require('./lib/notify-rules');
+
+// 当前账号（用于判定"提到我"、排除自己发的消息）。启动与保活时刷新。
+const meState = { screenName: '', uid: '', fetchedAt: 0 };
+async function refreshMe() {
+    try {
+        const r = await fetch('https://api.weibo.com/webim/query_primary_info.json?source=209678993', {
+            headers: { Cookie: loadCookies(), Referer: 'https://api.weibo.com/chat', 'X-Requested-With': 'XMLHttpRequest' },
+            signal: AbortSignal.timeout(10000),
+        });
+        const d = await r.json();
+        const name = d?.profile?.screen_name;
+        const uid = d?.profile?.id || d?.id;
+        if (name) {
+            meState.screenName = String(name);
+            meState.uid = uid ? String(uid) : '';
+            meState.fetchedAt = Date.now();
+        }
+    } catch { /* 拿不到就只是没有"提到我"判定，不影响其它功能 */ }
+}
+
+// 通知偏好（与实时同步同一套路：存盘、默认保守 —— 只提醒提到我）
+const NOTIFY_CONFIG_PATH = path.join(__dirname, 'notify-config.json');
+function readNotifyConfig() {
+    try {
+        const c = JSON.parse(fs.readFileSync(NOTIFY_CONFIG_PATH, 'utf-8'));
+        return { enabled: c.enabled !== false, keywords: Array.isArray(c.keywords) ? c.keywords : [], notifyAll: c.notifyAll === true };
+    } catch {
+        return { enabled: true, keywords: [], notifyAll: false };
+    }
+}
+let notifyConfig = readNotifyConfig();
 
 /** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
 function readGroupState(groupName) {
@@ -124,6 +157,14 @@ const liveSync = createLiveSync({
             // 不清缓存会拿到不含新消息的旧快照
             messageStore.clearCaches();
             authState.ok = true;
+            // 通知判定放服务端：规则有单测，且前端不必知道"我是谁"
+            if (notifyConfig.enabled) {
+                event.notifications = buildNotifications(event.messages, meState, {
+                    keywords: notifyConfig.keywords,
+                    notifyAll: notifyConfig.notifyAll,
+                    group: event.group,
+                });
+            }
         } else if (event.type === 'auth' && event.ok === false) {
             authState.ok = false;
             authState.code = weiboAuth.UNAUTHENTICATED_CODE;
@@ -515,6 +556,97 @@ const server = http.createServer((req, res) => {
                 reply({ ok: false, error: `发送请求失败: ${e.message}` });
             }
         });
+        return;
+    }
+
+    // 发送图片：前端传 base64（图片一般几百 KB，比多写一套 multipart 解析划算）。
+    // 上传与发送的两步都在 lib/send-message 里，这里只做参数校验与结果转述。
+    if (url.pathname === '/api/send-image' && req.method === 'POST') {
+        const chunks = [];
+        let bytes = 0;
+        req.on('data', (c) => {
+            bytes += c.length;
+            if (bytes > 30 * 1024 * 1024) { req.destroy(); return; }   // 30MB 硬顶
+            chunks.push(c);
+        });
+        req.on('end', async () => {
+            const reply = (r) => {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(r));
+            };
+            let params;
+            try { params = JSON.parse(Buffer.concat(chunks).toString('utf-8')); } catch { reply({ ok: false, error: '参数解析失败' }); return; }
+            const group = params.group || '';
+            const target = resolveLiveGroups().find(g => g.name === group);
+            if (!target) {
+                reply({ ok: false, error: `群「${group}」没有可用的会话 id，先跑一次归档（同步）让它被记录` });
+                return;
+            }
+            let buffer;
+            try {
+                buffer = Buffer.from(String(params.dataBase64 || '').replace(/^data:[^,]+,/, ''), 'base64');
+            } catch { reply({ ok: false, error: '图片数据无法解析' }); return; }
+            try {
+                const r = await sendGroupImage({
+                    groupId: target.groupId,
+                    buffer,
+                    filename: params.filename || 'image.png',
+                    mimeType: params.mimeType || 'image/png',
+                    cookieHeader: loadCookies(),
+                });
+                if (r.ok) {
+                    console.log(`[send] → ${group}: 图片 ${(buffer.length / 1024).toFixed(0)}KB (fid=${r.fid} mid=${r.messageId || '?'})`);
+                    if (liveEnabled) liveSync.tick();
+                } else if (r.needLogin) {
+                    authState.ok = false;
+                    authState.code = weiboAuth.UNAUTHENTICATED_CODE;
+                }
+                reply(r.ok ? { ok: true, fid: r.fid } : { ok: false, needLogin: r.needLogin, error: r.error });
+            } catch (e) {
+                reply({ ok: false, error: `发送图片失败: ${e.message}` });
+            }
+        });
+        return;
+    }
+
+    // 通知偏好：默认只提醒"提到我"；关键词与"全部新消息"由用户开
+    if (url.pathname === '/api/notify-config') {
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, ...notifyConfig, me: meState.screenName }));
+            return;
+        }
+        if (req.method === 'POST') {
+            let body = '';
+            req.setEncoding('utf-8');
+            req.on('data', c => { body += c; });
+            req.on('end', () => {
+                try {
+                    const p = JSON.parse(body);
+                    notifyConfig = {
+                        enabled: p.enabled !== false,
+                        notifyAll: p.notifyAll === true,
+                        // 关键词去空去重，避免空串命中一切
+                        keywords: [...new Set((Array.isArray(p.keywords) ? p.keywords : []).map(k => String(k).trim()).filter(Boolean))].slice(0, 30),
+                    };
+                    fs.writeFileSync(NOTIFY_CONFIG_PATH, JSON.stringify(notifyConfig, null, 2), 'utf-8');
+                    console.log(`[notify] 通知设置已更新（提到我${notifyConfig.enabled ? '开' : '关'}，关键词 ${notifyConfig.keywords.length} 个，全部新消息${notifyConfig.notifyAll ? '开' : '关'}）`);
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true, ...notifyConfig }));
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: e.message }));
+                }
+            });
+            return;
+        }
+    }
+
+    // 当前账号（前端用它做「@我」筛选）
+    if (url.pathname === '/api/me') {
+        if (!meState.screenName) refreshMe();   // 懒补一次，不阻塞本次响应
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, screenName: meState.screenName, uid: meState.uid }));
         return;
     }
 
@@ -1268,6 +1400,7 @@ server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Weibo Group Chat Viewer: ${url}`);
     keepAliveTick('启动');
+    refreshMe();   // 取当前账号昵称，供「提到我」判定与筛选
     // 图片缓存淘汰：启动时一次 + 每 6 小时一次。缓存内容都能从 CDN 再取，
     // 所以淘汰是安全的；不做则只增不减（实测涨到 688MB）。
     const evictTick = () => {

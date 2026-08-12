@@ -89,3 +89,79 @@ test('sendGroupMessage: 响应非 JSON 时报错而非当成功', async () => {
     assert.strictEqual(r.ok, false);
     assert.match(r.error, /502/);
 });
+// ── 发图（两步：uploadx 取 fid → send_message 带 fids + media_type=1）──
+
+function uploadThenSend({ upload, send }) {
+    const calls = [];
+    const impl = async (url, init) => {
+        const u = String(url);
+        calls.push({ url: u, init });
+        const body = u.includes(sm.UPLOAD_PATH) ? upload : send;
+        return { status: 200, ok: true, json: async () => body };
+    };
+    impl.calls = calls;
+    return impl;
+}
+
+test('sendGroupImage: 先 multipart 上传取 fid，再带 fids + media_type=1 发送', async () => {
+    const impl = uploadThenSend({ upload: { fid: 'FID123' }, send: { result: true, id: 999 } });
+    const r = await sm.sendGroupImage({
+        groupId: '123', buffer: Buffer.from([137, 80, 78, 71]), filename: 'a.png',
+        mimeType: 'image/png', cookieHeader: 'SUB=x', fetchImpl: impl,
+    });
+
+    assert.deepStrictEqual([r.ok, r.fid, r.messageId], [true, 'FID123', '999']);
+    assert.strictEqual(impl.calls.length, 2, '必须是上传 + 发送两步');
+
+    const [up, send] = impl.calls;
+    assert.match(up.url, new RegExp(sm.UPLOAD_PATH.replace(/\//g, '\\/')));
+    assert.ok(up.init.body instanceof FormData, '上传必须是 multipart');
+    assert.ok(!('Content-Type' in up.init.headers), 'boundary 交给 fetch 生成，不能手写 Content-Type');
+
+    const params = new URLSearchParams(send.init.body);
+    assert.strictEqual(params.get('fids'), 'FID123');
+    assert.strictEqual(params.get('media_type'), '1');
+    assert.strictEqual(params.get('content'), '分享图片', '与真实客户端一致的文案');
+    assert.deepStrictEqual(JSON.parse(params.get('annotations')), { webchat: 1, clientid: '' },
+        '发图同样需要客户端标记，否则被风控静默撤回');
+});
+
+test('sendGroupImage: 上传未返回 fid 时不发消息', async () => {
+    const impl = uploadThenSend({ upload: { result: false, error: '存储异常' }, send: { result: true } });
+    const r = await sm.sendGroupImage({ groupId: '1', buffer: Buffer.from([1]), cookieHeader: 'c', fetchImpl: impl });
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /fid/);
+    assert.strictEqual(impl.calls.length, 1, '拿不到 fid 就不该继续发送');
+});
+
+test('sendGroupImage: 上传遇 21301 → needLogin', async () => {
+    const impl = uploadThenSend({ upload: { error_code: 21301 }, send: {} });
+    const r = await sm.sendGroupImage({ groupId: '1', buffer: Buffer.from([1]), cookieHeader: 'c', fetchImpl: impl });
+    assert.deepStrictEqual([r.ok, r.needLogin], [false, true]);
+});
+
+test('sendGroupImage: 空图/超大图/缺 groupId 本地即拦，不打接口', async () => {
+    let called = 0;
+    const impl = async () => { called++; return { status: 200, json: async () => ({}) }; };
+    assert.match((await sm.sendGroupImage({ groupId: '', buffer: Buffer.from([1]), cookieHeader: 'c', fetchImpl: impl })).error, /会话 id/);
+    assert.match((await sm.sendGroupImage({ groupId: '1', buffer: Buffer.alloc(0), cookieHeader: 'c', fetchImpl: impl })).error, /为空/);
+    assert.match((await sm.sendGroupImage({ groupId: '1', buffer: Buffer.alloc(sm.MAX_IMAGE_BYTES + 1), cookieHeader: 'c', fetchImpl: impl })).error, /过大/);
+    assert.strictEqual(called, 0);
+});
+
+test('sendGroupImage: 上传本身抛错时给出可读原因', async () => {
+    const r = await sm.sendGroupImage({
+        groupId: '1', buffer: Buffer.from([1]), cookieHeader: 'c',
+        fetchImpl: async () => { throw new Error('socket hang up'); },
+    });
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /上传失败.*socket hang up/);
+});
+
+test('sendGroupMessage: 不传 mediaType 时保持纯文本行为（无 fids 字段）', async () => {
+    const impl = fakeFetch({ result: true, id: 1 });
+    await sm.sendGroupMessage({ groupId: '1', content: 'hi', cookieHeader: 'c', fetchImpl: impl });
+    const params = new URLSearchParams(impl.calls[0].init.body);
+    assert.strictEqual(params.get('media_type'), '0');
+    assert.strictEqual(params.get('fids'), null, '文本消息不该带 fids');
+});

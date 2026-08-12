@@ -109,6 +109,14 @@ button, select, input { font-family: inherit; }
 .composer.on { display: flex; }
 .composer textarea { flex: 1; min-height: 38px; max-height: 120px; padding: 9px 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); color: var(--ink); font-size: 14px; line-height: 1.4; font-family: inherit; resize: none; outline: none; transition: border-color .15s; }
 .composer textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-tint); }
+/* 表情选择器与输入区图标按钮 */
+.composer-icon { width: 34px; height: 34px; flex-shrink: 0; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); font-size: 16px; cursor: pointer; transition: all .15s; }
+.composer-icon:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
+.composer-icon.active { background: var(--primary); border-color: var(--primary); }
+.emoji-picker { display: none; max-height: 200px; overflow-y: auto; padding: 8px 16px; border-top: 1px solid var(--hairline); background: var(--surface-1); flex-shrink: 0; }
+.emoji-picker.show { display: flex; flex-wrap: wrap; gap: 4px; }
+.emoji-picker img { width: 28px; height: 28px; padding: 2px; border-radius: 6px; cursor: pointer; }
+.emoji-picker img:hover { background: var(--primary-tint); transform: scale(1.15); }
 .composer textarea:disabled { opacity: .6; cursor: wait; }
 .composer-send { height: 38px; padding: 0 18px; border: none; border-radius: 10px; background: var(--primary); color: var(--on-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; white-space: nowrap; }
 .composer-send:hover { background: var(--primary-hover); }
@@ -731,6 +739,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         </div>
         <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="统计面板">📊</button>
         <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
+        <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none">@我</button>
         <div class="nav-stats" id="stats"></div>
         <div class="nav-last-archived" id="lastArchived" title="上次归档时间"></div>
         <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点同步">实时</span>
@@ -780,6 +789,23 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                 </select>
             </div>
             <div class="settings-hint" id="scheduleNote" style="display:none"></div>
+        </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">通知</div>
+            <div class="settings-row">
+                <label for="notifyMention">提到我时通知</label>
+                <div class="switch-wrap"><input type="checkbox" id="notifyMention" onchange="saveNotifyConfig()"></div>
+            </div>
+            <div class="settings-row">
+                <label for="notifyAll">每轮新消息都汇总通知</label>
+                <div class="switch-wrap"><input type="checkbox" id="notifyAll" onchange="saveNotifyConfig()"></div>
+            </div>
+            <div class="modal-field">
+                <label>关键词订阅（逗号分隔，命中即通知）</label>
+                <input type="text" id="notifyKeywords" placeholder="显卡, 团购, 面试" onchange="saveNotifyConfig()">
+            </div>
+            <div class="settings-hint" id="notifyNote"></div>
         </div>
 
         <div class="settings-section">
@@ -854,9 +880,13 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         <div class="messages" id="messages"></div>
         <div class="stats-panel" id="statsPanel"></div>
         <div class="composer-hint" id="composerHint"></div>
+        <div class="emoji-picker" id="emojiPicker"></div>
         <div class="composer" id="composer">
-            <textarea id="composerInput" rows="1" placeholder="发送到当前群聊…（Enter 发送，Shift+Enter 换行）"
-                oninput="autoGrowComposer(this)" onkeydown="composerKeydown(event)"></textarea>
+            <button class="composer-icon" id="emojiBtn" onclick="toggleEmojiPicker()" title="表情">🙂</button>
+            <button class="composer-icon" onclick="document.getElementById('imageInput').click()" title="发送图片">🖼</button>
+            <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="sendChatImageFromInput(this)">
+            <textarea id="composerInput" rows="1" placeholder="发送到当前群聊…（Enter 发送，Shift+Enter 换行，可直接粘贴图片）"
+                oninput="autoGrowComposer(this)" onkeydown="composerKeydown(event)" onpaste="composerPaste(event)"></textarea>
             <button class="composer-send" id="composerSend" onclick="sendChatMessage()">发送</button>
         </div>
     </div>
@@ -1335,6 +1365,7 @@ function updateSummaryBar() {
 function openSettings() {
     document.getElementById('settingsModal').classList.add('show');
     checkAuthStatus();   // 打开时刷新账号状态那一行
+    loadNotifyConfig();
     fetch('/api/ai-config').then(r => r.json()).then(data => {
         if (data.ok && data.config) {
             document.getElementById('aiBaseUrl').value = data.config.baseUrl || '';
@@ -1934,6 +1965,99 @@ function clearSearch() {
     renderAll();
 }
 
+// ── 「提到我」与桌面通知 ────────────────────────────────────────────
+// 群里一天几百条，靠肉眼找与自己相关的消息不现实；实时同步此前也完全不提醒。
+// 通知判定在服务端（lib/notify-rules，有单测），这里只管筛选与弹出。
+let myName = '';
+let mentionOnly = false;
+
+async function loadMe() {
+    try {
+        const d = await (await fetch('/api/me')).json();
+        myName = d.screenName || '';
+        document.getElementById('mentionBtn').style.display = myName ? '' : 'none';
+    } catch { /* 拿不到就不显示该按钮 */ }
+}
+
+function toggleMentionOnly() {
+    mentionOnly = !mentionOnly;
+    document.getElementById('mentionBtn').classList.toggle('active', mentionOnly);
+    renderAll();
+}
+
+/** 与服务端 mentionsMe 同一判据：@昵称，且后面不接可延续昵称的字符。 */
+function messageMentionsMe(m) {
+    if (!myName) return false;
+    const esc = myName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('@' + esc + '(?![\\w一-鿿])').test(String(m.content || ''));
+}
+
+async function ensureNotifyPermission() {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+    return (await Notification.requestPermission()) === 'granted';
+}
+
+/** 弹出实时同步带回的通知（点击跳到那条消息）。 */
+function showNotifications(list, group) {
+    if (!list || !list.length) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    for (const n of list.slice(0, 3)) {   // 一轮最多 3 条，别刷屏
+        try {
+            const notif = new Notification(n.title, { body: n.body, tag: n.id || (group + '-' + n.kind), silent: n.kind === 'digest' });
+            notif.onclick = () => {
+                window.focus();
+                if (n.date) jumpFromSearch(n.date, n.id);
+            };
+        } catch { /* 被系统拦下就算了 */ }
+    }
+}
+
+async function loadNotifyConfig() {
+    try {
+        const d = await (await fetch('/api/notify-config')).json();
+        document.getElementById('notifyMention').checked = d.enabled !== false;
+        document.getElementById('notifyAll').checked = d.notifyAll === true;
+        document.getElementById('notifyKeywords').value = (d.keywords || []).join(', ');
+        updateNotifyNote();
+    } catch { /* 设置面板不至于因此打不开 */ }
+}
+
+function updateNotifyNote() {
+    const note = document.getElementById('notifyNote');
+    if (!('Notification' in window)) { note.textContent = '当前环境不支持桌面通知'; note.classList.add('on'); return; }
+    const perm = Notification.permission;
+    const live = document.getElementById('liveSelect');
+    if (perm === 'denied') note.textContent = '系统已拒绝通知权限，需在浏览器/系统设置里恢复';
+    else if (perm !== 'granted') note.textContent = '尚未授权桌面通知 —— 勾选上面任一项时会请求授权';
+    else if (live && live.value === '0') note.textContent = '已授权。但实时同步是关闭的，只在同步时才会有新消息通知';
+    else note.textContent = '已授权，实时同步期间会推送通知';
+    note.classList.add('on');
+}
+
+async function saveNotifyConfig() {
+    const enabled = document.getElementById('notifyMention').checked;
+    const notifyAll = document.getElementById('notifyAll').checked;
+    const keywords = document.getElementById('notifyKeywords').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+    // 只在真要弹通知时才请求权限：默认不打扰
+    if ((enabled || notifyAll || keywords.length) && !(await ensureNotifyPermission())) {
+        showToast('桌面通知未授权，规则已保存但不会弹出', 'error', 5000);
+    }
+    try {
+        const r = await (await fetch('/api/notify-config', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, notifyAll, keywords }),
+        })).json();
+        if (r.ok) {
+            document.getElementById('notifyKeywords').value = (r.keywords || []).join(', ');
+            updateNotifyNote();
+        } else showToast('通知设置保存失败：' + (r.error || '未知错误'), 'error', 5000);
+    } catch (e) {
+        showToast('通知设置保存失败：' + e.message, 'error', 5000);
+    }
+}
+
 function exportMessages() {
     const filtered = getFiltered();
     const text = filtered.map(m => {
@@ -1990,6 +2114,9 @@ function getFiltered() {
         if (mediaFilter === 'video' && !m.videoUrl && m.content !== '分享视频' && m.content !== 'Video') return false;
         if (mediaFilter === 'link' && !m.link && !m.share && !m.videoUrl) return false;
         if (hideNoise && isNoise(m)) return false;
+        // @我 无条件排噪声：签到机器人 @ 每个成员，实测占命中的 93%（204/219），
+        // 不能指望用户恰好开着「隐藏噪声」
+        if (mentionOnly && (!messageMentionsMe(m) || isNoise(m))) return false;
         // 注：搜索不再参与过滤，改为在列表内高亮+定位（保留上下文）
         return true;
     });
@@ -2419,6 +2546,7 @@ selectDate = function(d) {
 };
 
 loadData();
+loadMe();
 loadSchedule();
 checkAiConfig();
 
@@ -2470,6 +2598,8 @@ function startLive() {
         }
         if (event.type === 'auth' && event.ok === false) { checkAuthStatus(); return; }
         if (event.type !== 'messages') return;
+        // 通知与视图刷新解耦：不管在看哪个群/哪天，该提醒的都要提醒
+        showNotifications(event.notifications, event.group);
         // 只有当前正在看的群 + 当天有新消息才刷新，其它群静默入库
         if (event.group !== currentGroup) { checkForUpdates(); return; }
         // 新消息不在当前查看的日期（典型场景：跨过半夜）。不自动切走视图，
@@ -2547,6 +2677,76 @@ function composerKeydown(e) {
         sendChatMessage();
     }
 }
+// 表情选择器：直接复用 /api/emotions 那 340 条官方清单（渲染消息也用它），
+// 点一下往输入框插入 [标签] —— 微博就是靠这个标签识别表情的。
+function toggleEmojiPicker() {
+    const el = document.getElementById('emojiPicker');
+    const open = !el.classList.contains('show');
+    if (open && !el.dataset.built) {
+        const entries = Object.entries(emojiMap);
+        if (!entries.length) { showToast('表情清单还没加载好，稍后再试', 'error', 3000); return; }
+        el.innerHTML = entries.map(([tag, url]) =>
+            `<img src="${url}" alt="${tag}" title="${tag}" loading="lazy" onclick="insertEmoji('${tag.replace(/'/g, "\\'")}')">`
+        ).join('');
+        el.dataset.built = '1';
+    }
+    el.classList.toggle('show', open);
+    document.getElementById('emojiBtn').classList.toggle('active', open);
+}
+
+function insertEmoji(tag) {
+    const input = document.getElementById('composerInput');
+    const at = input.selectionStart ?? input.value.length;
+    input.value = input.value.slice(0, at) + tag + input.value.slice(input.selectionEnd ?? at);
+    input.focus();
+    input.selectionStart = input.selectionEnd = at + tag.length;
+    autoGrowComposer(input);
+}
+
+/** 粘贴板里有图就直接发（微信/QQ 的肌肉记忆）。 */
+function composerPaste(e) {
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (!item) return;
+    e.preventDefault();
+    const file = item.getAsFile();
+    if (file) sendChatImage(file);
+}
+
+function sendChatImageFromInput(el) {
+    const file = el.files && el.files[0];
+    el.value = '';   // 允许连发同一张
+    if (file) sendChatImage(file);
+}
+
+async function sendChatImage(file) {
+    if (!liveGroups.includes(currentGroup)) { showToast('该群暂不可发送，先点「同步」跑一次归档', 'error', 5000); return; }
+    const btn = document.getElementById('composerSend');
+    btn.disabled = true;
+    showToast(`正在发送图片（${(file.size / 1024).toFixed(0)}KB）…`, 'success', 3000);
+    try {
+        const dataBase64 = await new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(String(fr.result).split(',')[1]);
+            fr.onerror = () => reject(new Error('读取文件失败'));
+            fr.readAsDataURL(file);
+        });
+        const r = await (await fetch('/api/send-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ group: currentGroup, dataBase64, filename: file.name || 'image.png', mimeType: file.type || 'image/png' }),
+        })).json();
+        if (r.ok) showToast('✓ 图片已发送', 'success', 2500);
+        else {
+            showToast('图片发送失败：' + (r.error || '未知错误'), 'error', 6000);
+            if (r.needLogin) { checkAuthStatus(); doLogin(); }
+        }
+    } catch (e) {
+        showToast('图片发送出错：' + e.message, 'error', 6000);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 async function sendChatMessage() {
     const input = document.getElementById('composerInput');
     const btn = document.getElementById('composerSend');
