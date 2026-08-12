@@ -294,6 +294,20 @@ button, select, input { font-family: inherit; }
 .heatmap-title[data-tooltip]::after { left: 0; transform: none; }
 /* 顶部导航的提示框朝下弹出，避免被窗口上边缘裁切 */
 .nav-top [data-tooltip]::after, .sidebar-header[data-tooltip]::after { bottom: auto; top: calc(100% + 6px); }
+/* 全量搜索：命中提示 + 跨日期结果面板 */
+.search-all-hint { font-size: 12px; color: var(--primary-hover); cursor: pointer; text-decoration: underline; white-space: nowrap; }
+.search-all-hint:hover { color: var(--ink); }
+.search-results { display: none; max-height: 42vh; overflow-y: auto; border-bottom: 1px solid var(--hairline); background: var(--surface-1); flex-shrink: 0; }
+.search-results.show { display: block; }
+.sr-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; font-size: 13px; color: var(--ink-subtle); position: sticky; top: 0; background: var(--surface-1); }
+.sr-days { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
+.sr-day { font-size: 12px; padding: 2px 8px; border-radius: 9999px; background: var(--surface-3); color: var(--ink-muted); cursor: pointer; }
+.sr-day:hover { background: var(--primary-tint); color: var(--primary-hover); }
+.sr-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 16px; cursor: pointer; border-top: 1px solid var(--hairline); font-size: 13px; }
+.sr-row:hover { background: var(--surface-2); }
+.sr-date { color: var(--ink-tertiary); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.sr-user { color: var(--primary-hover); font-weight: 500; flex-shrink: 0; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-text { color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Filter status */
 .filter-bar { padding: 0 16px; height: 0; overflow: hidden; transition: height .2s; font-size: 13px; color: var(--ink-subtle); display: flex; align-items: center; gap: 12px; }
@@ -704,6 +718,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             </div>
             <div class="search-count" id="searchCount">
                 <span id="searchCountText"></span>
+                <span class="search-all-hint" id="searchAllHint" onclick="openSearchResults()" title="点击查看全部日期的搜索结果"></span>
                 <div class="search-nav" id="searchNav">
                     <button class="search-nav-btn" onclick="navigateSearch(-1)" title="上一处">▲</button>
                     <button class="search-nav-btn" onclick="navigateSearch(1)" title="下一处">▼</button>
@@ -826,6 +841,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             </div>
         </div>
         <div class="filter-bar" id="filterBar"></div>
+        <div class="search-results" id="searchResults"></div>
         <div class="summary-bar" id="summaryBar" style="display:none">
             <button class="summary-btn" id="summaryBtn" onclick="loadSummary()">✨ AI 摘要</button>
             <button class="summary-collapse" id="summaryCollapse" onclick="toggleSummary()" style="display:none">收起</button>
@@ -1841,6 +1857,11 @@ function clearUserFilter() {
 }
 
 // Search
+// 搜索分两层：当天就地高亮（原行为，输入即见）+ 跨全部日期的结果面板。
+// 此前只有前者，于是"搜索消息"实际只搜了当前选中的那一天。
+let globalSearchTimer = null;
+let globalSearchQuery = '';
+
 function onSearchInput(value) {
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(() => {
@@ -1848,16 +1869,68 @@ function onSearchInput(value) {
         document.getElementById('searchClear').className = 'search-clear' + (searchQuery ? ' show' : '');
         renderAll();
     }, 150);
+    // 全量检索单独节流：它要跨 10 万条，别跟着每次按键跑
+    clearTimeout(globalSearchTimer);
+    globalSearchTimer = setTimeout(() => runGlobalSearch(value.trim()), 350);
+}
+
+async function runGlobalSearch(q) {
+    globalSearchQuery = q;
+    const hint = document.getElementById('searchAllHint');
+    if (!q) { hint.textContent = ''; closeSearchResults(); return; }
+    try {
+        const params = new URLSearchParams({ group: currentGroup || '', q, limit: '60' });
+        const d = await (await fetch('/api/search?' + params)).json();
+        if (globalSearchQuery !== q) return;   // 已有更新的查询，丢弃旧结果
+        if (!d.ok || d.total === 0) { hint.textContent = ''; return; }
+        hint.innerHTML = `全部日期 <b>${d.total}</b> 条`;
+        hint.dataset.payload = JSON.stringify(d);
+    } catch { /* 检索失败不影响当天高亮 */ }
+}
+
+function openSearchResults() {
+    const hint = document.getElementById('searchAllHint');
+    let d;
+    try { d = JSON.parse(hint.dataset.payload || '{}'); } catch { return; }
+    if (!d.hits || !d.hits.length) return;
+    const rows = d.hits.map(h => `<div class="sr-row" onclick="jumpFromSearch('${h.date}','${h.id}')">
+        <span class="sr-date">${h.date} ${(h.time || '').split(' ')[1] || ''}</span>
+        <span class="sr-user">${escapeHtml(h.user || '')}</span>
+        <span class="sr-text">${highlightText(escapeHtml(h.preview || ''), globalSearchQuery)}</span>
+    </div>`).join('');
+    const days = d.byDate.slice(0, 12).map(x => `<span class="sr-day" onclick="jumpFromSearch('${x.date}')">${x.date.slice(5)} (${x.count})</span>`).join('');
+    document.getElementById('searchResults').innerHTML = `
+        <div class="sr-head">
+            <span>共 <b>${d.total}</b> 条 · 跨 ${d.byDate.length} 天${d.truncated ? `（先显示最近 ${d.hits.length} 条）` : ''}</span>
+            <button class="summary-collapse" onclick="closeSearchResults()">✕ 关闭</button>
+        </div>
+        ${days ? `<div class="sr-days">${days}</div>` : ''}
+        <div class="sr-list">${rows}</div>`;
+    document.getElementById('searchResults').classList.add('show');
+}
+
+function closeSearchResults() {
+    document.getElementById('searchResults').classList.remove('show');
+}
+
+/** 点结果 → 切到那天并定位；不带 id 时只切日期。 */
+function jumpFromSearch(date, id) {
+    closeSearchResults();
+    if (id) jumpToSource(date, id);
+    else { selectDate(date); }
 }
 
 function clearSearch() {
     searchQuery = '';
+    globalSearchQuery = '';
     searchHighlights = [];
     searchNavIndex = -1;
     document.getElementById('searchInput').value = '';
     document.getElementById('searchClear').className = 'search-clear';
     document.getElementById('searchCountText').textContent = '';
     document.getElementById('searchNav').className = 'search-nav';
+    document.getElementById('searchAllHint').textContent = '';
+    closeSearchResults();
     renderAll();
 }
 

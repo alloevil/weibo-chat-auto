@@ -51,6 +51,8 @@ const { evictCache, isCacheable } = require('./lib/cache-store');
 const { findArchiveAgents, describeSchedule } = require('./lib/launch-agents');
 // 表情清单：内置 Unicode 表只覆盖 83%，其余靠微博官方清单渲染成图片
 const { loadEmotions } = require('./lib/emotions');
+// 跨日期全量搜索（子串命中 + 时间倒序，与 AI 问答的 BM25 刻意分开）
+const { searchMessages } = require('./lib/search-messages');
 
 /** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
 function readGroupState(groupName) {
@@ -417,6 +419,20 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ groups, lastArchived }));
+        return;
+    }
+
+    // 跨日期全量搜索。之前搜索只作用于当前选中的那一天，16 万条历史里只扫几百条。
+    // 走 loadMessages 的进程内缓存，因此不必额外建索引。
+    if (url.pathname === '/api/search') {
+        const group = url.searchParams.get('group') || '';
+        const q = url.searchParams.get('q') || '';
+        const limit = Math.min(Number(url.searchParams.get('limit')) || 60, 200);
+        const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
+        const t0 = Date.now();
+        const r = searchMessages(loadMessages(group), q, { limit, offset });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, ...r, ms: Date.now() - t0 }));
         return;
     }
 
