@@ -462,6 +462,9 @@ const server = http.createServer((req, res) => {
     // 不在本地伪造回显（两条来源会打架）。
     if (url.pathname === '/api/send' && req.method === 'POST') {
         let body = '';
+        // setEncoding 后 Node 用 StringDecoder 保留不完整的多字节序列；
+        // 少了它，中文请求体跨 chunk 就会碎成 ���（见 lib/read-stream.js）
+        req.setEncoding('utf-8');
         req.on('data', c => { body += c; if (body.length > 1e5) req.destroy(); });
         req.on('end', async () => {
             const reply = (r) => {
@@ -508,6 +511,7 @@ const server = http.createServer((req, res) => {
         }
         if (req.method === 'POST') {
             let body = '';
+            req.setEncoding('utf-8');
             req.on('data', c => { body += c; });
             req.on('end', () => {
                 try {
@@ -619,6 +623,9 @@ const server = http.createServer((req, res) => {
             // 从归档器输出提取人类可读的进度（解析规则见 lib/sync-report）
             for (const line of text.split('\n')) syncReport.updateProgress(progress, line);
         };
+        // 归档器输出含中文，同样必须按流解码而不是逐块 toString
+        child.stdout.setEncoding('utf-8');
+        child.stderr.setEncoding('utf-8');
         child.stdout.on('data', onChunk);
         child.stderr.on('data', onChunk);
         child.on('close', (code) => {
@@ -691,6 +698,7 @@ const server = http.createServer((req, res) => {
 
         if (req.method === 'POST') {
             let body = '';
+            req.setEncoding('utf-8');
             req.on('data', chunk => { body += chunk; });
             req.on('end', () => {
                 try {
@@ -842,6 +850,7 @@ const server = http.createServer((req, res) => {
 
         if (req.method === 'POST') {
             let body = '';
+            req.setEncoding('utf-8');
             req.on('data', chunk => { body += chunk; });
             req.on('end', () => {
                 try {
@@ -1155,6 +1164,7 @@ const server = http.createServer((req, res) => {
     // --- Q&A Endpoint (Agentic RAG) ---
     if (url.pathname === '/api/qa' && req.method === 'POST') {
         let body = '';
+        req.setEncoding('utf-8');
         req.on('data', c => body += c);
         req.on('end', () => {
             const reply = (data) => { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };

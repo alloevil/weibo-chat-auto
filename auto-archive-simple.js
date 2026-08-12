@@ -8,6 +8,7 @@ const cookieStore = require('./lib/cookie-store');
 const { formatLocalDate, formatLocalTime, writeJsonAtomic, mergeIntoDayFile } = require('./lib/day-file');
 const weiboAuth = require('./lib/weibo-auth');
 const { normalizeMessage: sharedNormalizeMessage } = require('./lib/normalize-message');
+const { readUtf8 } = require('./lib/read-stream');
 
 // 配置
 const CONFIG = {
@@ -653,9 +654,13 @@ async function main() {
                     'X-Requested-With': 'XMLHttpRequest',
                 },
             }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => resolve({ status: res.statusCode, body: data }));
+                // 必须攒 Buffer 再整体解码：`data += chunk` 会把每个 chunk 单独
+                // toString('utf8')，中文字跨 chunk 边界时两半各自解码失败 → ���。
+                // 实测已因此写坏 446 条消息（见 lib/read-stream.js）。
+                readUtf8(res).then(
+                    body => resolve({ status: res.statusCode, body }),
+                    reject
+                );
             });
             req.on('error', reject);
             req.setTimeout(30000, () => { req.destroy(); reject(new Error('timeout')); });
