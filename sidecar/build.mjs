@@ -19,7 +19,7 @@ fs.mkdirSync(distDir, { recursive: true });
 
 const outfile = path.join(distDir, `viewer-server${ext}`);
 execSync(
-  `bun build "${path.join(root, 'viewer-server.js')}" --compile --outfile "${outfile}"`,
+  `bun build "${path.join(root, 'scripts', 'viewer-server.js')}" --compile --outfile "${outfile}"`,
   { cwd: root, stdio: 'inherit' }
 );
 

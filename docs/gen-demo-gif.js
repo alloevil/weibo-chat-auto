@@ -49,7 +49,7 @@ for (let i = 0; i < 60; i++) {
 fs.writeFileSync(path.join(GROUP_DIR, `weibo_chat_${day}.json`), JSON.stringify(msgs));
 
 const PORT = 3998;
-const srv = execFile('node', [path.join(__dirname, '..', 'viewer-server.js')], {
+const srv = execFile('node', [path.join(__dirname, '..', 'scripts', 'viewer-server.js')], {
     env: { ...process.env, WEIBO_OUTPUT_DIR: TMP, WEIBO_PORT: String(PORT) },
 });
 srv.stderr.on('data', d => process.stderr.write('[srv:err] ' + d));

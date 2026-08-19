@@ -5,9 +5,11 @@ const path = require('path');
 const { exec } = require('child_process');
 
 const PORT = process.env.WEIBO_PORT ? Number(process.env.WEIBO_PORT) : 3456;
+// 仓库根目录（本脚本在 scripts/ 下,运行时数据仍存根目录）
+const ROOT = path.join(__dirname, '..');
 const OUTPUT_DIR = process.env.WEIBO_OUTPUT_DIR
     ? path.resolve(process.env.WEIBO_OUTPUT_DIR)
-    : path.join(__dirname, 'output');
+    : path.join(ROOT, 'output');
 
 process.on('uncaughtException', (err) => {
     console.error('[uncaughtException]', err.message);
@@ -18,7 +20,7 @@ process.on('unhandledRejection', (err) => {
 
 function loadCookies() {
     // cookie-store 是 cookies.json 的唯一读写入口（fs/path 依赖，Bun 可打包）
-    return require('./lib/cookie-store').cookieHeader();
+    return require('../lib/cookie-store').cookieHeader();
 }
 
 // 微博响应会滚动续期部分 Cookie（Set-Cookie），吸收回 cookies.json 延长登录有效期
@@ -26,35 +28,35 @@ function absorbSetCookies(proxyRes, requestUrl) {
     const sc = proxyRes.headers['set-cookie'];
     if (!sc || !sc.length) return;
     try {
-        require('./lib/cookie-store').absorbSetCookies(sc, requestUrl);
+        require('../lib/cookie-store').absorbSetCookies(sc, requestUrl);
     } catch (e) {
         console.error('[cookie] Set-Cookie 吸收失败:', e.message);
     }
 }
 
 // 消息加载与缓存统一走 lib/load-messages（eval/索引脚本共用同一实现）
-const messageStore = require('./lib/load-messages');
+const messageStore = require('../lib/load-messages');
 // 登录态预检与归档器共用同一判据（接口 error_code，见 lib/weibo-auth）
-const weiboAuth = require('./lib/weibo-auth');
+const weiboAuth = require('../lib/weibo-auth');
 // 归档器输出 → 同步结果/进度 的解析规则统一在 lib/sync-report（有对应单测）
-const syncReport = require('./lib/sync-report');
+const syncReport = require('../lib/sync-report');
 // 实时同步（lib/live-sync）：查看器常驻期间轮询 webim，把新消息并入日文件并
 // 通过 SSE 推给页面。只在有订阅者时轮询，没人看不打接口。
-const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('./lib/live-sync');
+const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('../lib/live-sync');
 // 发消息（写操作）统一走 lib/send-message：微博失败也回 HTTP 200，必须解析 body
-const { sendGroupMessage, sendGroupImage } = require('./lib/send-message');
+const { sendGroupMessage, sendGroupImage } = require('../lib/send-message');
 // 跨站写操作拦截（CSRF）：只绑 127.0.0.1 不足以防护，见 lib/csrf-guard
-const { isCrossSiteRequest } = require('./lib/csrf-guard');
+const { isCrossSiteRequest } = require('../lib/csrf-guard');
 // 图片缓存治理：cache/images 是纯优化（内容可再取），此前无淘汰策略涨到 688MB
-const { evictCache, isCacheable } = require('./lib/cache-store');
+const { evictCache, isCacheable } = require('../lib/cache-store');
 // 定时归档任务的发现/解析（按程序路径认领，不硬编码 label）见 lib/launch-agents
-const { findArchiveAgents, describeSchedule } = require('./lib/launch-agents');
+const { findArchiveAgents, describeSchedule } = require('../lib/launch-agents');
 // 表情清单：内置 Unicode 表只覆盖 83%，其余靠微博官方清单渲染成图片
-const { loadEmotions } = require('./lib/emotions');
+const { loadEmotions } = require('../lib/emotions');
 // 跨日期全量搜索（子串命中 + 时间倒序，与 AI 问答的 BM25 刻意分开）
-const { searchMessages } = require('./lib/search-messages');
+const { searchMessages } = require('../lib/search-messages');
 // 「提到我」与通知规则（纯判定，见 lib/notify-rules）
-const { buildNotifications } = require('./lib/notify-rules');
+const { buildNotifications } = require('../lib/notify-rules');
 
 // 当前账号（用于判定"提到我"、排除自己发的消息）。启动与保活时刷新。
 const meState = { screenName: '', uid: '', fetchedAt: 0 };
@@ -76,7 +78,7 @@ async function refreshMe() {
 }
 
 // 通知偏好（与实时同步同一套路：存盘、默认保守 —— 只提醒提到我）
-const NOTIFY_CONFIG_PATH = path.join(__dirname, 'notify-config.json');
+const NOTIFY_CONFIG_PATH = path.join(ROOT, 'notify-config.json');
 function readNotifyConfig() {
     try {
         const c = JSON.parse(fs.readFileSync(NOTIFY_CONFIG_PATH, 'utf-8'));
@@ -91,7 +93,7 @@ let notifyConfig = readNotifyConfig();
 function readGroupState(groupName) {
     const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
     try {
-        return JSON.parse(fs.readFileSync(path.join(__dirname, 'state', `last-archive-state_${safe}.json`), 'utf-8'));
+        return JSON.parse(fs.readFileSync(path.join(ROOT, 'state', `last-archive-state_${safe}.json`), 'utf-8'));
     } catch {
         return null;
     }
@@ -114,7 +116,7 @@ function resolveLiveGroups() {
 // 同一个接口观察它）。默认开着就有可能悄悄吃掉原生客户端的未读提示 ——
 // 这种代价必须由用户显式选择承担，而不是默认替他决定。
 // 持久化在 live-config.json（与 ai-config.json 同套路，不去改用户手写的 config.json）。
-const LIVE_CONFIG_PATH = path.join(__dirname, 'live-config.json');
+const LIVE_CONFIG_PATH = path.join(ROOT, 'live-config.json');
 function readLiveEnabled() {
     try {
         return JSON.parse(fs.readFileSync(LIVE_CONFIG_PATH, 'utf-8')).enabled === true;
@@ -236,14 +238,14 @@ function rewriteImageUrls(messages) {
     }
 }
 
-const CACHE_DIR = path.join(__dirname, 'cache', 'images');
+const CACHE_DIR = path.join(ROOT, 'cache', 'images');
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
 // Reusable LLM API caller (OpenAI-compatible)
 function callLlmApi(messages, callback) {
     let aiConfig;
     try {
-        aiConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'ai-config.json'), 'utf-8'));
+        aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
     } catch { callback(null, 'AI 未配置'); return; }
     const reqBody = JSON.stringify({ model: aiConfig.model, messages });
     const apiUrl = new URL(aiConfig.baseUrl.replace(/\/$/, '') + '/chat/completions');
@@ -707,7 +709,7 @@ const server = http.createServer((req, res) => {
     // 表情清单（标签 → 图片 URL）。磁盘缓存 7 天，网络失败退回旧缓存，
     // 因此前端拿不到映射只会退化成显示 [标签]，不会白屏或报错。
     if (url.pathname === '/api/emotions') {
-        loadEmotions(path.join(__dirname, 'cache', 'emotions.json'), { cookieHeader: loadCookies() })
+        loadEmotions(path.join(ROOT, 'cache', 'emotions.json'), { cookieHeader: loadCookies() })
             .then(({ map, source, count }) => {
                 if (source === 'network') console.log(`[emotions] 已更新表情清单 ${count} 条`);
                 else if (source === 'empty') console.warn('[emotions] 表情清单拉取失败且无缓存，未知表情将显示为文字标签');
@@ -760,7 +762,7 @@ const server = http.createServer((req, res) => {
         global.__syncProgress = progress;
 
         const { spawn } = require('child_process');
-        const child = spawn(jsRuntime, [path.join(__dirname, 'auto-archive-simple.js')], {
+        const child = spawn(jsRuntime, [path.join(ROOT, 'scripts', 'auto-archive-simple.js')], {
             env: { ...process.env, PATH: process.env.PATH },
         });
         let out = '';
@@ -872,7 +874,7 @@ const server = http.createServer((req, res) => {
                     let content;
                     try { content = fs.readFileSync(CANONICAL_PATH, 'utf-8'); } catch {
                         res.writeHead(404, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ ok: false, error: 'Plist not found. Run setup.sh first.' }));
+                        res.end(JSON.stringify({ ok: false, error: 'Plist not found. Run scripts/setup.sh first.' }));
                         return;
                     }
                     content = content.replace(
@@ -977,7 +979,7 @@ const server = http.createServer((req, res) => {
 
     // AI config: read/write ai-config.json
     if (url.pathname === '/api/ai-config') {
-        const AI_CONFIG_PATH = path.join(__dirname, 'ai-config.json');
+        const AI_CONFIG_PATH = path.join(ROOT, 'ai-config.json');
 
         if (req.method === 'GET') {
             try {
@@ -1029,7 +1031,7 @@ const server = http.createServer((req, res) => {
             return;
         }
 
-        const AI_CONFIG_PATH = path.join(__dirname, 'ai-config.json');
+        const AI_CONFIG_PATH = path.join(ROOT, 'ai-config.json');
         let aiConfig;
         try { aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8')); } catch {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1296,7 +1298,7 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify(result));
         };
         try {
-            const modPath = require('path').join(__dirname, 'lib', 'browser-login.js');
+            const modPath = require('path').join(ROOT, 'lib', 'browser-login.js');
             const { browserLogin } = require(modPath);
             // 扫码成功后立即保活一次：拿到全新会话的同时把 24h 滚动 Cookie 也续上
             browserLogin().then(async (r) => {
@@ -1332,7 +1334,7 @@ const server = http.createServer((req, res) => {
 
             // Agent mode (default): Vercel AI SDK with tool-use loop
             let aiConfig;
-            try { aiConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'ai-config.json'), 'utf-8')); } catch {
+            try { aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8')); } catch {
                 reply({ ok: false, error: 'AI 未配置' }); return;
             }
             import('./qa-agent.mjs').then(({ askAgent }) => {
@@ -1350,7 +1352,7 @@ const server = http.createServer((req, res) => {
 
     // Static page
     if (url.pathname === '/' || url.pathname === '/index.html') {
-        let html = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8');
+        let html = fs.readFileSync(path.join(ROOT, 'viewer.html'), 'utf-8');
         // 按请求的 User-Agent 判断是否桌面应用的 WebView（它带自定义 UA
         // 标识 "WeiboChatDesktop"）。这样同一个端口既能服务桌面 app（登录走
         // Rust 原生扫码窗），也能服务普通浏览器（登录走 Puppeteer 扫码）。
@@ -1367,7 +1369,7 @@ const server = http.createServer((req, res) => {
 
     // 静态 JS 模块（lib/*.js）
     if (/^\/lib\/[\w-]+\.js$/.test(url.pathname)) {
-        const filePath = path.join(__dirname, url.pathname);
+        const filePath = path.join(ROOT, url.pathname);
         if (fs.existsSync(filePath)) {
             res.writeHead(200, {
                 'Content-Type': 'application/javascript; charset=utf-8',

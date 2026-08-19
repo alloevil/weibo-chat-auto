@@ -216,7 +216,7 @@ fn find_cookie_path(_app: &tauri::AppHandle) -> PathBuf {
         let mut dir = exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
         loop {
             let candidate = dir.join("cookies.json");
-            if dir.join("viewer-server.js").exists() {
+            if dir.join("scripts").join("viewer-server.js").exists() {
                 return candidate;
             }
             if !dir.pop() {
@@ -227,7 +227,7 @@ fn find_cookie_path(_app: &tauri::AppHandle) -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_default();
     let mut dir = cwd.clone();
     loop {
-        if dir.join("viewer-server.js").exists() {
+        if dir.join("scripts").join("viewer-server.js").exists() {
             return dir.join("cookies.json");
         }
         if !dir.pop() {

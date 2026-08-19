@@ -65,7 +65,7 @@ console.log('[demo] wrote', msgs.length, 'fake messages to', GROUP_DIR);
 
 // 启动一个临时服务器实例（独立端口 + 指向假数据目录）
 const PORT = 3999;
-const srv = execFile('node', [path.join(__dirname, '..', 'viewer-server.js')], {
+const srv = execFile('node', [path.join(__dirname, '..', 'scripts', 'viewer-server.js')], {
     env: { ...process.env, WEIBO_OUTPUT_DIR: TMP, WEIBO_PORT: String(PORT) },
 });
 srv.stdout.on('data', d => process.stdout.write('[srv] ' + d));

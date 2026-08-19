@@ -124,15 +124,7 @@ Q&A 功能采用 **Agentic Search** 模式：LLM 在迭代循环中自主决定�
 ## 文件结构
 
 ```
-qa-agent.mjs          # Agent 实现（loop + tools + ledger）
-viewer-server.js      # /api/qa 端点，分发 agent/legacy 模式
-eval/benchmark-qa.mjs # 对比测试脚本
-ai-config.json        # AI 配置（gitignored）
-```
-
-## 运行 Benchmark
-
-```bash
-npm run view          # 启动 server
-node eval/benchmark-qa.mjs # 运行对比测试
+scripts/qa-agent.mjs        # Agent 实现（loop + tools + ledger）
+scripts/viewer-server.js    # /api/qa 端点，分发 agent/legacy 模式
+ai-config.json              # AI 配置（gitignored）
 ```

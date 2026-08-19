@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { executeTool, expandContext } from '../qa-agent.mjs';
+import { executeTool, expandContext } from '../scripts/qa-agent.mjs';
 
 // 合成消息:两天,两个发言人,含 30 分钟以上时间断层
 const T0 = new Date('2026-07-01T10:00:00+08:00').getTime();

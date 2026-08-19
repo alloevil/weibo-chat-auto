@@ -2,15 +2,16 @@
 # 微博聊天自动归档 — 一键安装脚本
 #
 # 用法:
-#   ./setup.sh          交互式安装（推荐）
-#   ./setup.sh --yes    非交互安装，全部用默认值（不登录/不启用定时任务/不归档）
-#   ./setup.sh --help   显示帮助
+#   ./scripts/setup.sh          交互式安装（推荐）
+#   ./scripts/setup.sh --yes    非交互安装，全部用默认值（不登录/不启用定时任务/不归档）
+#   ./scripts/setup.sh --help   显示帮助
 #
 # 可重复运行（幂等）：已配置的步骤会跳过或覆盖。
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
 LABEL="com.allo.weibo-chat-archive"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 PLIST_DEST="$LAUNCH_AGENTS/$LABEL.plist"
@@ -21,7 +22,7 @@ for arg in "$@"; do
     case "$arg" in
         -y|--yes) ASSUME_YES=1 ;;
         -h|--help)
-            echo "用法: ./setup.sh [--yes] [--help]"
+            echo "用法: ./scripts/setup.sh [--yes] [--help]"
             echo "  --yes, -y   非交互安装：检查环境 + 装依赖 + 建 config，"
             echo "              跳过登录、定时任务与首次归档（用默认值）"
             echo "  --help, -h  显示本帮助"
@@ -76,8 +77,8 @@ NODE_DIR="$(dirname "$NODE_BIN")"
 ok "Node.js $(node --version)  ${DIM}($NODE_BIN)${RESET}"
 
 # Google Chrome（puppeteer 驱动它登录/抓取）——跨平台探测，复用 lib/chrome-path.js
-if node -e "require('$SCRIPT_DIR/lib/chrome-path').resolveChromePath('')" >/dev/null 2>&1; then
-    CHROME_FOUND="$(node -e "process.stdout.write(require('$SCRIPT_DIR/lib/chrome-path').resolveChromePath(''))" 2>/dev/null)"
+if node -e "require('$ROOT_DIR/lib/chrome-path').resolveChromePath('')" >/dev/null 2>&1; then
+    CHROME_FOUND="$(node -e "process.stdout.write(require('$ROOT_DIR/lib/chrome-path').resolveChromePath(''))" 2>/dev/null)"
     ok "Google Chrome：${DIM}${CHROME_FOUND}${RESET}"
 else
     warn "未找到 Google Chrome（必需）"
@@ -88,17 +89,17 @@ fi
 
 # 2. 安装依赖
 step "[2/5] 安装依赖"
-( cd "$SCRIPT_DIR" && npm install --no-audit --no-fund )
-mkdir -p "$SCRIPT_DIR/logs"
+( cd "$ROOT_DIR" && npm install --no-audit --no-fund )
+mkdir -p "$ROOT_DIR/logs"
 ok "依赖安装完成"
 
 # ── 3. 配置群聊 ──────────────────────────────────
 step "[3/5] 配置目标群聊"
-if [ -f "$SCRIPT_DIR/config.json" ]; then
+if [ -f "$ROOT_DIR/config.json" ]; then
     ok "config.json 已存在，跳过"
     info "如需修改群聊，编辑 ${DIM}config.json${RESET} 的 groups 字段"
 else
-    cp "$SCRIPT_DIR/config.example.json" "$SCRIPT_DIR/config.json"
+    cp "$ROOT_DIR/config.example.json" "$ROOT_DIR/config.json"
     if [ "$INTERACTIVE" -eq 1 ]; then
         echo "输入要归档的群名（必须与微博中的群名完全一致）"
         echo "${DIM}多个群用逗号分隔，直接回车则稍后手动编辑 config.json${RESET}"
@@ -122,14 +123,14 @@ fi
 
 # ── 4. 登录（保存 Cookie）────────────────────────
 step "[4/5] 登录微博"
-if [ -f "$SCRIPT_DIR/cookies.json" ]; then
+if [ -f "$ROOT_DIR/cookies.json" ]; then
     ok "cookies.json 已存在，跳过登录"
     info "如需重新登录：${DIM}npm run save-cookies${RESET}"
 elif [ "$INTERACTIVE" -eq 1 ]; then
     printf "现在扫码登录并保存 Cookie？[Y/n] "
     read -r ANS
     if [[ ! "$ANS" =~ ^[Nn] ]]; then
-        ( cd "$SCRIPT_DIR" && npm run save-cookies )
+        ( cd "$ROOT_DIR" && npm run save-cookies )
     else
         warn "已跳过。首次归档前需运行：${DIM}npm run save-cookies${RESET}"
     fi
@@ -151,16 +152,16 @@ install_plist() {
     <key>ProgramArguments</key>
     <array>
         <string>$NODE_BIN</string>
-        <string>$SCRIPT_DIR/auto-archive-simple.js</string>
+        <string>$ROOT_DIR/scripts/auto-archive-simple.js</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$SCRIPT_DIR</string>
+    <string>$ROOT_DIR</string>
     <key>StartInterval</key>
     <integer>3600</integer>
     <key>StandardOutPath</key>
-    <string>$SCRIPT_DIR/logs/archive.log</string>
+    <string>$ROOT_DIR/logs/archive.log</string>
     <key>StandardErrorPath</key>
-    <string>$SCRIPT_DIR/logs/archive-error.log</string>
+    <string>$ROOT_DIR/logs/archive-error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -172,13 +173,13 @@ PLIST
     launchctl unload "$PLIST_DEST" 2>/dev/null || true
     launchctl load "$PLIST_DEST"
     ok "定时任务已启用（每小时自动归档一次）"
-    info "日志：${DIM}$SCRIPT_DIR/logs/archive.log${RESET}"
+    info "日志：${DIM}$ROOT_DIR/logs/archive.log${RESET}"
 }
 
 if [ "$IS_MAC" -ne 1 ]; then
     info "定时任务自动安装仅支持 macOS（launchd）。"
     echo "    Linux/WSL 可用 cron 手动配置，例如每小时归档一次（crontab -e）："
-    echo "      ${DIM}0 * * * * cd $SCRIPT_DIR && $NODE_BIN auto-archive-simple.js >> logs/archive.log 2>&1${RESET}"
+    echo "      ${DIM}0 * * * * cd $ROOT_DIR && $NODE_BIN scripts/auto-archive-simple.js >> logs/archive.log 2>&1${RESET}"
     echo "    或随时手动运行 ${DIM}npm run archive${RESET} / 在查看器点 Sync Now。"
 elif [ "$INTERACTIVE" -eq 1 ]; then
     printf "启用定时自动归档（每小时一次，保持 Cookie 不过期）？[y/N] "
@@ -186,7 +187,7 @@ elif [ "$INTERACTIVE" -eq 1 ]; then
     if [[ "$ANS" =~ ^[Yy] ]]; then
         install_plist
     else
-        info "已跳过。随时可重跑 ${DIM}./setup.sh${RESET} 启用"
+        info "已跳过。随时可重跑 ${DIM}./scripts/setup.sh${RESET} 启用"
     fi
 else
     info "非交互环境，跳过定时任务设置"
@@ -213,7 +214,7 @@ fi
 # ── 首次归档 + 打开查看器（交互式引导）──────────────
 # 检测 config 是否仍是占位群名
 HAS_REAL_GROUPS="no"
-if [ -f "$SCRIPT_DIR/config.json" ]; then
+if [ -f "$ROOT_DIR/config.json" ]; then
     if node -e '
         const cfg = require("./config.json");
         const placeholder = ["群名称A","群名称B"];
@@ -222,15 +223,15 @@ if [ -f "$SCRIPT_DIR/config.json" ]; then
     ' 2>/dev/null; then HAS_REAL_GROUPS="yes"; fi
 fi
 
-if [ "$INTERACTIVE" -eq 1 ] && [ -f "$SCRIPT_DIR/cookies.json" ] && [ "$HAS_REAL_GROUPS" = "yes" ]; then
+if [ "$INTERACTIVE" -eq 1 ] && [ -f "$ROOT_DIR/cookies.json" ] && [ "$HAS_REAL_GROUPS" = "yes" ]; then
     printf "${BOLD}现在就归档一次并打开查看器？${RESET} [Y/n] "
     read -r ANS
     if [[ ! "$ANS" =~ ^[Nn] ]]; then
         info "开始归档（首次约需 1-2 分钟）..."
-        ( cd "$SCRIPT_DIR" && npm run archive )
+        ( cd "$ROOT_DIR" && npm run archive )
         info "启动查看器，浏览器将自动打开 http://localhost:3456"
         info "（按 ${DIM}Ctrl+C${RESET} 可停止查看器）"
-        ( cd "$SCRIPT_DIR" && npm run view )
+        ( cd "$ROOT_DIR" && npm run view )
     fi
 elif [ "$HAS_REAL_GROUPS" != "yes" ]; then
     warn "config.json 还是占位群名，请先填好真实群名再归档。"
