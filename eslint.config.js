@@ -10,7 +10,7 @@ module.exports = [
     prettier,
     // 通用 Node 脚本
     {
-        files: ['*.js', 'lib/**/*.js', 'test/**/*.js', 'scripts/**/*.js', 'foodmap/**/*.js'],
+        files: ['*.js', 'lib/**/*.js', 'test/**/*.js', 'scripts/**/*.js'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'commonjs',
@@ -42,7 +42,7 @@ module.exports = [
             'no-irregular-whitespace': 'off',
         },
     },
-    // ES module 脚本（.mjs）：qa-agent.mjs / eval/*.mjs / sidecar/build.mjs
+    // ES module 脚本（.mjs）：scripts/qa-agent.mjs / sidecar/build.mjs 等
     {
         files: ['**/*.mjs'],
         languageOptions: {
@@ -69,10 +69,10 @@ module.exports = [
             'no-irregular-whitespace': 'off',
         },
     },
-    // save-cookies.js / auto-archive-simple.js / foodmap/login.mjs / foodmap/verify-render.js
+    // scripts/save-cookies.js / scripts/auto-archive-simple.js / lib/browser-login.js
     // 含 puppeteer page.evaluate 回调，这些回调在浏览器上下文执行，DOM 全局是合法的
     {
-        files: ['save-cookies.js', 'auto-archive-simple.js', 'lib/browser-login.js', 'foodmap/login.mjs', 'foodmap/verify-render.js'],
+        files: ['scripts/save-cookies.js', 'scripts/auto-archive-simple.js', 'lib/browser-login.js'],
         languageOptions: {
             globals: {
                 document: 'readonly',
