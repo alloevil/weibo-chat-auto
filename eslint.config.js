@@ -30,6 +30,8 @@ module.exports = [
                 fetch: 'readonly',
                 AbortSignal: 'readonly',
                 URLSearchParams: 'readonly',
+                FormData: 'readonly',
+                Blob: 'readonly',
             },
         },
         rules: {
