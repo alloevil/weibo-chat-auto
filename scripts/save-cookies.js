@@ -1,11 +1,11 @@
 const puppeteer = require('puppeteer');
 
 const chatUrl = 'https://api.weibo.com/chat#/chat';
-const { resolveChromePath } = require('./lib/chrome-path');
-const cookieStore = require('./lib/cookie-store');
-const weiboAuth = require('./lib/weibo-auth');
+const { resolveChromePath } = require('../lib/chrome-path');
+const cookieStore = require('../lib/cookie-store');
+const weiboAuth = require('../lib/weibo-auth');
 let configChromePath = '';
-try { configChromePath = require('./config.json').chromePath; } catch { /* config 可缺省，靠探测 */ }
+try { configChromePath = require('../config.json').chromePath; } catch { /* config 可缺省，靠探测 */ }
 const chromePath = resolveChromePath(configChromePath);
 
 async function saveCookies() {

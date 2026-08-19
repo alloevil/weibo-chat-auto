@@ -18,11 +18,11 @@ npm install
 
 | 文件 | 作用 |
 | --- | --- |
-| `auto-archive-simple.js` | 归档器：登录、分页拉取、按天导出 |
-| `save-cookies.js` | 扫码登录并保存 Cookie |
-| `viewer-server.js` | 本地查看器服务器（图片代理、API、触发同步） |
+| `scripts/auto-archive-simple.js` | 归档器：登录、分页拉取、按天导出 |
+| `scripts/save-cookies.js` | 扫码登录并保存 Cookie |
+| `scripts/viewer-server.js` | 本地查看器服务器（图片代理、API、触发同步） |
 | `viewer.html` | 查看器单页应用（HTML + CSS + JS 同文件） |
-| `setup.sh` | 一键安装脚本 |
+| `scripts/setup.sh` | 一键安装脚本 |
 
 ## 本地运行
 

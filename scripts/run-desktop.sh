@@ -3,7 +3,7 @@
 # 自动检测并安装 Rust、Bun，编译 sidecar，启动桌面 app
 set -e
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 echo "🖥  微博群聊桌面应用"
 echo ""

@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url';
 // 不要换成 createRequire:bundler(Bun sidecar 编译)无法静态分析 createRequire,
 // 会导致 lib 模块不进 bundle,桌面版运行时报 Cannot find module。
 // BM25 检索层(bigram 分词,见 lib/search-bm25.js)
-import searchBm25 from './lib/search-bm25.js';
+import searchBm25 from '../lib/search-bm25.js';
 // 话题块索引:离线标注(qa-index/)优先,缺失/过期时即时切块降级
-import chunkIndex from './lib/chunk-index.js';
+import chunkIndex from '../lib/chunk-index.js';
 
 const { search: bm25Search } = searchBm25;
 const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
@@ -20,7 +20,7 @@ const LLM_TIMEOUT_MS = 60000;      // 主循环调用（带工具，可能较慢
 const RERANK_TIMEOUT_MS = 20000;   // 重排是纯打分，快得多
 
 function loadAiConfig() {
-  const cfgPath = path.join(__dirname, 'ai-config.json');
+  const cfgPath = path.join(__dirname, '..', 'ai-config.json');
   if (!fs.existsSync(cfgPath)) return null;
   return JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
 }

@@ -23,7 +23,7 @@ jobs:
 
       - name: Syntax-check all JS files
         run: |
-          for f in *.js lib/*.js test/*.js; do
+          for f in *.js lib/*.js scripts/*.js test/*.js; do
             [ -e "$f" ] || continue
             echo "checking $f"
             node --check "$f"
@@ -56,4 +56,4 @@ jobs:
       - name: Shellcheck setup.sh
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck -S warning setup.sh || true
+          shellcheck -S warning scripts/setup.sh || true

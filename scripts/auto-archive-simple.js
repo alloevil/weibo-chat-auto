@@ -3,22 +3,25 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { exec, spawn } = require('child_process');
-const { resolveChromePath } = require('./lib/chrome-path');
-const cookieStore = require('./lib/cookie-store');
-const { formatLocalDate, formatLocalTime, writeJsonAtomic, mergeIntoDayFile } = require('./lib/day-file');
-const weiboAuth = require('./lib/weibo-auth');
-const { normalizeMessage: sharedNormalizeMessage } = require('./lib/normalize-message');
-const { readUtf8 } = require('./lib/read-stream');
+const { resolveChromePath } = require('../lib/chrome-path');
+const cookieStore = require('../lib/cookie-store');
+const { formatLocalDate, formatLocalTime, writeJsonAtomic, mergeIntoDayFile } = require('../lib/day-file');
+const weiboAuth = require('../lib/weibo-auth');
+const { normalizeMessage: sharedNormalizeMessage } = require('../lib/normalize-message');
+const { readUtf8 } = require('../lib/read-stream');
+
+// 仓库根目录（本脚本在 scripts/ 下,运行时数据仍存根目录）
+const ROOT = path.join(__dirname, '..');
 
 // 配置
 const CONFIG = {
     chatUrl: 'https://api.weibo.com/chat#/chat',
-    outputDir: path.join(__dirname, 'output'),
-    chromePath: resolveChromePath((() => { try { return require('./config.json').chromePath; } catch { return ''; } })()),
+    outputDir: path.join(ROOT, 'output'),
+    chromePath: resolveChromePath((() => { try { return require('../config.json').chromePath; } catch { return ''; } })()),
     launchDelay: 3000,
 };
 
-const configData = require('./config.json');
+const configData = require('../config.json');
 const GROUPS = configData.groups || [configData.groupName || '茧房建筑师协会'];
 
 function getGroupOutputDir(groupName) {
@@ -28,7 +31,7 @@ function getGroupOutputDir(groupName) {
 
 function getGroupStateFile(groupName) {
     const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-    const stateDir = path.join(__dirname, 'state');
+    const stateDir = path.join(ROOT, 'state');
     if (!fs.existsSync(stateDir)) fs.mkdirSync(stateDir, { recursive: true });
     return path.join(stateDir, `last-archive-state_${safe}.json`);
 }
@@ -370,7 +373,7 @@ async function main() {
 
     // 截图
     try {
-        await page.screenshot({ path: path.join(__dirname, 'debug.png'), fullPage: false });
+        await page.screenshot({ path: path.join(ROOT, 'debug.png'), fullPage: false });
         console.log('截图已保存: debug.png');
     } catch (e) {
         console.log('截图失败，继续执行...');
@@ -406,7 +409,7 @@ async function main() {
         }
 
         // 再截图确认
-        await page.screenshot({ path: path.join(__dirname, 'debug.png'), fullPage: false });
+        await page.screenshot({ path: path.join(ROOT, 'debug.png'), fullPage: false });
         console.log('登录后截图已保存: debug.png');
     } else {
         console.log('登录状态正常');
@@ -417,7 +420,7 @@ async function main() {
 
     // 注入归档脚本（在点击群聊之前，这样可以捕获所有 API 响应）
     // 写入临时文件，使用 path 方式注入以避免字符串转义问题
-    const scriptFile = path.join(__dirname, '.archiver-script.js');
+    const scriptFile = path.join(ROOT, '.archiver-script.js');
     fs.writeFileSync(scriptFile, USER_SCRIPT);
     console.log('注入归档脚本...');
     await page.addScriptTag({ path: scriptFile });
@@ -857,7 +860,7 @@ async function main() {
         try {
             const updatedDates = Object.keys(groups).join(',');
             spawn(process.execPath, [
-                path.join(__dirname, 'scripts', 'build-qa-index.mjs'),
+                path.join(ROOT, 'scripts', 'build-qa-index.mjs'),
                 '--group', currentGroupName,
                 '--dates', updatedDates,
             ], { detached: true, stdio: 'ignore' }).unref();
