@@ -138,6 +138,8 @@ npm run archive   # First run fetches the last 7 days, incremental afterwards
 npm run view      # Start the viewer → http://localhost:3456
 ```
 
+> Port 3456 taken? Pick another one with `WEIBO_PORT=4000 npm run view`.
+
 </details>
 
 ---
@@ -407,6 +409,16 @@ Scan the QR code and the cookies are saved automatically.
 <summary><b>Page fails to load</b></summary>
 
 Check that `chromePath` in `config.json` is correct and that Google Chrome is installed.
+</details>
+
+<details>
+<summary><b>Port 3456 already in use</b></summary>
+
+The viewer prints a one-line hint and exits (most often the desktop app is already running — its server is the same one, just open http://localhost:3456). To run on a different port:
+
+```bash
+WEIBO_PORT=4000 npm run view
+```
 </details>
 
 <details>
