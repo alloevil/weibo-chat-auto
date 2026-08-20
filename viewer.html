@@ -85,6 +85,12 @@ button, select, input { font-family: inherit; }
 .tools-toggle:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
 .tools-toggle.open { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
 .tools-toggle.filtered::after { content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--primary-hover); border: 2px solid var(--canvas); }
+/* 导出下拉：当前群 + 当天，md/html 两个下载链接 */
+.export-menu-wrap { position: relative; }
+.export-menu { display: none; position: absolute; top: 38px; left: 0; min-width: 150px; padding: 6px; border: 1px solid var(--hairline-strong); border-radius: 8px; background: var(--surface-1); box-shadow: 0 6px 18px rgba(0,0,0,.18); z-index: 30; }
+.export-menu.open { display: block; }
+.export-menu a { display: block; padding: 7px 10px; border-radius: 6px; color: var(--ink); font-size: 13px; text-decoration: none; cursor: pointer; }
+.export-menu a:hover { background: var(--surface-2); }
 .tools-panel { display: none; padding: 2px 0 8px; border-bottom: 1px solid var(--hairline); flex-shrink: 0; }
 .tools-panel.show { display: block; }
 .tools-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px 0; }
@@ -738,6 +744,13 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             </div>
         </div>
         <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="统计面板">📊</button>
+        <div class="export-menu-wrap">
+            <button class="tools-toggle" id="exportToggle" onclick="toggleExportMenu(event)" title="导出当前群当天的聊天记录">⬇ 导出</button>
+            <div class="export-menu" id="exportMenu">
+                <a id="exportMd" download>Markdown (.md)</a>
+                <a id="exportHtml" download>网页 (.html)</a>
+            </div>
+        </div>
         <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
         <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none">@我</button>
         <div class="nav-stats" id="stats"></div>
@@ -2396,6 +2409,24 @@ function toggleStats() {
     }
     updateComposer();   // 统计视图下隐藏输入框
 }
+
+// 导出下拉：链接指向 /api/export（当前群 + 当天），打开时现算 href
+function toggleExportMenu(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('exportMenu');
+    const open = !menu.classList.contains('open');
+    if (open) {
+        if (!selectedDate) { showToast('还没有选中日期', 'error', 2500); return; }
+        const params = `group=${encodeURIComponent(currentGroup || '')}&date=${encodeURIComponent(selectedDate)}`;
+        document.getElementById('exportMd').href = `/api/export?${params}&format=md`;
+        document.getElementById('exportHtml').href = `/api/export?${params}&format=html`;
+    }
+    menu.classList.toggle('open', open);
+}
+// 点击菜单外任意处收起
+document.addEventListener('click', () => {
+    document.getElementById('exportMenu')?.classList.remove('open');
+});
 
 // 筛选面板开关。默认折叠；状态存 localStorage，跨会话保持。
 function toggleTools() {

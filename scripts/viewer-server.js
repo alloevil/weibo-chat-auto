@@ -57,6 +57,8 @@ const { loadEmotions } = require('../lib/emotions');
 const { searchMessages } = require('../lib/search-messages');
 // 「提到我」与通知规则（纯判定，见 lib/notify-rules）
 const { buildNotifications } = require('../lib/notify-rules');
+// 导出渲染（Markdown / 自包含 HTML），复用查看器的引用/表情/噪音规则
+const exportChat = require('../lib/export-chat');
 
 // 当前账号（用于判定"提到我"、排除自己发的消息）。启动与保活时刷新。
 const meState = { screenName: '', uid: '', fetchedAt: 0 };
@@ -489,9 +491,41 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Get available dates and message counts
-    if (url.pathname === '/api/dates') {
+    // 导出单日聊天记录：Markdown 或自包含 HTML（渲染规则见 lib/export-chat，有单测）。
+    // 默认沿用查看器的红包/噪音过滤，?noise=1 可保留。
+    if (url.pathname === '/api/export') {
         const group = url.searchParams.get('group') || '';
+        const date = url.searchParams.get('date') || '';
+        const format = url.searchParams.get('format') || 'md';
+        if (!messageStore.isValidDate(date)) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: 'date 需为 YYYY-MM-DD' }));
+            return;
+        }
+        if (format !== 'md' && format !== 'html') {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: 'format 需为 md 或 html' }));
+            return;
+        }
+        const messages = exportChat.filterMessages(
+            loadMessagesByDate(group, date),
+            { keepNoise: url.searchParams.get('noise') === '1' },
+        );
+        const body = format === 'md'
+            ? exportChat.renderMarkdown(messages, { group, date })
+            : exportChat.renderHtml(messages, { group, date });
+        // 群名可含中文，Content-Disposition 用 RFC 5987 编码
+        const filename = encodeURIComponent(`${group || 'weibo-chat'}_${date}.${format === 'md' ? 'md' : 'html'}`);
+        res.writeHead(200, {
+            'Content-Type': format === 'md' ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8',
+            'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+        });
+        res.end(body);
+        return;
+    }
+
+    // Get available dates and message counts
+    if (url.pathname === '/api/dates') {        const group = url.searchParams.get('group') || '';
         const dir = getGroupDir(group);
         const dates = {};
         if (fs.existsSync(dir)) {
