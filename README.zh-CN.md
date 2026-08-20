@@ -293,7 +293,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 | 必需 | 说明 |
 | --- | --- |
-| 🖥 **macOS / Linux / WSL** | 归档与查看器跨平台运行；定时任务自动安装仅 macOS（Linux 见 cron 说明） |
+| 🖥 **macOS / Linux / WSL** | 归档与查看器跨平台运行；定时任务全平台自动安装（launchd / systemd / cron） |
 | 🟢 **Node.js 18+** | [brew install node](https://brew.sh)（macOS）/ `apt install nodejs`（Linux）/ [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | 归档器用它登录并抓取消息；路径自动探测 |
 | 📱 **微博账号 + 手机 App** | 首次需用 App 扫码登录网页版 |
@@ -306,15 +306,15 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 <details>
 <summary><b>⏰ 定时自动运行</b></summary>
 
-**macOS** — `npm run setup` 安装时会询问是否启用，也可手动管理 launchd 任务：
+**全平台** — `npm run setup` 安装时会询问是否启用，也可随时用一条命令管理（macOS 用 launchd，Linux 用 systemd user timer，无 systemd 的环境 —— 如部分 WSL 发行版 —— 回退写 crontab 条目）：
 
 ```bash
-launchctl list | grep weibo                                                # 查看状态
-launchctl unload ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist  # 停用
-launchctl load   ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist  # 启用
+./scripts/schedule.sh install     # 安装（每小时归档一次）
+./scripts/schedule.sh status      # 查看状态
+./scripts/schedule.sh uninstall   # 干净卸载
 ```
 
-**Linux / WSL** — 用 cron（`crontab -e`），每小时归档一次：
+systemd Linux 上可用 `systemctl --user list-timers weibo-archive.timer` 看到定时器。若自动安装失败，也可手动配置 cron（`crontab -e`），每小时归档一次：
 
 ```bash
 0 * * * * cd /path/to/weibo-chat-auto && node scripts/auto-archive-simple.js >> logs/archive.log 2>&1
