@@ -194,6 +194,15 @@ async fn do_extract_cookies(app: tauri::AppHandle) -> Result<(), String> {
     let cookie_path = find_cookie_path(&app);
     let json = serde_json::to_string_pretty(&all_cookies).map_err(|e| e.to_string())?;
     std::fs::write(&cookie_path, &json).map_err(|e| e.to_string())?;
+    // cookies.json holds the full Weibo login session (SUB etc.); default
+    // permissions (0644) let any local user read it. fs::write keeps the
+    // existing mode on overwrite, so tighten explicitly after writing.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&cookie_path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+    }
 
     eprintln!("[login] Saved {} cookies to {:?}", all_cookies.len(), cookie_path);
 
