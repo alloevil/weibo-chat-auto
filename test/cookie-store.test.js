@@ -1,5 +1,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// 落盘测试需要真实写文件：先把 Cookie 文件指到临时目录再加载模块
+// （node --test 每个文件独立进程，env 不会泄漏到其它测试文件）。
+const TEST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-store-test-'));
+process.env.WEIBO_COOKIE_FILE = path.join(TEST_DIR, 'cookies.json');
 const cs = require('../lib/cookie-store.js');
 
 test('hasLoginCookie 仅在存在 SUB 时为真', () => {
@@ -27,6 +35,20 @@ test('saveCookies 无 SUB 时拒绝（不落盘）', () => {
     const r = cs.saveCookies([{ name: 'ULV', value: 'x', domain: '.weibo.com' }], '单测');
     assert.strictEqual(r.ok, false);
     assert.match(r.error, /SUB/);
+});
+
+test('saveCookies 落盘权限为 0600，覆盖已存在的宽权限文件也收紧', () => {
+    // 新建：writeFileSync 的 mode 生效
+    const r1 = cs.saveCookies([{ name: 'SUB', value: 'x', domain: '.weibo.com' }], '单测新建');
+    assert.strictEqual(r1.ok, true);
+    assert.strictEqual(fs.statSync(cs.COOKIE_FILE).mode & 0o777, 0o600);
+
+    // 覆盖：mode 选项对已存在文件不生效，靠 chmod 兜底
+    fs.chmodSync(cs.COOKIE_FILE, 0o644);
+    const r2 = cs.saveCookies([{ name: 'SUB', value: 'y', domain: '.weibo.com' }], '单测覆盖');
+    assert.strictEqual(r2.ok, true);
+    assert.strictEqual(fs.statSync(cs.COOKIE_FILE).mode & 0o777, 0o600);
+    assert.strictEqual(JSON.parse(fs.readFileSync(cs.COOKIE_FILE, 'utf-8'))[0].value, 'y');
 });
 
 test('cookieHeader 序列化为请求头格式', () => {
