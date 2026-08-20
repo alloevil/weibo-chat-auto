@@ -293,7 +293,7 @@ See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 
 | Required | Notes |
 | --- | --- |
-| 🖥 **macOS / Linux / WSL** | Archiver and viewer run cross-platform; automatic scheduled-job installation is macOS-only (see cron notes for Linux) |
+| 🖥 **macOS / Linux / WSL** | Archiver and viewer run cross-platform; scheduled-job installation is automatic on every platform (launchd / systemd / cron) |
 | 🟢 **Node.js 18+** | [brew install node](https://brew.sh) (macOS) / `apt install nodejs` (Linux) / [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | The archiver drives it for login and scraping; path is auto-detected |
 | 📱 **Weibo account + mobile app** | First-time login to the web version requires scanning a QR code with the app |
@@ -306,15 +306,15 @@ See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 <details>
 <summary><b>⏰ Scheduled runs</b></summary>
 
-**macOS** — `npm run setup` asks whether to enable this during installation; you can also manage the launchd job manually:
+**All platforms** — `npm run setup` asks whether to enable this during installation; you can also manage the job any time with one command (macOS uses launchd, Linux uses a systemd user timer, and environments without systemd — e.g. some WSL distros — fall back to a crontab entry):
 
 ```bash
-launchctl list | grep weibo                                                # check status
-launchctl unload ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist  # disable
-launchctl load   ~/Library/LaunchAgents/com.allo.weibo-chat-archive.plist  # enable
+./scripts/schedule.sh install     # install (hourly archive)
+./scripts/schedule.sh status      # check status
+./scripts/schedule.sh uninstall   # remove cleanly
 ```
 
-**Linux / WSL** — use cron (`crontab -e`), archiving hourly:
+On systemd Linux the timer shows up under `systemctl --user list-timers weibo-archive.timer`. If the automatic installation fails, you can still configure cron by hand (`crontab -e`), archiving hourly:
 
 ```bash
 0 * * * * cd /path/to/weibo-chat-auto && node scripts/auto-archive-simple.js >> logs/archive.log 2>&1

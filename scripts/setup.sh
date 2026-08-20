@@ -12,9 +12,6 @@ set -e
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
-LABEL="com.allo.weibo-chat-archive"
-LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
-PLIST_DEST="$LAUNCH_AGENTS/$LABEL.plist"
 
 # ── 解析参数 ──────────────────────────────────────
 ASSUME_YES=0
@@ -52,16 +49,15 @@ step "[1/5] 检查运行环境"
 # 识别系统（不再因非 macOS 退出；定时任务仅 macOS 支持，其余步骤通用）
 OS="$(uname -s)"
 case "$OS" in
-    Darwin) IS_MAC=1; ok "系统：macOS" ;;
+    Darwin) ok "系统：macOS" ;;
     Linux)
-        IS_MAC=0
         if grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
             ok "系统：Linux (WSL)"
         else
             ok "系统：Linux"
         fi
         ;;
-    *) IS_MAC=0; warn "系统：$OS（未充分测试，归档与查看器可尝试运行）" ;;
+    *) warn "系统：$OS（未充分测试，归档与查看器可尝试运行）" ;;
 esac
 
 # Node.js
@@ -73,7 +69,6 @@ if [ -z "$NODE_BIN" ]; then
     echo "      或从官网下载：https://nodejs.org （选 LTS 版）"
     exit 1
 fi
-NODE_DIR="$(dirname "$NODE_BIN")"
 ok "Node.js $(node --version)  ${DIM}($NODE_BIN)${RESET}"
 
 # Google Chrome（puppeteer 驱动它登录/抓取）——跨平台探测，复用 lib/chrome-path.js
@@ -140,57 +135,17 @@ fi
 
 # ── 5. 定时任务（可选）───────────────────────────
 step "[5/5] 定时自动归档（可选）"
-install_plist() {
-    mkdir -p "$LAUNCH_AGENTS"
-    cat > "$PLIST_DEST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$LABEL</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$NODE_BIN</string>
-        <string>$ROOT_DIR/scripts/auto-archive-simple.js</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>$ROOT_DIR</string>
-    <key>StartInterval</key>
-    <integer>3600</integer>
-    <key>StandardOutPath</key>
-    <string>$ROOT_DIR/logs/archive.log</string>
-    <key>StandardErrorPath</key>
-    <string>$ROOT_DIR/logs/archive-error.log</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>$NODE_DIR:/usr/local/bin:/usr/bin:/bin</string>
-    </dict>
-</dict>
-</plist>
-PLIST
-    launchctl unload "$PLIST_DEST" 2>/dev/null || true
-    launchctl load "$PLIST_DEST"
-    ok "定时任务已启用（每小时自动归档一次）"
-    info "日志：${DIM}$ROOT_DIR/logs/archive.log${RESET}"
-}
-
-if [ "$IS_MAC" -ne 1 ]; then
-    info "定时任务自动安装仅支持 macOS（launchd）。"
-    echo "    Linux/WSL 可用 cron 手动配置，例如每小时归档一次（crontab -e）："
-    echo "      ${DIM}0 * * * * cd $ROOT_DIR && $NODE_BIN scripts/auto-archive-simple.js >> logs/archive.log 2>&1${RESET}"
-    echo "    或随时手动运行 ${DIM}npm run archive${RESET} / 在查看器点 Sync Now。"
-elif [ "$INTERACTIVE" -eq 1 ]; then
+# 平台分支（launchd / systemd / cron）统一在 scripts/schedule.sh
+if [ "$INTERACTIVE" -eq 1 ]; then
     printf "启用定时自动归档（每小时一次，保持 Cookie 不过期）？[y/N] "
     read -r ANS
     if [[ "$ANS" =~ ^[Yy] ]]; then
-        install_plist
+        "$ROOT_DIR/scripts/schedule.sh" install
     else
-        info "已跳过。随时可重跑 ${DIM}./scripts/setup.sh${RESET} 启用"
+        info "已跳过。随时可运行 ${DIM}./scripts/schedule.sh install${RESET} 启用"
     fi
 else
-    info "非交互环境，跳过定时任务设置"
+    info "非交互环境，跳过定时任务设置（可运行 ${DIM}./scripts/schedule.sh install${RESET} 启用）"
 fi
 
 # ── 完成 ─────────────────────────────────────────
@@ -203,13 +158,11 @@ echo "${BOLD}下一步：${RESET}"
 echo "  ${BLUE}npm run archive${RESET}   手动归档一次"
 echo "  ${BLUE}npm run view${RESET}      启动查看器 → http://localhost:3456"
 echo
-if [ "$IS_MAC" -eq 1 ]; then
-    echo "${BOLD}定时任务管理：${RESET}"
-    echo "  ${DIM}launchctl list | grep weibo${RESET}                 查看状态"
-    echo "  ${DIM}launchctl unload $PLIST_DEST${RESET}   停用"
-    echo "  ${DIM}launchctl load   $PLIST_DEST${RESET}   启用"
-    echo
-fi
+echo "${BOLD}定时任务管理：${RESET}"
+echo "  ${DIM}./scripts/schedule.sh status${RESET}      查看状态"
+echo "  ${DIM}./scripts/schedule.sh install${RESET}     安装 / 启用"
+echo "  ${DIM}./scripts/schedule.sh uninstall${RESET}   卸载"
+echo
 
 # ── 首次归档 + 打开查看器（交互式引导）──────────────
 # 检测 config 是否仍是占位群名
