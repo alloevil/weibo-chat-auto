@@ -138,6 +138,8 @@ npm run archive   # 首次拉取最近 7 天，之后增量更新
 npm run view      # 启动查看器 → http://localhost:3456
 ```
 
+> 3456 端口被占用？用 `WEIBO_PORT=4000 npm run view` 换一个。
+
 </details>
 
 ---
@@ -407,6 +409,16 @@ npm run save-cookies
 <summary><b>页面加载失败</b></summary>
 
 检查 `config.json` 中的 `chromePath` 是否正确，并确认已安装 Google Chrome。
+</details>
+
+<details>
+<summary><b>3456 端口被占用</b></summary>
+
+查看器会输出一行提示并退出（最常见原因是桌面应用已在运行 —— 服务是同一个，直接打开 http://localhost:3456 即可）。想换端口运行：
+
+```bash
+WEIBO_PORT=4000 npm run view
+```
 </details>
 
 <details>
