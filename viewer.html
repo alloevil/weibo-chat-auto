@@ -853,6 +853,15 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             </div>
         </div>
 
+        <div class="settings-section">
+            <div class="settings-section-title">关于</div>
+            <div class="settings-row">
+                <label>版本</label>
+                <span id="appVersion" style="font-size:13px;color:var(--ink-subtle)">-</span>
+            </div>
+            <div class="settings-hint" id="updateHint" style="display:none"></div>
+        </div>
+
         <div class="modal-actions">
             <button class="modal-cancel" onclick="closeSettings()">关闭</button>
             <button class="modal-save" onclick="saveAiSettings()">保存 AI 配置</button>
@@ -1388,6 +1397,23 @@ function openSettings() {
             document.getElementById('aiVision').checked = !!data.config.vision;
         }
     }).catch(() => {});
+    loadVersionInfo();
+}
+
+// 版本与更新提示（#17）：服务端带 6 小时缓存,这里每次打开设置都问一次没负担。
+// 失败静默——「关于」区显示 "-",不弹任何提示。
+async function loadVersionInfo() {
+    try {
+        const d = await (await fetch('/api/version')).json();
+        document.getElementById('appVersion').textContent = 'v' + (d.version || '-');
+        const hint = document.getElementById('updateHint');
+        if (d.updateAvailable) {
+            hint.innerHTML = `🆕 新版本 ${escapeHtml(d.latestTag)} 已发布 — <a href="${escapeHtml(d.url)}" target="_blank" rel="noopener">前往下载</a>`;
+            hint.style.display = '';
+        } else {
+            hint.style.display = 'none';
+        }
+    } catch {}
 }
 
 async function doLogin() {

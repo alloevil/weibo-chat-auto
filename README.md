@@ -59,32 +59,32 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 ## 🚀 Quick Start
 
+### 🖥 Download the app (recommended, macOS Apple Silicon)
+
+1. Download `weibo-chat_*_aarch64.app.zip` from the [**latest release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) and unzip it.
+2. First launch: the app is not code-signed yet, so macOS Gatekeeper will block a normal double-click. **Right-click the .app → Open → Open** (only needed once).
+3. Click 🔑 Login and scan the QR code with the Weibo app — done.
+
+> ⚠️ Currently **Apple Silicon (M1/M2/M3/M4) only** — there is no Intel or Windows/Linux build yet. The app is unsigned/un-notarized (no paid Apple Developer account), hence the right-click step. On other platforms, use the Web Version below.
+
+### 🌐 Web Version (macOS / Linux / WSL)
+
 ```bash
 git clone https://github.com/alloevil/weibo-chat-auto.git
 cd weibo-chat-auto
+npm run setup         # First time: install + configure + QR-code login
+npm run view          # Afterwards: start the viewer → http://localhost:3456
 ```
 
-| Mode | Command | Notes |
-|------|------|------|
-| **Desktop app** | `npm run desktop` | Native app, in-app QR-code login, no manual cookie setup |
-| **Web version** | `npm run setup` | Browser viewer at http://localhost:3456 |
-
-The first run installs all required dependencies automatically (Rust/Bun/npm).
-
-### 🖥 Desktop App (macOS)
+### 🛠 Build the desktop app from source (developers)
 
 ```bash
+git clone https://github.com/alloevil/weibo-chat-auto.git
+cd weibo-chat-auto
 npm run desktop
 ```
 
-One command does it all: detect environment → install dependencies → build → launch. Once open, click 🔑 Login and scan the QR code to start archiving.
-
-### 🌐 Web Version
-
-```bash
-npm run setup         # First time: install + configure + QR-code login
-npm run view          # Afterwards: start the viewer
-```
+One command does it all: detect environment → install dependencies (Rust/Bun/npm) → build → launch. The first build takes ~10 minutes.
 
 <details>
 <summary><b>Desktop app architecture</b></summary>

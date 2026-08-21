@@ -59,32 +59,32 @@
 
 ## 🚀 快速开始
 
+### 🖥 下载应用（推荐，macOS Apple Silicon）
+
+1. 从 [**最新 Release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) 下载 `weibo-chat_*_aarch64.app.zip` 并解压。
+2. 首次打开：应用暂未签名，直接双击会被 macOS Gatekeeper 拦截。**右键点击 .app → 打开 → 打开**（只需一次）。
+3. 点击 🔑 登录，用微博 App 扫码 —— 完成。
+
+> ⚠️ 目前**仅支持 Apple Silicon（M1/M2/M3/M4）**，暂无 Intel 与 Windows/Linux 构建。应用未签名/未公证（没有付费开发者账号），所以需要右键打开。其他平台请用下面的网页版。
+
+### 🌐 网页版（macOS / Linux / WSL）
+
 ```bash
 git clone https://github.com/alloevil/weibo-chat-auto.git
 cd weibo-chat-auto
+npm run setup         # 首次：安装 + 配置 + 扫码登录
+npm run view          # 之后：启动查看器 → http://localhost:3456
 ```
 
-| 方式 | 命令 | 说明 |
-|------|------|------|
-| **桌面应用** | `npm run desktop` | 原生 app，应用内扫码登录，无需手动配 Cookie |
-| **网页版** | `npm run setup` | 浏览器查看器 http://localhost:3456 |
-
-首次运行会自动安装所需依赖（Rust/Bun/npm）。
-
-### 🖥 桌面应用（macOS）
+### 🛠 从源码编译桌面应用（开发者）
 
 ```bash
+git clone https://github.com/alloevil/weibo-chat-auto.git
+cd weibo-chat-auto
 npm run desktop
 ```
 
-一条命令完成：检测环境 → 安装依赖 → 编译 → 启动。打开后点击 🔑 登录，扫码即可开始归档。
-
-### 🌐 网页版
-
-```bash
-npm run setup         # 首次：安装 + 配置 + 扫码登录
-npm run view          # 之后：启动查看器
-```
+一条命令完成：检测环境 → 安装依赖（Rust/Bun/npm）→ 编译 → 启动。首次编译约 10 分钟。
 
 <details>
 <summary><b>桌面应用架构</b></summary>

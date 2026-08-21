@@ -63,6 +63,27 @@ const exportChat = require('../lib/export-chat');
 const syncLock = require('../lib/sync-lock');
 const isSyncLockFree = () => !syncLock.isLocked(path.join(ROOT, 'state'));
 
+// 版本号与更新检查（#17）：比较/缓存逻辑在 lib/version-check（有单测），
+// 这里只注入真实的 GitHub API 请求。任何失败都静默为「无更新」。
+const { createVersionChecker, RELEASES_LATEST_API } = require('../lib/version-check');
+const versionChecker = createVersionChecker({
+    fetchLatest: () => new Promise((resolve, reject) => {
+        const r = https.get(RELEASES_LATEST_API, {
+            headers: { 'User-Agent': 'weibo-chat-auto', Accept: 'application/vnd.github+json' },
+            timeout: 8000,
+        }, (resp) => {
+            let body = '';
+            resp.setEncoding('utf-8');
+            resp.on('data', (c) => { body += c; });
+            resp.on('end', () => {
+                try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
+            });
+        });
+        r.on('timeout', () => r.destroy(new Error('timeout')));
+        r.on('error', reject);
+    }),
+});
+
 // 当前账号（用于判定"提到我"、排除自己发的消息）。启动与保活时刷新。
 const meState = { screenName: '', uid: '', fetchedAt: 0 };
 async function refreshMe() {
@@ -741,6 +762,16 @@ const server = http.createServer((req, res) => {
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ ok: false, error: e.message, map: {} }));
             });
+        return;
+    }
+
+    // 版本与更新检查（#17）：当前版本 + GitHub 最新 release 比对。
+    // 网络失败/限流静默降级为「无更新」，绝不因检查更新打扰用户。
+    if (url.pathname === '/api/version') {
+        versionChecker.check().then((r) => {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(r));
+        });
         return;
     }
 
