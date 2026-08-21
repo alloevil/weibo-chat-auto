@@ -63,7 +63,7 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 1. Download `weibo-chat_*_aarch64.app.zip` from the [**latest release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) and unzip it.
 2. First launch: the app is not code-signed yet, so macOS Gatekeeper will block a normal double-click. **Right-click the .app → Open → Open** (only needed once).
-3. Click 🔑 Login and scan the QR code with the Weibo app — done.
+3. Click 🔑 Login, scan the QR code with the Weibo app, then pick your groups under ⚙️ Settings → 归档群聊 — done.
 
 > ⚠️ Currently **Apple Silicon (M1/M2/M3/M4) only** — there is no Intel or Windows/Linux build yet. The app is unsigned/un-notarized (no paid Apple Developer account), hence the right-click step. On other platforms, use the Web Version below.
 
@@ -116,7 +116,7 @@ A **dedicated browser window** pops up (isolated from your everyday Chrome) and 
 
 #### 3️⃣ Configure groups
 
-Copy the template and fill in group names (must match the names in Weibo **exactly**):
+Copy the template and fill in group names (must match the names in Weibo **exactly** — or skip this step and pick groups in the viewer: ⚙️ Settings → 归档群聊):
 
 ```bash
 cp config.example.json config.json

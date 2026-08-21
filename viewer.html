@@ -805,6 +805,21 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         </div>
 
         <div class="settings-section">
+            <div class="settings-section-title">归档群聊</div>
+            <div class="settings-row">
+                <label>已配置 <span id="groupCfgSummary" style="color:var(--ink-subtle)">-</span></label>
+                <button class="ai-btn" id="pickGroupsBtn" onclick="loadWeiboGroups()">📋 从微博选择群聊</button>
+            </div>
+            <div class="settings-hint" id="groupPickError" style="display:none"></div>
+            <div id="groupPickList" style="display:none;max-height:220px;overflow-y:auto;border:1px solid var(--hairline);border-radius:8px;padding:6px 10px;margin-bottom:8px"></div>
+            <div class="settings-row" id="groupPickActions" style="display:none">
+                <span class="settings-hint" style="margin:0;flex:1">勾选后保存，下次同步/定时归档即生效。</span>
+                <button class="modal-save" onclick="saveGroupSelection()">保存选择</button>
+            </div>
+            <div class="settings-hint">也可以直接编辑仓库根目录的 config.json（groups 字段），两种方式改的是同一份配置。</div>
+        </div>
+
+        <div class="settings-section">
             <div class="settings-section-title">通知</div>
             <div class="settings-row">
                 <label for="notifyMention">提到我时通知</label>
@@ -1403,6 +1418,71 @@ function openSettings() {
         }
     }).catch(() => {});
     loadVersionInfo();
+    loadGroupConfigSummary();
+}
+
+// —— 应用内选群（#18）——
+async function loadGroupConfigSummary() {
+    try {
+        const d = await (await fetch('/api/group-config')).json();
+        document.getElementById('groupCfgSummary').textContent =
+            d.groups && d.groups.length ? `${d.groups.length} 个群` : '无（尚未选择群聊）';
+    } catch {}
+}
+
+async function loadWeiboGroups() {
+    const btn = document.getElementById('pickGroupsBtn');
+    const err = document.getElementById('groupPickError');
+    const list = document.getElementById('groupPickList');
+    const actions = document.getElementById('groupPickActions');
+    btn.disabled = true; btn.textContent = '正在读取会话列表…';
+    err.style.display = 'none';
+    try {
+        const d = await (await fetch('/api/weibo-groups')).json();
+        if (!d.ok) {
+            err.innerHTML = '⚠ ' + escapeHtml(d.error || '会话列表读取失败') +
+                (d.unauthenticated ? '（点右上角 🔑 重新扫码后再试）' : '');
+            err.style.display = ''; err.classList.add('on');
+            list.style.display = 'none'; actions.style.display = 'none';
+            return;
+        }
+        const configured = new Set(d.configured || []);
+        list.innerHTML = d.groups.map(g => `
+            <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:14px">
+                <input type="checkbox" class="group-pick" value="${escapeHtml(g.name)}"${configured.has(g.name) ? ' checked' : ''}>
+                ${g.avatar ? `<img src="${escapeHtml(avatarSrc(g.avatar))}" style="width:22px;height:22px;border-radius:50%;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+                <span style="flex:1">${escapeHtml(g.name)}</span>
+                ${g.memberCount ? `<span style="font-size:12px;color:var(--ink-tertiary)">${g.memberCount} 人</span>` : ''}
+            </label>`).join('');
+        list.style.display = ''; actions.style.display = 'flex';
+        // 群名不匹配 → 明确报错（而不是归档日志里一行 group not found）
+        if (d.missing && d.missing.length) {
+            err.innerHTML = `⚠ 已配置的群名在你的微博会话里找不到：<b>${d.missing.map(escapeHtml).join('、')}</b>（可能打错字/带 emoji 抄漏，请在下面重新勾选）`;
+            err.style.display = ''; err.classList.add('on');
+        }
+    } catch (e) {
+        err.textContent = '⚠ 会话列表读取失败：' + e.message;
+        err.style.display = ''; err.classList.add('on');
+    } finally {
+        btn.disabled = false; btn.textContent = '📋 从微博选择群聊';
+    }
+}
+
+async function saveGroupSelection() {
+    const groups = [...document.querySelectorAll('.group-pick:checked')].map(el => el.value);
+    if (!groups.length) { showToast('至少勾选一个群', 'error', 4000); return; }
+    try {
+        const r = await (await fetch('/api/group-config', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groups }),
+        })).json();
+        if (r.ok) {
+            showToast(`✓ 已保存 ${r.groups.length} 个群，下次同步生效`, 'success', 4000);
+            loadGroupConfigSummary();
+        } else showToast('保存失败：' + (r.error || '未知错误'), 'error', 6000);
+    } catch (e) {
+        showToast('保存失败：' + e.message, 'error', 6000);
+    }
 }
 
 // 版本与更新提示（#17）：服务端带 6 小时缓存,这里每次打开设置都问一次没负担。

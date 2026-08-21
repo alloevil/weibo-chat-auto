@@ -63,7 +63,7 @@
 
 1. 从 [**最新 Release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) 下载 `weibo-chat_*_aarch64.app.zip` 并解压。
 2. 首次打开：应用暂未签名，直接双击会被 macOS Gatekeeper 拦截。**右键点击 .app → 打开 → 打开**（只需一次）。
-3. 点击 🔑 登录，用微博 App 扫码 —— 完成。
+3. 点击 🔑 登录，用微博 App 扫码，在 ⚙️ 设置 → 归档群聊 里勾选要归档的群 —— 完成。
 
 > ⚠️ 目前**仅支持 Apple Silicon（M1/M2/M3/M4）**，暂无 Intel 与 Windows/Linux 构建。应用未签名/未公证（没有付费开发者账号），所以需要右键打开。其他平台请用下面的网页版。
 
@@ -116,7 +116,7 @@ npm run save-cookies
 
 #### 3️⃣ 配置群聊
 
-复制模板并填入群名（须与微博中**完全一致**）：
+复制模板并填入群名（须与微博中**完全一致**；也可以跳过此步，在查看器 ⚙️ 设置 → 归档群聊 里直接勾选）：
 
 ```bash
 cp config.example.json config.json
