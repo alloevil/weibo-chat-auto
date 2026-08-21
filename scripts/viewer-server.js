@@ -57,6 +57,10 @@ const { loadEmotions } = require('../lib/emotions');
 const { searchMessages } = require('../lib/search-messages');
 // 「提到我」与通知规则（纯判定，见 lib/notify-rules）
 const { buildNotifications } = require('../lib/notify-rules');
+// 应用内选群（#18）：会话列表拉取/解析 + config.json 的 groups 写入口（均有单测）
+const { fetchGroupSessions, diffConfiguredGroups } = require('../lib/group-sessions');
+const groupConfig = require('../lib/group-config');
+const CONFIG_PATH = path.join(ROOT, 'config.json');
 // 导出渲染（Markdown / 自包含 HTML），复用查看器的引用/表情/噪音规则
 const exportChat = require('../lib/export-chat');
 // 归档器跨进程锁的只读探测（#14）：/api/sync 在 spawn 前拒绝并发
@@ -747,6 +751,53 @@ const server = http.createServer((req, res) => {
                     console.log(`[notify] 通知设置已更新（提到我${notifyConfig.enabled ? '开' : '关'}，关键词 ${notifyConfig.keywords.length} 个，全部新消息${notifyConfig.notifyAll ? '开' : '关'}）`);
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true, ...notifyConfig }));
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: e.message }));
+                }
+            });
+            return;
+        }
+    }
+
+    // —— 应用内选群（#18）——
+    // 登录后拉微博会话列表（群名+头像），并与 config.json 已配群比对：
+    // 群名不匹配在这里变成明确的 missing 列表，而不是归档日志里一行 group not found。
+    if (url.pathname === '/api/weibo-groups') {
+        (async () => {
+            const r = await fetchGroupSessions({ cookieHeader: loadCookies() });
+            if (r.ok) {
+                const configured = groupConfig.readGroups(CONFIG_PATH);
+                const { matched, missing } = diffConfiguredGroups(configured, r.groups);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, groups: r.groups, configured, matched, missing }));
+            } else {
+                if (r.unauthenticated) { authState.ok = false; authState.code = weiboAuth.UNAUTHENTICATED_CODE; authState.checkedAt = Date.now(); }
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(r));
+            }
+        })();
+        return;
+    }
+
+    // 勾选结果写入 config.json 的 groups（只动这一个字段，手编路径不受影响）
+    if (url.pathname === '/api/group-config') {
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, groups: groupConfig.readGroups(CONFIG_PATH) }));
+            return;
+        }
+        if (req.method === 'POST') {
+            let body = '';
+            req.setEncoding('utf-8');
+            req.on('data', c => { body += c; });
+            req.on('end', () => {
+                try {
+                    const p = JSON.parse(body);
+                    const r = groupConfig.writeGroups(CONFIG_PATH, p.groups);
+                    if (r.ok) console.log(`[groups] 已选群写入 config.json（${r.groups.length} 个）: ${r.groups.join('、')}`);
+                    res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify(r));
                 } catch (e) {
                     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, error: e.message }));
