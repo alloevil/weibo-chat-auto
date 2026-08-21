@@ -7,9 +7,11 @@ const { resolveChromePath } = require('../lib/chrome-path');
 const cookieStore = require('../lib/cookie-store');
 const { formatLocalDate, formatLocalTime, writeJsonAtomic, mergeIntoDayFile } = require('../lib/day-file');
 const weiboAuth = require('../lib/weibo-auth');
-const { normalizeMessage: sharedNormalizeMessage } = require('../lib/normalize-message');
+const { normalizeMessage } = require('../lib/normalize-message');
 const { readUtf8 } = require('../lib/read-stream');
 const syncLock = require('../lib/sync-lock');
+const { paginateMessages } = require('../lib/paginate');
+const { buildPageScript } = require('../lib/page-hook');
 
 // 仓库根目录（本脚本在 scripts/ 下,运行时数据仍存根目录）
 const ROOT = path.join(__dirname, '..');
@@ -107,160 +109,9 @@ async function waitForLogin(page) {
     return false;
 }
 
-// 用户脚本（同之前）
-const USER_SCRIPT = `
-(function() {
-    'use strict';
-    const MSG_API_REGEX = new RegExp('/webim/groupchat/query_messages\\.json');
-    let messages = [];
-    let messageIds = new Set();
-    window.__ARCHIVER_STATE__ = {
-        messages: [],
-        lastGroupId: null,
-        getCount: () => messages.length,
-        getMessages: () => messages,
-        reset: () => { messages = []; messageIds = new Set(); window.__ARCHIVER_STATE__.messages = []; },
-        resetGroupId: () => { window.__ARCHIVER_STATE__.lastGroupId = null; },
-    };
-
-    function getMsgId(msg) { return msg?.id || msg?.id_str || msg?.mid || msg?.message_id || null; }
-    function getTimestamp(msg) {
-        if (typeof msg.time === 'number' && msg.time > 0) return msg.time * 1000;
-        if (msg.created_at) { const t = Date.parse(msg.created_at); if (!isNaN(t)) return t; }
-        return Date.now();
-    }
-    function formatTime(ts) {
-        return new Date(ts).toLocaleString('zh-CN', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-        });
-    }
-    function formatDate(ts) {
-        const d = new Date(ts);
-        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    }
-    function getMsgContent(msg) { return (msg?.content ?? msg?.text ?? msg?.message ?? msg?.body ?? '').replace(/[\\r\\n]+/g, ' ').replace(/\\s+/g, ' ').trim(); }
-
-    function normalizeMessage(msg) {
-        const id = getMsgId(msg);
-        if (!id || messageIds.has(String(id))) return null;
-        messageIds.add(String(id));
-        const ts = getTimestamp(msg);
-        const fromUser = msg.from_user || msg.sender || {};
-
-        const pics = [];
-        if (msg.pic_urls && Array.isArray(msg.pic_urls)) {
-            msg.pic_urls.forEach(p => { const u = p.url || p.pic || (typeof p === 'string' ? p : null); if (u) pics.push(u.replace(/^http:/, 'https:')); });
-        }
-        if (pics.length === 0 && msg.pic) pics.push(String(msg.pic).replace(/^http:/, 'https:'));
-
-        // 从 fids 构建图片 URL（media_type=1 的图片消息）
-        if (pics.length === 0 && msg.fids && Array.isArray(msg.fids)) {
-            msg.fids.forEach(fid => {
-                pics.push('https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=' + fid);
-            });
-        }
-
-        let shareInfo = null;
-        if (msg.url_objects && msg.url_objects.length > 0) {
-            const uo = msg.url_objects[0];
-            const info = uo.info || {};
-            const status = uo.status || {};
-            const statusUser = status.user || {};
-            const picIds = status.pic_ids || [];
-            const picUrls = picIds.map(pid => 'https://wx1.sinaimg.cn/large/' + pid + '.jpg');
-            shareInfo = {
-                url: uo.url_ori || info.url_long || info.url_short || '',
-                title: info.title || (status.text || '').substring(0, 100),
-                description: info.description || '',
-                author: statusUser.screen_name || '',
-                authorAvatar: statusUser.avatar_hd || statusUser.avatar_large || '',
-                text: (status.text || '').replace(/<[^>]+>/g, '').replace(/[\\r\\n]+/g, ' ').substring(0, 300),
-                pics: picUrls,
-                reposts: status.reposts_count || 0,
-                comments: status.comments_count || 0,
-                likes: status.attitudes_count || 0,
-                region: status.region_name || '',
-                created: status.created_at || '',
-            };
-        }
-
-        // 提取视频/额外 URL
-        let link = '';
-        if (msg.url) link = String(msg.url).replace(/^http:/, 'https:');
-        if (!link && msg.short_url) link = String(msg.short_url).replace(/^http:/, 'https:');
-
-        // 从 url_objects 提取流媒体 URL（视频消息）
-        let videoUrl = '';
-        if (msg.url_objects && msg.url_objects.length > 0) {
-            const uo = msg.url_objects[0];
-            const info = uo.info || {};
-            videoUrl = info.video_url || info.url_short || info.url_long || uo.url_ori || '';
-            videoUrl = videoUrl.replace(/^http:/, 'https:');
-        }
-
-        const result = {
-            id, from_uid: msg.from_uid || fromUser.id || fromUser.idstr || null,
-            user: fromUser.screen_name || fromUser.name || msg.from_uid || '未知用户',
-            avatar: fromUser.avatar_large || fromUser.avatar_hd || fromUser.profile_image_url || '',
-            timestamp: ts, time: formatTime(ts), date: formatDate(ts),
-            content: getMsgContent(msg), type: msg.type || msg.msg_type || 'text'
-        };
-        if (pics.length > 0) result.pics = pics;
-        if (shareInfo) result.share = shareInfo;
-        if (link) result.link = link;
-        if (videoUrl) result.videoUrl = videoUrl;
-        return result;
-    }
-
-    function handleApiResponse(data) {
-        const msgs = data.messages || data.data?.messages || data.data || [];
-        const msgList = Array.isArray(msgs) ? msgs : (Array.isArray(data.list) ? data.list : []);
-        let added = 0;
-        for (const m of msgList) {
-            const n = normalizeMessage(m);
-            if (n) { messages.push(n); window.__ARCHIVER_STATE__.messages.push(n); added++; }
-        }
-        if (added > 0) {
-            messages.sort((a, b) => a.timestamp - b.timestamp);
-            window.__ARCHIVER_STATE__.messages.sort((a, b) => a.timestamp - b.timestamp);
-            console.log('[Archiver] 新增 ' + added + ' 条，总计 ' + messages.length);
-        }
-    }
-
-    const origFetch = window.fetch;
-    window.fetch = async function (...args) {
-        const resp = await origFetch.apply(this, args);
-        try {
-            let url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
-            if (url && MSG_API_REGEX.test(url)) {
-                const idMatch = url.match(/[?&]id=(\\d+)/);
-                if (idMatch) window.__ARCHIVER_STATE__.lastGroupId = idMatch[1];
-                resp.clone().json().then(handleApiResponse).catch(() => {});
-            }
-        } catch {}
-        return resp;
-    };
-
-    const origOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (m, url, ...r) { this._url = url; return origOpen.apply(this, [m, url, ...r]); };
-    const origSend = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.send = function (...a) {
-        this.addEventListener('load', function () {
-            try {
-                const url = this._url || this.responseURL || '';
-                if (url && MSG_API_REGEX.test(url)) {
-                    const idMatch = url.match(/[?&]id=(\\d+)/);
-                    if (idMatch) window.__ARCHIVER_STATE__.lastGroupId = idMatch[1];
-                    handleApiResponse(JSON.parse(this.responseText));
-                }
-            } catch {}
-        });
-        return origSend.apply(this, a);
-    };
-    console.log('[Archiver] 脚本已注入');
-})();
-`;
+// 注入页面的 hook 脚本：实现在 lib/page-hook.js（normalizeMessage 与
+// lib/normalize-message.js 同源，运行时序列化拼接，不再手抄内联副本）
+const USER_SCRIPT = buildPageScript();
 
 async function main() {
     console.log('=== 微博聊天自动归档 ===');
@@ -671,23 +522,8 @@ async function main() {
         });
     }
 
-    // 标准化实现统一在 lib/normalize-message（实时同步共用同一份，字段必须逐一致）
-    const normalizeMessage = sharedNormalizeMessage;
-
-    // API 分页获取（Node.js 端，不依赖浏览器 fetch）
-    const allApiMessages = [];
-    const messageIds = new Set();
-    let maxMid = null;
-    let pageNum = 0;
-    const MAX_PAGES = 500;
-    const COUNT = 20;
-
-    // 分页从新到旧倒着走。只有"到达截止时间"或"没有更多消息"才算走完；
-    // 请求失败或撞上 MAX_PAGES 都是残缺。这个标志决定要不要推进 state ——
-    // 残缺时推进会在断点与上次截止时间之间留下永远补不回来的空洞。
-    let paginationComplete = false;
-    let paginationNote = '';
-
+    // API 分页获取（Node.js 端，不依赖浏览器 fetch）。
+    // 状态机本体在 lib/paginate.js（注入式测试覆盖）；这里只组装依赖。
     // 单页请求的唯一入口。翻页推进逻辑保持单一实现
     // （旧版把整套推进逻辑在 catch 里复制了一份，两份状态机极易走偏）。
     // 限流（429/418）与偶发 5xx 用指数退避重试；其余错误按原样单次重试。
@@ -714,79 +550,14 @@ async function main() {
         throw lastErr || new Error('fetchPage 未取到响应');
     }
 
-    while (pageNum < MAX_PAGES) {
-        let url = `https://api.weibo.com/webim/groupchat/query_messages.json?convert_emoji=1&query_sender=1&count=${COUNT}&id=${groupId}&max_mid=${maxMid || 0}`;
-        url += `&source=209678993&t=${Date.now()}`;
-
-        let status, data;
-        try {
-            ({ status, data } = await fetchPage(url));
-        } catch (e) {
-            paginationNote = `请求失败: ${e.message}`;
-            console.log(`[API] 重试也失败: ${e.message}`);
-            break;
-        }
-
-        if (pageNum === 0) {
-            console.log(`[API] 状态: ${status}, keys: ${Object.keys(data).join(',')}`);
-        }
-        // 接口用 error_code 表达失败，HTTP 一律 200，且失败响应没有 messages。
-        // 不单独识别就会被下面当成"无更多消息" → 标记分页走完 → 0 条也算成功，
-        // 整轮以退出码 0 收场（"群不存在"、限流都会这样静默空跑）。
-        if (data.error_code) {
-            paginationNote = `接口错误 ${data.error_code}: ${data.error || ''}`;
-            console.log(`[API] ${paginationNote}`);
-            break;
-        }
-
-        const rawMsgs = data.messages || data.data?.messages || data.data || [];
-        const msgList = Array.isArray(rawMsgs) ? rawMsgs : (Array.isArray(data.list) ? data.list : []);
-
-        if (msgList.length === 0) {
-            console.log('[API] 无更多消息');
-            paginationComplete = true;
-            break;
-        }
-
-        let added = 0;
-        for (const m of msgList) {
-            const n = normalizeMessage(m);
-            if (n && !messageIds.has(String(n.id))) {
-                messageIds.add(String(n.id));
-                allApiMessages.push(n);
-                added++;
-            }
-        }
-
-        const firstMsg = msgList[0];
-        const firstId = String(firstMsg?.id || firstMsg?.mid || '');
-
-        // 时间截止
-        const pageOldestTs = (typeof firstMsg?.time === 'number' && firstMsg.time > 0) ? firstMsg.time * 1000 : Date.now();
-        if (stopTimestamp > 0 && pageOldestTs < stopTimestamp) {
-            console.log(`[API] 到达截止时间，停止 (消息时间=${new Date(pageOldestTs).toLocaleString('zh-CN')})`);
-            paginationComplete = true;
-            break;
-        }
-
-        if (pageNum % 10 === 0) {
-            console.log(`[API] 第${pageNum + 1}页: +${added} 总=${allApiMessages.length}`);
-        }
-
-        if (!firstId || firstId === maxMid) {
-            console.log('[API] 分页结束');
-            paginationComplete = true;
-            break;
-        }
-        maxMid = firstId;
-        pageNum++;
-
-        await delay(300);
-    }
-
-    if (!paginationComplete && !paginationNote) {
-        paginationNote = `撞上 MAX_PAGES=${MAX_PAGES} 上限`;
-    }
+    const { messages: allApiMessages, paginationComplete, paginationNote } =
+        await paginateMessages({
+            groupId,
+            stopTimestamp,
+            fetchPage,
+            normalize: normalizeMessage,
+            sleep: delay,
+        });
     console.log(`API 分页获取完成: ${allApiMessages.length} 条消息`
         + (paginationComplete ? '' : ` (未走完: ${paginationNote})`));
 
