@@ -819,6 +819,11 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                 <input type="text" id="notifyKeywords" placeholder="显卡, 团购, 面试" onchange="saveNotifyConfig()">
             </div>
             <div class="settings-hint" id="notifyNote"></div>
+            <div class="settings-row">
+                <label for="digestEnabled">每日摘要通知</label>
+                <div class="switch-wrap"><input type="checkbox" id="digestEnabled" onchange="saveDigestConfig()"></div>
+            </div>
+            <div class="settings-hint" id="digestNote">每晚归档完成后自动生成当日 AI 摘要并通知（需先配置 AI）。</div>
         </div>
 
         <div class="settings-section">
@@ -2053,6 +2058,25 @@ function showNotifications(list, group) {
     }
 }
 
+/** 每日摘要通知（#19）：点击切到那个群并定位当日，摘要缓存已就绪即时展示。 */
+function showDigestNotifications(list, group) {
+    if (!list || !list.length) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    for (const n of list.slice(0, 3)) {
+        try {
+            const notif = new Notification(n.title, { body: n.body, tag: `summary-${group}-${n.date}` });
+            notif.onclick = () => {
+                window.focus();
+                if (group && group !== currentGroup && availableGroups.some(g => g.id === group)) {
+                    document.getElementById('groupSelect').value = group;
+                    switchGroup(group);
+                }
+                if (n.date) selectDate(n.date);
+            };
+        } catch { /* 被系统拦下就算了 */ }
+    }
+}
+
 async function loadNotifyConfig() {
     try {
         const d = await (await fetch('/api/notify-config')).json();
@@ -2061,6 +2085,40 @@ async function loadNotifyConfig() {
         document.getElementById('notifyKeywords').value = (d.keywords || []).join(', ');
         updateNotifyNote();
     } catch { /* 设置面板不至于因此打不开 */ }
+    loadDigestConfig();
+}
+
+// 每日摘要开关（#19）。默认关；开着时归档完成后服务端生成摘要并经 SSE 推通知。
+async function loadDigestConfig() {
+    try {
+        const d = await (await fetch('/api/digest-config')).json();
+        document.getElementById('digestEnabled').checked = d.enabled === true;
+        const note = document.getElementById('digestNote');
+        if (d.enabled && !d.aiConfigured) {
+            note.textContent = '每日摘要已开启，但 AI 未配置 —— 配置下方 AI 后才会生成。';
+            note.classList.add('on');
+        } else {
+            note.textContent = `每晚归档完成后（${d.hour ?? 20} 点起）自动生成当日 AI 摘要并通知（需先配置 AI）。`;
+            note.classList.remove('on');
+        }
+    } catch { /* 同上，静默 */ }
+}
+
+async function saveDigestConfig() {
+    const enabled = document.getElementById('digestEnabled').checked;
+    if (enabled && !(await ensureNotifyPermission())) {
+        showToast('桌面通知未授权，摘要仍会生成但不会弹通知', 'error', 5000);
+    }
+    try {
+        const r = await (await fetch('/api/digest-config', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        })).json();
+        if (r.ok) { loadDigestConfig(); loadLiveConfig(); }   // 摘要通知走 SSE，开关后重对齐连接
+        else showToast('每日摘要设置保存失败：' + (r.error || '未知错误'), 'error', 5000);
+    } catch (e) {
+        showToast('每日摘要设置保存失败：' + e.message, 'error', 5000);
+    }
 }
 
 function updateNotifyNote() {
@@ -2654,6 +2712,11 @@ function startLive() {
             return;
         }
         if (event.type === 'auth' && event.ok === false) { checkAuthStatus(); return; }
+        // 每日摘要通知（#19）：点击跳到那个群那一天（viewer 已在前台即定位当日）
+        if (event.type === 'digest') {
+            showDigestNotifications(event.notifications, event.group);
+            return;
+        }
         if (event.type !== 'messages') return;
         // 通知与视图刷新解耦：不管在看哪个群/哪天，该提醒的都要提醒
         showNotifications(event.notifications, event.group);
@@ -2685,12 +2748,17 @@ function stopLive() {
 
 // 实时同步默认关闭：轮询要读群消息，可能影响原生客户端的未读提示，
 // 这个代价由用户显式选择承担。开关状态存在服务端（浏览器版与桌面版共享）。
+// 注意：每日摘要通知也走这条 SSE。实时同步关但摘要开时保持连接 ——
+// 服务端在实时同步关闭时不发任何微博请求，空连接零成本。
 async function loadLiveConfig() {
     try {
         const c = await (await fetch('/api/live-config')).json();
         document.getElementById('liveSelect').value = c.enabled ? '1' : '0';
         liveGroups = c.groups || [];
-        if (c.enabled) startLive(); else { stopLive(); updateComposer(); }
+        let digestOn = false;
+        try { digestOn = (await (await fetch('/api/digest-config')).json()).enabled === true; } catch {}
+        if (c.enabled || digestOn) startLive(); else { stopLive(); updateComposer(); }
+        if (!c.enabled) updateComposer();
     } catch { /* 服务端不可达时保持现状 */ }
 }
 async function updateLiveConfig(val) {
@@ -2703,7 +2771,7 @@ async function updateLiveConfig(val) {
         })).json();
         if (!r.ok) { showToast('设置失败：' + (r.error || '未知错误'), 'error'); loadLiveConfig(); return; }
         if (enabled) { startLive(); showToast('实时同步已开启（每 20 秒读取一次新消息）', 'success', 4000); }
-        else { stopLive(); showToast('实时同步已关闭，查看器不再主动查询微博', 'success', 4000); }
+        else { loadLiveConfig(); showToast('实时同步已关闭，查看器不再主动查询微博', 'success', 4000); }
     } catch (e) {
         showToast('设置失败：' + e.message, 'error');
         loadLiveConfig();

@@ -241,6 +241,80 @@ function loadMessagesByDate(groupName = '', date = '') {
     return messageStore.loadMessagesByDate(OUTPUT_DIR, groupName, date);
 }
 
+// —— 每日摘要（#19）——
+// 编排逻辑在 lib/daily-digest（有单测）：开关开 + AI 已配 + 过了时点 +
+// 归档器不在跑 + 当日有消息 + 今天没做过 → 生成摘要缓存 + SSE 推桌面通知。
+// 默认关闭：与 live-sync 同一哲学，关闭时零额外行为；未配 AI 完全不打扰。
+const { createDailyDigest } = require('../lib/daily-digest');
+const DIGEST_CONFIG_PATH = path.join(ROOT, 'digest-config.json');
+function readDigestConfig() {
+    try {
+        const c = JSON.parse(fs.readFileSync(DIGEST_CONFIG_PATH, 'utf-8'));
+        return { enabled: c.enabled === true, hour: Number.isInteger(c.hour) ? c.hour : 20 };
+    } catch {
+        return { enabled: false, hour: 20 };   // 文件缺失/损坏 → 关闭（保守侧）
+    }
+}
+let digestConfig = readDigestConfig();
+const DIGEST_STATE_PATH = path.join(ROOT, 'state', 'digest-state.json');
+
+function hasAiConfigComplete() {
+    try {
+        const c = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
+        return !!(c.baseUrl && c.apiKey && c.model);
+    } catch { return false; }
+}
+
+/** output/ 下有归档数据的群名（不要求 groupId —— 摘要只读本地日文件）。 */
+function listArchivedGroups() {
+    if (!fs.existsSync(OUTPUT_DIR)) return [];
+    return fs.readdirSync(OUTPUT_DIR, { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(e => e.name)
+        .filter(name => messageStore.listDates(OUTPUT_DIR, name).length > 0);
+}
+
+// 摘要生成复用 /api/summary 的同一条路径（缓存 + vision 两步），自请求本机端口
+// 而不是复制 LLM 代码。该端点失败时返回 200 + ok:false，这里原样透传给编排层。
+function generateDigestSummary(group, date) {
+    return new Promise((resolve) => {
+        const q = `group=${encodeURIComponent(group)}&date=${encodeURIComponent(date)}`;
+        const r = http.get(`http://127.0.0.1:${PORT}/api/summary?${q}`, { timeout: 180000 }, (resp) => {
+            let body = '';
+            resp.setEncoding('utf-8');
+            resp.on('data', (c) => { body += c; });
+            resp.on('end', () => {
+                try { resolve(JSON.parse(body)); } catch (e) { resolve({ ok: false, error: e.message }); }
+            });
+        });
+        r.on('timeout', () => r.destroy(new Error('timeout')));
+        r.on('error', (e) => resolve({ ok: false, error: e.message }));
+    });
+}
+
+const dailyDigest = createDailyDigest({
+    getConfig: () => digestConfig,
+    hasAiConfig: hasAiConfigComplete,
+    listGroups: listArchivedGroups,
+    countMessages: (group, date) => loadMessagesByDate(group, date).length,
+    generateSummary: generateDigestSummary,
+    notify: (group, notifications) => broadcast({ type: 'digest', group, notifications }),
+    // 定时归档在另一个进程：跨进程锁被持有或本进程 sync 在跑都算「归档中」
+    isArchiverRunning: () => !!global.__syncProgress?.running || !isSyncLockFree(),
+    loadState: () => { try { return JSON.parse(fs.readFileSync(DIGEST_STATE_PATH, 'utf-8')); } catch { return {}; } },
+    saveState: (s) => {
+        try {
+            fs.mkdirSync(path.dirname(DIGEST_STATE_PATH), { recursive: true });
+            fs.writeFileSync(DIGEST_STATE_PATH, JSON.stringify(s, null, 2), 'utf-8');
+        } catch (e) { console.error('[digest] 状态保存失败:', e.message); }
+    },
+    log: (m) => console.log(m),
+});
+// 定时归档进程结束的时刻 viewer 感知不到，用 5 分钟周期检查逼近「归档完成后」；
+// 条件链短路极快，摘要与通知本身有按日去重，多查无害。
+setInterval(() => { dailyDigest.check().catch(() => {}); }, 5 * 60 * 1000).unref();
+setTimeout(() => { dailyDigest.check().catch(() => {}); }, 30 * 1000).unref();
+
 // 序列化时改写副本（#15）：缓存永远保存原始 URL，代理路径只存在于
 // /api/messages 的响应里。实现与回归测试见 lib/rewrite-image-urls。
 const { rewriteImageUrls } = require('../lib/rewrite-image-urls');
@@ -688,6 +762,40 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, screenName: meState.screenName, uid: meState.uid }));
         return;
+    }
+
+    // 每日摘要开关（#19，默认关闭）。开着时每晚归档完成后自动生成当日摘要并通知。
+    if (url.pathname === '/api/digest-config') {
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, ...digestConfig, aiConfigured: hasAiConfigComplete() }));
+            return;
+        }
+        if (req.method === 'POST') {
+            let body = '';
+            req.setEncoding('utf-8');
+            req.on('data', c => { body += c; });
+            req.on('end', () => {
+                try {
+                    const p = JSON.parse(body);
+                    digestConfig = {
+                        enabled: p.enabled === true,
+                        // 时点限定 0-23 的整数，畸形输入回落默认 20 点
+                        hour: Number.isInteger(p.hour) && p.hour >= 0 && p.hour <= 23 ? p.hour : 20,
+                    };
+                    fs.writeFileSync(DIGEST_CONFIG_PATH, JSON.stringify(digestConfig, null, 2), 'utf-8');
+                    console.log(`[digest] 每日摘要已${digestConfig.enabled ? `开启（${digestConfig.hour} 点后生成）` : '关闭'}`);
+                    // 开启即检查一次：过了时点的话当晚立即生效，不必等下个周期
+                    if (digestConfig.enabled) dailyDigest.check().catch(() => {});
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true, ...digestConfig }));
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: e.message }));
+                }
+            });
+            return;
+        }
     }
 
     // 实时同步开关（默认关闭）。前端读它决定指示灯与轮询是否开启。
