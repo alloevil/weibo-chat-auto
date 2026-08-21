@@ -8,7 +8,7 @@ const messages = [
     { id: 1, user: '张三', timestamp: 1000, time: '2026/07/01 09:05:00', date: '2026-07-01', content: '早上好，今天开会' },
     { id: 2, user: '李四', timestamp: 2000, time: '2026/07/01 09:06:30', date: '2026-07-01', content: `「早上好，今天开会」${SEP}收到，几点？` },
     { id: 3, user: '王五', timestamp: 3000, time: '2026/07/01 09:07:00', date: '2026-07-01', content: '[doge] 我也来 [未知表情]' },
-    { id: 4, user: '张三', timestamp: 4000, time: '2026/07/01 09:08:00', date: '2026-07-01', content: '看图', pics: ['/api/image?fid=12345'] },
+    { id: 4, user: '张三', timestamp: 4000, time: '2026/07/01 09:08:00', date: '2026-07-01', content: '看图', pics: ['https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=12345'] },
     { id: 5, user: 'bot', timestamp: 5000, time: '2026/07/01 09:09:00', date: '2026-07-01', content: '收到红包消息' },
 ];
 
@@ -25,14 +25,6 @@ test('parseForward: 拆出引用与回复；普通消息 quote 为 null', () => 
 test('filterMessages: 默认滤掉红包/噪音，keepNoise 保留', () => {
     assert.deepStrictEqual(ex.filterMessages(messages).map(m => m.id), [1, 2, 3, 4]);
     assert.strictEqual(ex.filterMessages(messages, { keepNoise: true }).length, 5);
-});
-
-test('originalPicUrl: 本地代理路径还原为原始 URL', () => {
-    assert.strictEqual(ex.originalPicUrl('/api/image?fid=12345'),
-        'https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=12345');
-    assert.strictEqual(ex.originalPicUrl('/api/sinaimg?url=https%3A%2F%2Fwx1.sinaimg.cn%2Fa.jpg'),
-        'https://wx1.sinaimg.cn/a.jpg');
-    assert.strictEqual(ex.originalPicUrl('https://wx1.sinaimg.cn/b.jpg'), 'https://wx1.sinaimg.cn/b.jpg');
 });
 
 test('renderMarkdown: 时间戳/昵称/引用 blockquote/图片 URL', () => {

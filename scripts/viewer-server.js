@@ -220,28 +220,9 @@ function loadMessagesByDate(groupName = '', date = '') {
     return messageStore.loadMessagesByDate(OUTPUT_DIR, groupName, date);
 }
 
-function rewriteImageUrls(messages) {
-    for (const m of messages) {
-        if (m.pics) {
-            m.pics = m.pics.map(u => {
-                // Skip if already rewritten
-                if (u.startsWith('/api/image?fid=') || u.startsWith('/api/sinaimg?')) return u;
-                const fidMatch = u.match(/fid=(\d+)/);
-                return fidMatch ? `/api/image?fid=${fidMatch[1]}` : u;
-            });
-        }
-        if (m.share && m.share.pics) {
-            m.share.pics = m.share.pics.map(u => {
-                // Skip if already rewritten
-                if (u.startsWith('/api/sinaimg?')) return u;
-                if (u.includes('sinaimg.cn')) {
-                    return `/api/sinaimg?url=${encodeURIComponent(u)}`;
-                }
-                return u;
-            });
-        }
-    }
-}
+// 序列化时改写副本（#15）：缓存永远保存原始 URL，代理路径只存在于
+// /api/messages 的响应里。实现与回归测试见 lib/rewrite-image-urls。
+const { rewriteImageUrls } = require('../lib/rewrite-image-urls');
 
 const CACHE_DIR = path.join(ROOT, 'cache', 'images');
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -487,8 +468,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/messages') {
         const group = url.searchParams.get('group') || '';
         const date = url.searchParams.get('date') || '';
-        const messages = date ? loadMessagesByDate(group, date) : loadMessages(group);
-        rewriteImageUrls(messages);
+        const messages = rewriteImageUrls(date ? loadMessagesByDate(group, date) : loadMessages(group));
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ messages }));
         return;
