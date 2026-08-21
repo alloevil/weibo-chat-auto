@@ -59,6 +59,9 @@ const { searchMessages } = require('../lib/search-messages');
 const { buildNotifications } = require('../lib/notify-rules');
 // 导出渲染（Markdown / 自包含 HTML），复用查看器的引用/表情/噪音规则
 const exportChat = require('../lib/export-chat');
+// 归档器跨进程锁的只读探测（#14）：/api/sync 在 spawn 前拒绝并发
+const syncLock = require('../lib/sync-lock');
+const isSyncLockFree = () => !syncLock.isLocked(path.join(ROOT, 'state'));
 
 // 当前账号（用于判定"提到我"、排除自己发的消息）。启动与保活时刷新。
 const meState = { screenName: '', uid: '', fetchedAt: 0 };
@@ -770,6 +773,14 @@ const server = http.createServer((req, res) => {
 
     // Sync: trigger archiver
     if (url.pathname === '/api/sync' && req.method === 'POST') {
+        // 并发防护（#14）：进行中（本进程 spawn 的归档器）或跨进程锁被持有
+        // （定时任务正在归档）都直接 409，绝不 spawn 第二个 puppeteer ——
+        // 两个实例同时登录同一微博会话会互相抢占，重则触发风控失效 cookie。
+        if (global.__syncProgress?.running || !isSyncLockFree()) {
+            res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: 'sync already running' }));
+            return;
+        }
         (async () => {
         // 预检登录态：Cookie 已死时秒级明确失败并引导重新扫码，而不是让
         // 归档器空跑几分钟后只报一句 "code 1"。探测本身失败（断网、接口

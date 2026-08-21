@@ -9,6 +9,7 @@ const { formatLocalDate, formatLocalTime, writeJsonAtomic, mergeIntoDayFile } = 
 const weiboAuth = require('../lib/weibo-auth');
 const { normalizeMessage: sharedNormalizeMessage } = require('../lib/normalize-message');
 const { readUtf8 } = require('../lib/read-stream');
+const syncLock = require('../lib/sync-lock');
 
 // 仓库根目录（本脚本在 scripts/ 下,运行时数据仍存根目录）
 const ROOT = path.join(__dirname, '..');
@@ -940,7 +941,19 @@ async function runWithRetry(maxRetries = 1) {
     }
 }
 
-runWithRetry().catch(err => {
-    console.error('错误:', err);
+// 跨进程互斥：定时任务与手动 Sync 无论从哪条路进来都只能有一个实例在跑。
+// 锁包在 runWithRetry 外层（而非 main 内），否则重试轮次会撞上自己的锁。
+const lockResult = syncLock.acquireLock(path.join(ROOT, 'state'));
+if (!lockResult.ok) {
+    console.error(`另一个归档进程正在运行，本次退出（${lockResult.reason}）`);
     process.exit(1);
-});
+}
+
+runWithRetry()
+    .catch(err => {
+        console.error('错误:', err);
+        process.exitCode = 1;
+    })
+    .finally(() => {
+        syncLock.releaseLock(path.join(ROOT, 'state'));
+    });
