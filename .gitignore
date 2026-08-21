@@ -5,6 +5,7 @@ cookies.json
 config.json
 ai-config.json
 live-config.json
+digest-config.json
 notify-config.json
 last-archive-state*.json
 state/
