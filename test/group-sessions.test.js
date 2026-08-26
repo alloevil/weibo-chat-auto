@@ -81,3 +81,58 @@ test('diffConfiguredGroups: 配置群名与会话列表比对出 matched/missing
     assert.deepStrictEqual(diffConfiguredGroups([], sessions), { matched: [], missing: [] });
     assert.deepStrictEqual(diffConfiguredGroups(null, null), { matched: [], missing: [] });
 });
+// ── 真实接口形态（contacts.json）──────────────────────────────────────
+// 这些串与线上响应同构：群与单聊都挂在 user 下，唯一区别是群有 type===2。
+// 曾经打的是 /webim/query_sessions.json —— 那个路径不存在，恒回
+// 20099「is not allow to access」，选群面板永远空着。
+
+const realGroup = (id, name, groupType = 1, memberCount = 0) => ({
+    unread_count: 0,
+    message: { text: 'x' },
+    user: {
+        id, name, type: 2, group_type: groupType, member_count: memberCount,
+        profile_image_url: `http://a/${id}.jpg`, avatar_large: `http://a/${id}_big.jpg`,
+        members: [], admins: [], max_member_count: 500,
+    },
+});
+const realDm = (id, screenName) => ({
+    unread_count: 1,
+    message: { text: 'y' },
+    user: { id, screen_name: screenName, profile_image_url: `http://a/${id}.jpg`, verified_type: 0 },
+});
+
+test('parseGroupSessions: contacts 形态只挑出群，单聊一个都不许混入', () => {
+    const json = {
+        totalNumber: 173,
+        contacts: [
+            realGroup(4761715839862414, '茧房建筑师协会', 3),
+            realDm(7892270010, '微博智搜'),
+            realGroup(5110127851995592, '猫咪AI研究', 1),
+            realDm(2015108055, '中央气象台'),
+            realGroup(5152823595766382, '赛博动物园w', 2),
+        ],
+    };
+    const r = parseGroupSessions(json);
+    assert.deepStrictEqual(r.map(g => g.name), ['茧房建筑师协会', '猫咪AI研究', '赛博动物园w'],
+        '单聊混进选群面板 = 用户勾了之后归档器永远找不到那个群');
+    assert.strictEqual(r[0].id, '4761715839862414', '会话 id 必须原样保留（与 state.groupId 同源）');
+    assert.strictEqual(r[1].avatar, 'http://a/5110127851995592.jpg');
+});
+
+test('normalizeSession: user.type 非 2 一律不是群，哪怕带了头像等群同名字段', () => {
+    assert.strictEqual(normalizeSession(realDm(123, '某人')), null);
+    assert.strictEqual(normalizeSession({ user: { id: 1, name: '伪群', type: 0, member_count: 9 } }), null);
+    assert.ok(normalizeSession(realGroup(7, '真群')), '带 type=2 的才算群');
+});
+
+test('normalizeSession: 群 member_count 为 0 时保留 0，不塌成 null', () => {
+    // 实测 contacts.json 里活跃群的 member_count 就是 0，别用真值判断
+    assert.strictEqual(normalizeSession(realGroup(8, '零成员群', 1, 0)).memberCount, 0);
+});
+
+test('SESSIONS_PATH: 必须是 bundle 里真实存在的 contacts 接口', () => {
+    const { SESSIONS_PATH } = require('../lib/group-sessions.js');
+    assert.match(SESSIONS_PATH, /^\/webim\/2\/direct_messages\/contacts\.json\?/);
+    assert.match(SESSIONS_PATH, /special_source=3/, '缺这个参数拿不到会话列表');
+    assert.doesNotMatch(SESSIONS_PATH, /query_sessions/, '该路径不存在，恒回 20099');
+});
