@@ -185,6 +185,19 @@ When cookies are invalid, the archiver **fails loudly with exit code 1** and tel
 grep -c "Cookie 已失效" logs/archive.log   # non-zero means you should re-scan
 ```
 
+**What does it actually request at startup?** Exactly two calls, neither of which touches chat content:
+
+| Request | Purpose | Why it isn't scraping your chats |
+| --- | --- | --- |
+| `webim/groupchat/query_messages.json?…&id=0&count=1` | The login-state probe (`error_code` is the only reliable signal) | `id=0` is not a real group; the API answers `21201 群不存在` and the response carries neither `messages` nor `last_read_mid`, so it cannot advance Weibo's read cursor |
+| `weibo.com/ajax/profile/info?custom=1` | Renews the 24-hour rolling session | Only reads your own profile |
+
+The endpoint name makes it look like it's pulling group messages — that's its most alarming feature — so `test/weibo-auth.test.js` pins `id=0` down. To audit it yourself, intercept outbound requests:
+
+```bash
+node -e 'const f=global.fetch;global.fetch=(u,i)=>{console.log("→",String(u.url||u));return f(u,i)};require("./scripts/viewer-server.js")'
+```
+
 </details>
 
 <details>

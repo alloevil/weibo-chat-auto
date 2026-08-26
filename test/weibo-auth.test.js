@@ -117,3 +117,13 @@ test('refreshSession: 已登录时向 weibo.com 续期并吸收滚动 Cookie', a
     assert.deepStrictEqual(absorbArgs.lines, setCookieLines);
     assert.match(absorbArgs.url, /weibo\.com/);
 });
+test('PROBE_PATH 必须以 id=0 探测，绝不读真实会话', () => {
+    // 探针打的是 groupchat/query_messages.json —— 在任何抓包工具里都长得像
+    // "在抓群聊数据"（用户就这样报过一次）。安全性全靠 id=0：真实接口对它回
+    // 21201「群不存在」，响应里既没有 messages 也没有 last_read_mid，因此不可能
+    // 推进微博侧的已读游标、不会吃掉原生客户端的未读提示。
+    // 若哪天有人把 id 换成真实群 id 来"顺手多探一点"，这条会 red。
+    assert.match(wa.PROBE_PATH, /[?&]id=0(&|$)/, '探针必须用 id=0');
+    assert.match(wa.PROBE_PATH, /[?&]count=1(&|$)/, '探针只取 1 条，别真的拉消息');
+    assert.match(wa.PROBE_PATH, /[?&]max_mid=0(&|$)/);
+});

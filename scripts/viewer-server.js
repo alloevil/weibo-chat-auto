@@ -88,7 +88,8 @@ const versionChecker = createVersionChecker({
     }),
 });
 
-// 当前账号（用于判定"提到我"、排除自己发的消息）。启动与保活时刷新。
+// 当前账号（用于判定"提到我"、排除自己发的消息）。惰性取：/api/me 首次被问
+// 或实时同步订阅时才拉一次，启动不预热（少一个无人需要的请求）。
 const meState = { screenName: '', uid: '', fetchedAt: 0 };
 async function refreshMe() {
     try {
@@ -807,11 +808,16 @@ const server = http.createServer((req, res) => {
         }
     }
 
-    // 当前账号（前端用它做「@我」筛选）
+    // 当前账号（前端用它做「@我」筛选）。只在真有人问时才取，启动不预热。
+    // 必须等 refreshMe 完成再回：前端 loadMe() 只跑一次，回空昵称会让
+    // 「@我」按钮整个会话都不出现。
     if (url.pathname === '/api/me') {
-        if (!meState.screenName) refreshMe();   // 懒补一次，不阻塞本次响应
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, screenName: meState.screenName, uid: meState.uid }));
+        const send = () => {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, screenName: meState.screenName, uid: meState.uid }));
+        };
+        if (meState.screenName) send();
+        else refreshMe().then(send, send);   // 取不到也要回，前端自己隐藏按钮
         return;
     }
 
@@ -890,6 +896,10 @@ const server = http.createServer((req, res) => {
         res.write(`data: ${JSON.stringify({ type: 'hello', enabled: liveEnabled, groups: resolveLiveGroups().map(g => g.name), intervalMs: LIVE_INTERVAL_MS })}\n\n`);
         sseClients.add(res);
         liveSync.addSubscriber();
+        // 通知判定要知道"我"是谁。页面只在首次加载时调 /api/me，服务重启后
+        // 已开着的页面只会重连 SSE —— 不在这儿补，「提到我」就会静默失效。
+        // liveEnabled 是硬闸门：关闭时这条路径一个请求都不许发。
+        if (liveEnabled && notifyConfig.enabled && !meState.screenName) refreshMe();
         // 心跳注释：浏览器与代理都会掐掉长时间静默的连接
         const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* 已断开 */ } }, 25000);
         beat.unref?.();
@@ -1617,7 +1627,6 @@ server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Weibo Group Chat Viewer: ${url}`);
     keepAliveTick('启动');
-    refreshMe();   // 取当前账号昵称，供「提到我」判定与筛选
     // 图片缓存淘汰：启动时一次 + 每 6 小时一次。缓存内容都能从 CDN 再取，
     // 所以淘汰是安全的；不做则只增不减（实测涨到 688MB）。
     const evictTick = () => {
