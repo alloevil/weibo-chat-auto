@@ -39,16 +39,16 @@
   },
   "homepage": "https://github.com/alloevil/weibo-chat-auto#readme",
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.73",
-    "@ai-sdk/openai-compatible": "^2.0.51",
-    "ai": "^6.0.208",
-    "puppeteer": "^24.43.0",
-    "zod": "^4.4.3"
+    "@ai-sdk/openai": "^4.0.52",
+    "@ai-sdk/openai-compatible": "^3.0.41",
+    "ai": "^7.0.85",
+    "puppeteer": "^25.9.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.3",
-    "eslint": "^9.39.4",
+    "@tauri-apps/cli": "^2.11.4",
+    "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.8.3"
+    "prettier": "^3.9.6"
   }
 }
