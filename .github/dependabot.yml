@@ -1,4 +1,5 @@
-# Monthly, grouped version updates: at most one PR per ecosystem per month.
+# Monthly version updates. Minor/patch bumps are grouped into one PR per ecosystem;
+# major bumps get their own PR so a red CI points at a single dependency.
 # Security updates are handled separately by GitHub's alert flow.
 version: 2
 
@@ -11,6 +12,7 @@ updates:
     groups:
       npm-all:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: chore
   - package-ecosystem: cargo
@@ -21,6 +23,7 @@ updates:
     groups:
       cargo-all:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: chore
   - package-ecosystem: github-actions
