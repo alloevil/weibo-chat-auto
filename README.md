@@ -254,6 +254,10 @@ Ask questions in the toolbar's Q&A box; natural-language time ("recently", "yest
 
 **Agent mode** (default): the LLM searches iteratively, choosing keywords and scope on its own, running multiple rounds until it has enough information.
 
+💡 **If people go by nicknames, add an alias table**: create `output/<group>/aliases.json` with e.g. `{"tombkeeper": ["tk", "TK"]}` (keys are the real display names as archived). Asking "what did tk say recently" then filters straight to that person instead of making the LLM guess. The file is optional; without it behavior is unchanged.
+
+Retrieval automatically drops red-packet notices and check-in bot spam (same rules as the viewer's "hide noise" toggle), so "what is everyone talking about" isn't skewed by flooding.
+
 <details>
 <summary><b>Technical design</b></summary>
 

@@ -117,12 +117,42 @@ node scripts/build-qa-index.mjs --group <群名> --all
 - 新鲜度：`sourceMtime` 与日文件比对，不一致视为过期
 - **QA 对索引无硬依赖**：缺失/过期/损坏一律降级为即时切块（无标注）
 
+### 预处理层
+
+检索前两道过滤，`count_messages` / `search_messages` / `get_recent_messages` 共用：
+
+**① 噪音剔除**（`dropNoise`，规则复用 `lib/text-utils.js` 的 `isNoise`）
+
+红包提示、抢红包回执、签到机器人（实测占「提到我」命中的 93%）不进检索。理由：噪音块参与 BM25 会稀释真话题的相对分数，且总结型问题会把「大家在聊什么」答成红包和签到。计数也过滤——否则「某人最近活跃吗」被机器人刷屏带偏。
+
+两个刻意的例外：
+- **全量都是噪音时退回原语料**：宁可让模型看到噪音，也不要给它空语料让它以为这段时间没人说话。
+- **`get_context` 不过滤**：它按 id 定位，走全量语料。过滤会让 `search_messages` 返回的 hitIds 查不到，也会在上下文窗口里留空洞。
+
+**② 发言人别名解析**（`lib/speaker-aliases.js`）
+
+群里没人用全名称呼彼此。问「tk 最近说了什么」时，`person` 过滤匹配不到任何 `user` → 退回全量搜索，而「tk」在正文里也几乎不出现 → 零命中。历史 benchmark 第一行「Agent 搜 "tk"+"tombkeeper"」就是模型在替这个缺口打补丁：多花一轮 LLM 往返去猜别名。
+
+映射表放在 `output/<群>/aliases.json`（与 `qa-index/` 同级，跟群走）：
+
+```json
+{ "tombkeeper": ["tk", "TK"], "张三丰": ["三丰", "老张"] }
+```
+
+键是归档里的真实 `user` 名，值是别名列表。命中后：
+- `person` 过滤精确筛到真名，并回传 `personNote: 发言人 "tk" 已解析为:tombkeeper`（让模型后续轮次直接用真名）
+- 别名同时扩进 BM25 查询——正文里可能写「tombkeeper」也可能写「@tk」，两边都该有分
+
+三级匹配逐级放宽，前一级有结果就不再放宽（避免「张三」把「张三丰」也带出来）：别名表精确命中 → `user` 名精确相等 → 子串包含（与原有行为一致，保持兼容）。
+
+文件缺失/损坏/写成数组 → 空表降级，检索行为与加此功能前完全一致。表里写了尚未发言的人则不返回他，不硬造结果。
+
 ### 已知限制
 
 - **跨词汇鸿沟靠 LLM 精排，不是 embedding**。网关通常无 embedding 模型可用，所以用一次轻量 LLM 调用代替向量相似度。代价是每次检索多一次 LLM 往返（20s 超时，失败降级）。
 - **每次查询重建 BM25 索引**。消息量在数千级，毫秒级构建，不持久化。语料显著增大后需要改为持久化倒排。
-- **用户别名不互通**：靠 LLM 自行推测 "tk" → "tombkeeper"，无别名映射表。
-- **噪音过滤只在查看器侧**（`lib/text-utils.js` 的 `isNoise`，红包/签到机器人），检索侧未接入。
+- **别名表需手写**，没有从 `@提及` 或历史对话自动挖掘。
+- **`isNoise` 是规则匹配**（正则 + 关键词），新型机器人话术要手工补规则。
 
 ## 两种模式
 
@@ -194,7 +224,13 @@ scripts/qa-agent.mjs        # 检索层 + 提示词 + tools/model 适配（loop 
 scripts/viewer-server.js    # /api/qa 端点，分发 agent/legacy 模式
 scripts/build-qa-index.mjs  # 离线标注回填（qa-index/）
 scripts/benchmark-qa.js     # 延迟基准（agent vs legacy），不依赖私有数据
+lib/speaker-aliases.js      # 发言人别名解析（tk → tombkeeper）
+lib/search-bm25.js          # bigram 分词 + BM25
+lib/chat-chunks.js          # 话题块切分
+lib/chunk-index.js          # 离线标注索引的加载与降级
 ai-config.json              # AI 配置（gitignored）
+output/<群>/aliases.json    # 发言人别名表（手写，可选）
+output/<群>/qa-index/       # 离线标注（可选，缺失自动降级）
 ```
 
 依赖：`@mariozechner/pi-agent-core`（+ 传递依赖 `@mariozechner/pi-ai`）。`@opentelemetry/api` 是显式直接依赖，因为传递依赖 `@mistralai/mistralai` 会 import 它，缺失时 `bun build --compile`（sidecar 打包）解析失败。

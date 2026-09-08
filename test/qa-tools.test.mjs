@@ -222,3 +222,115 @@ test('expandContext: 断层两侧不跨越', () => {
     assert.strictEqual(start, 4);
     assert.strictEqual(end, 6);
 });
+
+// ─── 别名解析 + 噪音过滤接入检索 ────────────────────────────────────────
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+function groupDirWith(aliases) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-alias-'));
+    fs.writeFileSync(path.join(dir, 'aliases.json'), JSON.stringify(aliases));
+    return dir;
+}
+
+test('别名让 person 过滤命中真名(替代模型自己猜 tk → tombkeeper)', async () => {
+    const msgs = [
+        mkMsg(101, 0, 'tombkeeper', '半导体还没跌到位', '2026-07-01'),
+        mkMsg(102, 2, 'alice', '我觉得会反弹', '2026-07-01'),
+        mkMsg(103, 4, 'tombkeeper', '芯片股我清了一半', '2026-07-01'),
+    ];
+    const groupDir = groupDirWith({ tombkeeper: ['tk'] });
+
+    // 无别名表:person="tk" 匹配不到任何 user，退回全量并给 personNote
+    const without = await executeTool('count_messages', { person: 'tk' }, msgs, ledger());
+    assert.strictEqual(without.total, 3, '无别名时退回全量');
+    assert.match(without.personNote, /未找到发言人/);
+
+    // 有别名表:精确筛到 tombkeeper 的 2 条
+    const withAlias = await executeTool(
+        'count_messages',
+        { person: 'tk' },
+        msgs,
+        ledger(),
+        null,
+        null,
+        { groupDir }
+    );
+    assert.strictEqual(withAlias.total, 2, '别名命中后只算 tombkeeper');
+    assert.match(withAlias.personNote, /已解析为/);
+});
+
+test('别名同时扩进 BM25 查询,搜得到只提真名的消息', async () => {
+    const msgs = [
+        mkMsg(201, 0, 'alice', 'tombkeeper 昨天那个判断很准', '2026-07-01'),
+        mkMsg(202, 2, 'alice', '今天天气不错', '2026-07-01'),
+        mkMsg(203, 4, 'bob', '同意', '2026-07-01'),
+        mkMsg(204, 6, 'bob', '随便说点别的', '2026-07-01'),
+    ];
+    const groupDir = groupDirWith({ tombkeeper: ['tk'] });
+    // 关键词只给别名 tk;正文里写的是 tombkeeper
+    const r = await executeTool(
+        'search_messages',
+        { keywords: ['tk'], person: 'tk' },
+        msgs,
+        ledger(),
+        null,
+        null,
+        { groupDir }
+    );
+    assert.ok(r.matchCount > 0, '别名扩展后应命中提到 tombkeeper 的消息');
+    assert.ok(r.snippets.join('\n').includes('tombkeeper'), '片段里应出现真名那条');
+});
+
+test('噪音消息不进检索:红包/签到不再稀释话题', async () => {
+    const msgs = [
+        mkMsg(301, 0, 'bot', '收到红包消息', '2026-07-01'),
+        mkMsg(302, 1, 'bot', '还没签到的快去看看,群聊等级加速', '2026-07-01'),
+        mkMsg(303, 2, 'alice', '半导体行情怎么看', '2026-07-01'),
+        mkMsg(304, 3, 'bob', '半导体还没跌到位', '2026-07-01'),
+    ];
+    const all = await executeTool('count_messages', {}, msgs, ledger());
+    assert.strictEqual(all.total, 2, '两条噪音应被剔除');
+
+    const r = await executeTool(
+        'get_recent_messages',
+        {
+            dateFrom: '2026-07-01',
+            dateTo: '2026-07-01',
+        },
+        msgs,
+        ledger()
+    );
+    const text = r.messages.join('\n');
+    assert.ok(!text.includes('收到红包'), '总结型读取不应看到红包');
+    assert.ok(!text.includes('签到'), '总结型读取不应看到签到机器人');
+    assert.ok(text.includes('半导体'), '真实话题仍在');
+});
+
+test('全是噪音时退回原语料,而不是谎报无人发言', async () => {
+    const msgs = [
+        mkMsg(401, 0, 'bot', '收到红包消息', '2026-07-01'),
+        mkMsg(402, 1, 'bot', '最佳手气', '2026-07-01'),
+    ];
+    const r = await executeTool(
+        'get_recent_messages',
+        {
+            dateFrom: '2026-07-01',
+            dateTo: '2026-07-01',
+        },
+        msgs,
+        ledger()
+    );
+    assert.strictEqual(r.total, 2, '不应变成 0 条');
+});
+
+test('get_context 仍能按 id 拉到噪音相邻的上下文(id 不因过滤失效)', async () => {
+    const msgs = [
+        mkMsg(501, 0, 'alice', '半导体行情怎么看', '2026-07-01'),
+        mkMsg(502, 1, 'bot', '收到红包消息', '2026-07-01'),
+        mkMsg(503, 2, 'bob', '还没跌到位', '2026-07-01'),
+    ];
+    const r = await executeTool('get_context', { messageId: '502' }, msgs, ledger());
+    assert.strictEqual(r.found, true, 'get_context 必须走全量语料');
+});

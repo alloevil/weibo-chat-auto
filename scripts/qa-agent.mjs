@@ -12,9 +12,15 @@ import { runAgentLoop } from '@mariozechner/pi-agent-core';
 import searchBm25 from '../lib/search-bm25.js';
 // 话题块索引:离线标注(qa-index/)优先,缺失/过期时即时切块降级
 import chunkIndex from '../lib/chunk-index.js';
+// 发言人别名(output/<group>/aliases.json):tk → tombkeeper
+import speakerAliases from '../lib/speaker-aliases.js';
+// 噪音判定(红包/签到机器人),与查看器共用同一份规则
+import textUtils from '../lib/text-utils.js';
 
 const { search: bm25Search } = searchBm25;
 const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
+const { loadAliases, resolvePerson, expandPersonTerms } = speakerAliases;
+const { isNoise } = textUtils;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,8 +31,8 @@ const MAX_LLM_CALLS = 7;
 // LLM 请求超时。没有超时的话，服务端挂住连接就能让一次问答永远悬着：
 // 前端转圈、迭代预算不会推进、Node 也不会自己放弃。
 const LLM_TIMEOUT_MS = 60000; // 主循环调用（带工具，可能较慢）
-// 重试交给 provider 层的 OpenAI SDK：它只对 429/5xx/网络错误重试并遵循
-// Retry-After，比按 error.message 文本匹配状态码可靠。
+// 重试交给 provider 层的 OpenAI SDK：它只对 429/5xx/网络错误重试，比按
+// error.message 文本匹配状态码可靠。
 const LLM_MAX_RETRIES = 2;
 const RERANK_TIMEOUT_MS = 20000; // 重排是纯打分，快得多
 
@@ -243,6 +249,51 @@ function filterByDate(msgs, dateFrom, dateTo) {
 function dateSpanOf(msgs) {
     if (!msgs.length) return null;
     return { first: msgDate(msgs[0]), last: msgDate(msgs[msgs.length - 1]) };
+}
+
+/**
+ * 按发言人筛选。别名表优先(tk → tombkeeper),再退回精确/子串匹配。
+ *
+ * 匹配不到时刻意保留全量并回传 personNote:人名记错时让关键词兜底,
+ * 比直接返回零结果更可能答对(这是替换前就有的行为,别名只是让它少触发)。
+ *
+ * @returns {{msgs: Array, personNote?: string}}
+ */
+function filterByPerson(msgs, person, groupDir) {
+    if (!person) return { msgs };
+    const aliases = loadAliases(groupDir);
+    const names = resolvePerson(
+        person,
+        msgs.map((m) => m.user),
+        aliases
+    );
+    if (!names.length) {
+        return { msgs, personNote: `未找到发言人 "${person}",已在全部发言人中搜索` };
+    }
+    const wanted = new Set(names);
+    const picked = msgs.filter((m) => wanted.has(String(m.user ?? '')));
+    // 别名命中且与原文不同名时告知模型真名,后续轮次它就能直接用真名
+    const resolved = names.join('、');
+    const note =
+        resolved.toLowerCase() === String(person).trim().toLowerCase()
+            ? undefined
+            : `发言人 "${person}" 已解析为:${resolved}`;
+    return { msgs: picked, ...(note ? { personNote: note } : {}) };
+}
+
+/**
+ * 剔除噪音消息(红包提示、签到机器人等,规则见 lib/text-utils.js isNoise)。
+ *
+ * 只用于检索:噪音块参与 BM25 会稀释真话题的相对分数,且签到机器人实测占
+ * 「提到我」命中的 93%。count_messages 的计数刻意也过滤——否则"某人最近
+ * 活跃吗"会被机器人刷屏带偏。
+ *
+ * 全量都是噪音时退回原数组:宁可让模型看到噪音,也不要给它一个空语料然后
+ * 让它以为这段时间没人说话。
+ */
+function dropNoise(msgs) {
+    const kept = msgs.filter((m) => !isNoise(m));
+    return kept.length ? kept : msgs;
 }
 
 // ─── 检索流水线共用件 ──────────────────────────────────────────────────
@@ -527,18 +578,11 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
         const invalid = validateDateArgs(args);
         if (invalid) return invalid;
 
-        let msgs = filterByDate(allMessages, dateFrom, dateTo);
-        let personNote;
-        if (person) {
-            const p = String(person).toLowerCase();
-            const byPerson = msgs.filter((m) =>
-                String(m.user ?? '')
-                    .toLowerCase()
-                    .includes(p)
-            );
-            if (byPerson.length > 0) msgs = byPerson;
-            else personNote = `未找到发言人 "${person}",统计的是全部发言人`;
-        }
+        // 噪音先剔:签到机器人会把"某人最近活跃吗"的计数彻底带偏
+        let msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
+        const picked = filterByPerson(msgs, person, opts?.groupDir);
+        msgs = picked.msgs;
+        const personNote = picked.personNote;
         // 词面包含匹配(any-of):计数要可预测、可解释,不做相关性打分
         const kws = keywords.map((k) => String(k).toLowerCase()).filter(Boolean);
         if (kws.length) {
@@ -616,19 +660,10 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
         const invalid = validateDateArgs(args);
         if (invalid) return invalid;
 
-        let msgs = filterByDate(allMessages, dateFrom, dateTo);
-        let personNote;
-        if (person) {
-            const p = String(person).toLowerCase();
-            const byPerson = msgs.filter((m) =>
-                String(m.user ?? '')
-                    .toLowerCase()
-                    .includes(p)
-            );
-            // 有匹配者按人筛选;没有则保留全量(人名可能记错,让关键词兜底)并显式告知
-            if (byPerson.length > 0) msgs = byPerson;
-            else personNote = `未找到发言人 "${person}",已在全部发言人中搜索`;
-        }
+        let msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
+        const picked = filterByPerson(msgs, person, opts?.groupDir);
+        msgs = picked.msgs;
+        const personNote = picked.personNote;
 
         const span = dateSpanOf(allMessages);
         if (msgs.length === 0) {
@@ -640,7 +675,10 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
             };
         }
 
-        const query = keywords.join(' ');
+        // 别名同时扩进 BM25 查询:问"tk 说了什么"时正文里出现的可能是
+        // "tombkeeper",也可能是 @tk,两边都该有分
+        const personTerms = expandPersonTerms(person, loadAliases(opts?.groupDir));
+        const query = [...keywords, ...personTerms].join(' ');
         const common = {
             msgs,
             keywords,
@@ -668,7 +706,8 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
         const invalid = validateDateArgs(args);
         if (invalid) return invalid;
         const maxCount = Math.min(limit || 120, 200);
-        const msgs = filterByDate(allMessages, dateFrom, dateTo);
+        // 总结型问题直接读原文,噪音不剔会让"大家在聊什么"答成红包和签到
+        const msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
         if (msgs.length === 0) {
             const span = dateSpanOf(allMessages);
             return {
