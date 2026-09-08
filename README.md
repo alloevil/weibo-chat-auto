@@ -256,12 +256,16 @@ Ask questions in the toolbar's Q&A box; natural-language time ("recently", "yest
 
 💡 **If people go by nicknames, add an alias table**: create `output/<group>/aliases.json` with e.g. `{"tombkeeper": ["tk", "TK"]}` (keys are the real display names as archived). Asking "what did tk say recently" then filters straight to that person instead of making the LLM guess. The file is optional; without it behavior is unchanged.
 
-Retrieval automatically drops red-packet notices and check-in bot spam (same rules as the viewer's "hide noise" toggle), so "what is everyone talking about" isn't skewed by flooding.
+Retrieval automatically drops red-packet notices and check-in bot spam (same rules as the viewer's "hide noise" toggle) and collapses consecutive reposts, so "what is everyone talking about" isn't skewed by flooding. Asking about "last week" / "recently" / "yesterday" uses dates computed by the tools rather than inferred by the LLM. Shared links, videos and images are searchable too (asking "what links were shared last week" now finds them).
+
+💡 **For better recall, build the offline index once**: `node scripts/build-qa-index.mjs --group <group> --all`. It generates a summary plus a few reworded aliases per topic chunk, so a question phrased "who trimmed positions" can hit a message that says "sold half my chip stocks". It is incremental and resumable, and skips already-completed days on re-runs. Without it things still work — cross-vocabulary questions just lean more on the online rerank.
 
 <details>
 <summary><b>Technical design</b></summary>
 
-Uses the Agentic Search pattern. The tool loop comes from [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer (bigram BM25 + topic-chunk index + LLM rerank), the prompts, and the budget gate (≤7 LLM calls). Structured state accumulation follows the LedgerAgent paper.
+Uses the Agentic Search pattern. The tool loop comes from [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 LLM calls). Structured state accumulation follows the LedgerAgent paper.
+
+Retrieval layer: topic-chunk splitting (30-minute gaps) → bigram BM25 → time decay (2-day half-life) → LLM rerank → in-chunk hit location. Plus three preprocessing passes: noise removal, speaker-alias resolution, and relative-date resolution ("last week" is computed into a concrete range by the tools rather than inferred by the LLM). An optional offline annotation layer also generates a summary and 2–4 reworded aliases per chunk, so a question phrased "who trimmed positions" can hit a chunk that says "sold half my chip stocks".
 
 Note: the AI proxy must support SSE streaming responses.
 
@@ -277,7 +281,7 @@ See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 | Search coverage | Multi-round expansion | Single pass |
 | Answer quality | High | Medium |
 
-⚠️ **These numbers are stale and not reproducible.** They predate the block-level BM25 retrieval rewrite and the pi-agent-core loop migration; the original harness lived in `eval/` (an agent scratch directory untracked in ee2a63d) and depended on private archive data. Treat the table as a directional record of why Agent mode is the default, not as a current measurement. Latency in particular should now be lower: the loop no longer pays fixed retry backoff and honors `Retry-After` (a 2×429 recovery measured 3011ms → 1407ms), so the figure is conservative rather than optimistic.
+⚠️ **These numbers are stale and not reproducible.** They predate the block-level BM25 retrieval rewrite and the pi-agent-core loop migration; the original harness lived in `eval/` (an agent scratch directory untracked in ee2a63d) and depended on private archive data. Treat the table as a directional record of why Agent mode is the default, not as a current measurement. Latency in particular should now be lower: the loop no longer pays fixed retry backoff (a 2×429 recovery measured 3011ms → 1407ms — the SDK's default jittered backoff versus the old fixed 1s+2s), so the figure is conservative rather than optimistic.
 
 For current numbers, run `node scripts/benchmark-qa.js --group <group>` against your own archive (see [`docs/agent-qa.md`](docs/agent-qa.md#benchmark-结果)).
 

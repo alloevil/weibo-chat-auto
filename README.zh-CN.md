@@ -243,12 +243,16 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 💡 **群友有外号就写张别名表**：新建 `output/<群名>/aliases.json`，内容形如 `{"tombkeeper": ["tk", "TK"]}`（键是归档里的真实昵称）。这样问「tk 最近说了什么」就能直接筛到人，不必靠 LLM 自己猜。文件可选，缺失时行为不变。
 
-检索会自动剔除红包提示与签到机器人（规则同查看器的「隐藏噪音」），所以「大家在聊什么」不会被刷屏带偏。
+检索会自动剔除红包提示与签到机器人（规则同查看器的「隐藏噪音」），并折叠连续复读，所以「大家在聊什么」不会被刷屏带偏。问「上周」「最近」「昨天」时日期由工具算好，不靠 LLM 自己推。分享的链接、视频、图片也可检索（问「上周分享过什么链接」能直接搜到）。
+
+💡 **想让检索更准，建一次离线索引**：`node scripts/build-qa-index.mjs --group <群名> --all`。它为每个话题块生成摘要与几条同义改写，让「减持」这类提问也能命中写着「清了一半芯片股」的消息。增量可断点续传、重跑跳过已完成的；不建也能用，只是跨词汇时更依赖在线精排。
 
 <details>
 <summary><b>技术方案</b></summary>
 
-采用 Agentic Search 模式。工具循环由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层（bigram BM25 + 话题块索引 + LLM 精排）、提示词与预算闸门（≤7 次 LLM 调用）。结构化状态累积参考 LedgerAgent 论文。
+采用 Agentic Search 模式。工具循环由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层、提示词与预算闸门（≤7 次 LLM 调用）。结构化状态累积参考 LedgerAgent 论文。
+
+检索层：话题块切分（30 分钟断层）→ bigram BM25 → 时间衰减（半衰期 2 天）→ LLM 精排 → 块内定位命中点。外加三道预处理：噪音剔除、发言人别名解析、相对日期解析（「上周」在工具侧算成具体区间，不让 LLM 自己推）。可选的离线标注层还会为每个话题块生成摘要与 2–4 条同义改写，让「减持」这类提问也能命中写着「清了一半芯片股」的块。
 
 注意：AI 代理需支持 SSE 流式响应。
 
@@ -264,7 +268,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 | 搜索覆盖 | 多轮扩展 | 单次 |
 | 答案质量 | 高 | 中 |
 
-⚠️ **这组数字已过期且不可复现。** 它早于块级 BM25 检索重写与 pi-agent-core 迁移；原始脚本在 `eval/`（agent 工作目录，随 ee2a63d 一起 untrack 移除），且依赖私有归档数据。请把这张表当作「为什么 Agent 模式是默认」的方向性记录，而不是当前实测值。延迟一项现在应当更低：新循环不再付固定重试等待，并遵循 `Retry-After`（实测两次 429 的自愈 3011ms → 1407ms），所以偏保守而非偏乐观。
+⚠️ **这组数字已过期且不可复现。** 它早于块级 BM25 检索重写与 pi-agent-core 迁移；原始脚本在 `eval/`（agent 工作目录，随 ee2a63d 一起 untrack 移除），且依赖私有归档数据。请把这张表当作「为什么 Agent 模式是默认」的方向性记录，而不是当前实测值。延迟一项现在应当更低：新循环不再付固定重试等待（实测两次 429 的自愈 3011ms → 1407ms，这是 SDK 默认退避对比旧版固定 1s+2s 的结果），所以偏保守而非偏乐观。
 
 要拿当前数字，在自己的归档上跑 `node scripts/benchmark-qa.js --group <群名>`（详见 [`docs/agent-qa.md`](docs/agent-qa.md#benchmark-结果)）。
 
