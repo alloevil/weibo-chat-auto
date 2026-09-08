@@ -319,7 +319,7 @@ For current numbers, run `node scripts/benchmark-qa.js --group <group>` against 
 | --- | --- |
 | 🖥 **macOS / Linux / WSL** | Archiver and viewer run cross-platform; scheduled-job installation is automatic on every platform (launchd / systemd / cron) |
 | 🟢 **Node.js 20+** | [brew install node](https://brew.sh) (macOS) / `apt install nodejs` (Linux) / [nodejs.org](https://nodejs.org) |
-| 🌐 **Google Chrome** | The archiver drives it for login and scraping; path is auto-detected |
+| 🌐 **Google Chrome** | The archiver drives it for login and scraping; path is auto-detected (or set `chromePath` in `config.json`). The project only ever uses your installed Chrome, so `package.json` sets `puppeteer.skipDownload` and `npm install` no longer pulls a ~650 MB bundled Chromium; if you do want the bundled one, install with `PUPPETEER_SKIP_DOWNLOAD=0 npm install` |
 | 📱 **Weibo account + mobile app** | First-time login to the web version requires scanning a QR code with the app |
 | 🦀 **Rust + Bun** | Desktop app only; `npm run desktop` installs them automatically |
 

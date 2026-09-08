@@ -30,6 +30,9 @@
     "engines": {
         "node": ">=20"
     },
+    "puppeteer": {
+        "skipDownload": true
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/alloevil/weibo-chat-auto.git"
