@@ -142,7 +142,7 @@ node scripts/build-qa-index.mjs --group <群名> --all
 
 ### 预处理层
 
-检索前两道过滤，`count_messages` / `search_messages` / `get_recent_messages` 共用：
+检索前三道预处理。前两道 `count_messages` / `search_messages` / `get_recent_messages` 共用；第三道（相对日期解析）刻意跳过 `count_messages`，理由见下。
 
 **① 噪音剔除**（`dropNoise`，规则复用 `lib/text-utils.js` 的 `isNoise`）
 
@@ -169,6 +169,42 @@ node scripts/build-qa-index.mjs --group <群名> --all
 三级匹配逐级放宽，前一级有结果就不再放宽（避免「张三」把「张三丰」也带出来）：别名表精确命中 → `user` 名精确相等 → 子串包含（与原有行为一致，保持兼容）。
 
 文件缺失/损坏/写成数组 → 空表降级，检索行为与加此功能前完全一致。表里写了尚未发言的人则不返回他，不硬造结果。
+
+**③ 相对日期解析**（`lib/relative-dates.js`）
+
+「上周」「最近」「昨天」这类表达原先只在 system prompt 里以文字说明（`"上周" = 上一个完整周(周一到周日)`），由 LLM 自己算成 `dateFrom`/`dateTo`。算错就静默搜错范围 —— README 的历史 benchmark 里记着一次：问「上周分享过什么链接」，Legacy 搜了 `6/8-14` 而答案在 `6/15-21`。
+
+现在 `search_messages` 与 `get_recent_messages` 在模型**没给日期时**，从问题原文解析：
+
+| 表达 | 解析结果 |
+|---|---|
+| 今天 / 昨天 / 前天 / 大前天 | 单日区间 |
+| 上周 / 上礼拜 | 上一个完整周（周一–周日） |
+| 上上周 | 再往前一周 |
+| 本周 / 这周 | 本周一 – 今天（不含未来日期） |
+| 上个月 / 本月 | 自然月边界（跨年、闰月正确） |
+| 最近 / 近期 / 这几天 | 含今天共 7 天 |
+| 最近 N 天 | 含今天共 N 天（1 ≤ N ≤ 365） |
+
+三条设计约束：
+
+- **模型显式给的日期优先**。它可能有比问题字面更好的判断（例如前几轮已用 `count_messages` 探到热点日期）。
+- **解析不出就不限定**。像「前几天」「最近一段时间」这类边界模糊的一律返回 `null` —— 猜错范围比不解析更有害，不解析时模型至少还能从 `dateSpan` 自己挑。
+- **`count_messages` 刻意不参与**。它的用途正是「不限日期探测话题分布在哪些日期」，自动限定会破坏 prompt 里教的「先宽后窄」策略。
+
+工具会在 `dateRange` 回报实际使用的区间，并在自动限定时附 `dateNote`，让模型知道范围是工具替它选的（而不是以为搜了全量）。
+
+#### 顺带修掉的时区 bug
+
+提示词原先用 `new Date().toISOString()` 取「今天」—— 那是 **UTC 日期**，而归档消息的 `time` 字段（`"2026/09/08 07:00:00"`）是**本地时间**。UTC+8 时区在每天 `00:00–08:00` 之间，提示词说的「今天」比归档里的今天早一天，「昨天/最近 7 天」跟着整体偏移：
+
+```
+UTC+8 早上 07:00
+  toISOString() → 2026-09-07   ← 提示词说的"今天"
+  归档 time 字段 → 2026-09-08   ← 实际今天的消息
+```
+
+现在所有日期都走本地字段（`getFullYear` / `getMonth` / `getDate`），与归档 `time` 同一口径。有专门的凌晨时段回归测试。
 
 ### 已知限制
 
@@ -248,6 +284,7 @@ scripts/viewer-server.js    # /api/qa 端点，分发 agent/legacy 模式
 scripts/build-qa-index.mjs  # 离线标注回填（qa-index/）
 scripts/benchmark-qa.js     # 延迟基准（agent vs legacy），不依赖私有数据
 lib/speaker-aliases.js      # 发言人别名解析（tk → tombkeeper）
+lib/relative-dates.js       # 相对日期解析（上周/最近）+ 本地时区锚点
 lib/search-bm25.js          # bigram 分词 + BM25
 lib/chat-chunks.js          # 话题块切分
 lib/chunk-index.js          # 离线标注索引的加载与降级
