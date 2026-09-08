@@ -5,7 +5,13 @@
 'use strict';
 
 const path = require('path');
-const { listEntries, planEviction, evictCache, DEFAULT_MAX_BYTES, DEFAULT_MAX_AGE_MS } = require('../lib/cache-store');
+const {
+    listEntries,
+    planEviction,
+    evictCache,
+    DEFAULT_MAX_BYTES,
+    DEFAULT_MAX_AGE_MS,
+} = require('../lib/cache-store');
 
 const CACHE_DIR = path.join(__dirname, '..', 'cache', 'images');
 const MB = 1024 * 1024;
@@ -25,15 +31,21 @@ const dryRun = args.includes('--dry-run');
 const entries = listEntries(CACHE_DIR);
 const before = entries.reduce((s, e) => s + e.size, 0);
 console.log(`缓存现状: ${entries.length} 个条目 / ${(before / MB).toFixed(0)} MB`);
-console.log(`策略: 上限 ${(maxBytes / MB).toFixed(0)} MB，超过 ${(maxAgeMs / 86400000).toFixed(0)} 天一律淘汰`);
+console.log(
+    `策略: 上限 ${(maxBytes / MB).toFixed(0)} MB，超过 ${(maxAgeMs / 86400000).toFixed(0)} 天一律淘汰`
+);
 
 if (dryRun) {
     const plan = planEviction(entries, { maxBytes, maxAgeMs });
-    console.log(`[dry-run] 将删除 ${plan.names.length} 个条目，释放 ${(plan.freedBytes / MB).toFixed(0)} MB，`
-        + `剩余 ${(plan.remainingBytes / MB).toFixed(0)} MB`);
+    console.log(
+        `[dry-run] 将删除 ${plan.names.length} 个条目，释放 ${(plan.freedBytes / MB).toFixed(0)} MB，` +
+            `剩余 ${(plan.remainingBytes / MB).toFixed(0)} MB`
+    );
     process.exit(0);
 }
 
 const r = evictCache(CACHE_DIR, { maxBytes, maxAgeMs });
-console.log(`已删除 ${r.deleted} 个条目，释放 ${(r.freedBytes / MB).toFixed(0)} MB，`
-    + `剩余 ${(r.remainingBytes / MB).toFixed(0)} MB`);
+console.log(
+    `已删除 ${r.deleted} 个条目，释放 ${(r.freedBytes / MB).toFixed(0)} MB，` +
+        `剩余 ${(r.remainingBytes / MB).toFixed(0)} MB`
+);

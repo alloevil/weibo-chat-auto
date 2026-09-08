@@ -19,7 +19,10 @@ test('writeGroups: 文件缺失时新建,结构与 config.example.json 一致', 
 
 test('writeGroups: 保留用户手工加的字段,只改 groups', () => {
     const file = tmpfile();
-    fs.writeFileSync(file, JSON.stringify({ chromePath: '/opt/chrome', groups: ['旧群'], myNote: '手工注释' }));
+    fs.writeFileSync(
+        file,
+        JSON.stringify({ chromePath: '/opt/chrome', groups: ['旧群'], myNote: '手工注释' })
+    );
     const r = writeGroups(file, ['新群']);
     assert.strictEqual(r.ok, true);
     const data = JSON.parse(fs.readFileSync(file, 'utf-8'));

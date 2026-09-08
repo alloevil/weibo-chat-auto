@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// 编排(工具循环 / 迭代预算 / 重试 / 超时 / provider 适配)交给 pi-agent-core,
+// 本仓只保留检索层与提示词。原先手写的 IterationBudget / AgentState /
+// withRetry / withTimeout / callLLM 共约 230 行由 runAgentLoop 替代。
+import { runAgentLoop } from '@mariozechner/pi-agent-core';
 // lib/ 是 CJS,这里用静态 ESM import(Node 的 CJS interop 支持解构)。
 // 不要换成 createRequire:bundler(Bun sidecar 编译)无法静态分析 createRequire,
 // 会导致 lib 模块不进 bundle,桌面版运行时报 Cannot find module。
@@ -8,218 +12,141 @@ import { fileURLToPath } from 'url';
 import searchBm25 from '../lib/search-bm25.js';
 // 话题块索引:离线标注(qa-index/)优先,缺失/过期时即时切块降级
 import chunkIndex from '../lib/chunk-index.js';
+// 发言人别名(output/<group>/aliases.json):tk → tombkeeper
+import speakerAliases from '../lib/speaker-aliases.js';
+// 噪音判定(红包/签到机器人),与查看器共用同一份规则
+import textUtils from '../lib/text-utils.js';
 
 const { search: bm25Search } = searchBm25;
 const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
+const { loadAliases, resolvePerson, expandPersonTerms } = speakerAliases;
+const { isNoise } = textUtils;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// LLM 调用总上限。前 6 轮用于检索迭代,第 7 轮是收尾轮——预算耗尽时仍让模型
+// 有一次机会把已检索到的内容总结成答案,而不是停在一次工具调用上。
+const MAX_LLM_CALLS = 7;
+
 // LLM 请求超时。没有超时的话，服务端挂住连接就能让一次问答永远悬着：
 // 前端转圈、迭代预算不会推进、Node 也不会自己放弃。
-const LLM_TIMEOUT_MS = 60000;      // 主循环调用（带工具，可能较慢）
-const RERANK_TIMEOUT_MS = 20000;   // 重排是纯打分，快得多
+const LLM_TIMEOUT_MS = 60000; // 主循环调用（带工具，可能较慢）
+// 重试交给 provider 层的 OpenAI SDK：它只对 429/5xx/网络错误重试，比按
+// error.message 文本匹配状态码可靠。
+const LLM_MAX_RETRIES = 2;
+const RERANK_TIMEOUT_MS = 20000; // 重排是纯打分，快得多
 
 function loadAiConfig() {
-  const cfgPath = path.join(__dirname, '..', 'ai-config.json');
-  if (!fs.existsSync(cfgPath)) return null;
-  return JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+    const cfgPath = path.join(__dirname, '..', 'ai-config.json');
+    if (!fs.existsSync(cfgPath)) return null;
+    return JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
 }
 
 function formatMessage(m) {
-  const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-  const date = m.time ? m.time.split(' ')[0].replace(/\//g, '-') : '';
-  let text = m.content || '';
-  if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
-  if (m.pics?.length) text += ` [图片x${m.pics.length}]`;
-  return `[${date} ${t}] ${m.user}: ${text}`;
-}
-
-// ─── IterationBudget (adapted from Hermes Agent) ───────────────────────
-// Controls how many LLM calls the agent can make per question.
-// Supports consume/refund/grace-call semantics.
-class IterationBudget {
-  constructor(maxTotal) {
-    this.maxTotal = maxTotal;
-    this._used = 0;
-    this._graceCall = false;
-    this._graceGranted = false;
-  }
-
-  consume() {
-    if (this._used >= this.maxTotal) return false;
-    this._used++;
-    return true;
-  }
-
-  refund() {
-    if (this._used > 0) this._used--;
-  }
-
-  // grace 全程只发放一次。consumeGrace() 会把 _graceCall 复位，若允许反复
-  // enableGrace() 则 shouldContinue 恒为真，主循环（唯一的成本闸门）永不退出。
-  enableGrace() {
-    if (this._graceGranted) return false;
-    this._graceGranted = true;
-    this._graceCall = true;
-    return true;
-  }
-
-  get used() { return this._used; }
-  get remaining() { return Math.max(0, this.maxTotal - this._used); }
-  get shouldContinue() { return this.remaining > 0 || this._graceCall; }
-
-  consumeGrace() {
-    if (this._graceCall) {
-      this._graceCall = false;
-      return true;
-    }
-    return false;
-  }
-}
-
-// ─── AgentState (adapted from Pi-Multi-Agent) ──────────────────────────
-// Tracks lifecycle state + metrics for observability.
-class AgentState {
-  constructor() {
-    this.status = 'idle'; // idle → running → completed | failed
-    this.steps = [];
-    this.startTime = null;
-    this.endTime = null;
-  }
-
-  transition(newStatus) {
-    this.status = newStatus;
-    if (newStatus === 'running') this.startTime = Date.now();
-    if (newStatus === 'completed' || newStatus === 'failed') this.endTime = Date.now();
-  }
-
-  recordStep(step) {
-    this.steps.push({ ...step, timestamp: Date.now() });
-  }
-
-  get executionTime() {
-    if (!this.startTime) return 0;
-    return (this.endTime || Date.now()) - this.startTime;
-  }
-
-  get metrics() {
-    return {
-      status: this.status,
-      totalSteps: this.steps.length,
-      toolCalls: this.steps.filter(s => s.type === 'tool_call').length,
-      llmCalls: this.steps.filter(s => s.type === 'llm_call').length,
-      executionTime: this.executionTime,
-    };
-  }
-}
-
-// ─── Retry with backoff (adapted from Pi-Multi-Agent) ──────────────────
-async function withRetry(fn, { maxRetries = 2, initialDelay = 1000, backoffMultiplier = 2 } = {}) {
-  let lastError;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastError = e;
-      const isRetryable = e.message?.includes('429') || e.message?.includes('500') || e.message?.includes('503');
-      if (!isRetryable || attempt >= maxRetries) throw e;
-      const delay = initialDelay * Math.pow(backoffMultiplier, attempt);
-      await new Promise(r => setTimeout(r, delay));
-    }
-  }
-  throw lastError;
-}
-
-// ─── Timeout (adapted from Pi-Multi-Agent) ─────────────────────────────
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`Agent timeout after ${ms}ms`)), ms)),
-  ]);
+    const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+    const date = m.time ? m.time.split(' ')[0].replace(/\//g, '-') : '';
+    let text = m.content || '';
+    if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
+    if (m.pics?.length) text += ` [图片x${m.pics.length}]`;
+    return `[${date} ${t}] ${m.user}: ${text}`;
 }
 
 // ─── LedgerAgent-style structured state ────────────────────────────────
 function createLedger() {
-  return {
-    facts: [],
-    searchHistory: [],
-    citations: [],       // 真实消息引用（id/date/user/preview），供前端跳转
-    totalMatches: 0,
-    dateRangeUsed: null,
-    confidence: 'low',
-  };
+    return {
+        facts: [],
+        searchHistory: [],
+        citations: [], // 真实消息引用（id/date/user/preview），供前端跳转
+        totalMatches: 0,
+        dateRangeUsed: null,
+        confidence: 'low',
+    };
 }
 
-// ─── Tool definitions (OpenAI format with Bedrock-required type field) ─
-const TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'count_messages',
-      description: '统计消息在各日期的分布(直方图),不返回消息内容。这是"先宽后窄"的探测工具:在正式搜索前,先用它了解某话题/某人的发言集中在哪些日期,再把 search_messages 的日期范围锁定到热点日期。计算是本地词面匹配,成本极低,可放心多次调用。不带 keywords 时统计纯消息量(如"某人最近活跃吗")。不要用它获取消息内容——它只给数字。',
-      parameters: {
-        type: 'object',
-        properties: {
-          keywords: { type: 'array', items: { type: 'string' }, description: '统计包含任一关键词的消息(词面包含匹配,大小写不敏感)。省略则统计全部消息' },
-          person: { type: 'string', description: '只统计该发言人的消息(模糊匹配)' },
-          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD,如 2026-07-01' },
-          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+// ─── Tool definitions ──────────────────────────────────────────────────
+// 扁平 schema(name/description/parameters),由 buildAgentTools 包成
+// pi-agent-core 的 AgentTool;provider 层负责按各家 API 序列化,
+// 本文件不再手拼 OpenAI 的 { type:'function', function:{...} } 信封。
+const TOOL_SPECS = [
+    {
+        name: 'count_messages',
+        label: '统计分布',
+        description:
+            '统计消息在各日期的分布(直方图),不返回消息内容。这是"先宽后窄"的探测工具:在正式搜索前,先用它了解某话题/某人的发言集中在哪些日期,再把 search_messages 的日期范围锁定到热点日期。计算是本地词面匹配,成本极低,可放心多次调用。不带 keywords 时统计纯消息量(如"某人最近活跃吗")。不要用它获取消息内容——它只给数字。',
+        parameters: {
+            type: 'object',
+            properties: {
+                keywords: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description:
+                        '统计包含任一关键词的消息(词面包含匹配,大小写不敏感)。省略则统计全部消息',
+                },
+                person: { type: 'string', description: '只统计该发言人的消息(模糊匹配)' },
+                dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD,如 2026-07-01' },
+                dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+            },
+            additionalProperties: false,
         },
-        additionalProperties: false,
-      },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'search_messages',
-      description: '按关键词检索聊天记录(BM25 相关性 + 时间新近度排序),返回相关片段(含对话上下文)和命中消息的 id 列表(hitIds)。适合"某人说了什么/某话题谁提过/关于 X 的讨论"这类事实检索。关键词务必同时给同义词和英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"]),单个关键词建议 2-4 字。零命中时返回的 hint 会告诉你怎么调整。不适合总结归纳型问题(用 get_recent_messages)。',
-      parameters: {
-        type: 'object',
-        properties: {
-          keywords: { type: 'array', items: { type: 'string' }, description: '搜索关键词列表,同时给出同义词/相关词/英文缩写以提高召回' },
-          person: { type: 'string', description: '筛选特定发言人(模糊匹配)。注意:人名记不准时宁可不填,靠关键词兜底' },
-          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
-          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+    {
+        name: 'search_messages',
+        label: '检索消息',
+        description:
+            '按关键词检索聊天记录(BM25 相关性 + 时间新近度排序),返回相关片段(含对话上下文)和命中消息的 id 列表(hitIds)。适合"某人说了什么/某话题谁提过/关于 X 的讨论"这类事实检索。关键词务必同时给同义词和英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"]),单个关键词建议 2-4 字。零命中时返回的 hint 会告诉你怎么调整。不适合总结归纳型问题(用 get_recent_messages)。',
+        parameters: {
+            type: 'object',
+            properties: {
+                keywords: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '搜索关键词列表,同时给出同义词/相关词/英文缩写以提高召回',
+                },
+                person: {
+                    type: 'string',
+                    description: '筛选特定发言人(模糊匹配)。注意:人名记不准时宁可不填,靠关键词兜底',
+                },
+                dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
+                dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+            },
+            required: ['keywords'],
+            additionalProperties: false,
         },
-        required: ['keywords'],
-        additionalProperties: false,
-      },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_context',
-      description: '按消息 id 拉取该消息前后的完整对话(按 30 分钟时间断层自动截断到当前话题)。当 search_messages 的片段不足以回答问题、需要还原某条命中消息的来龙去脉时用。messageId 必须来自 search_messages 返回的 hitIds,不要凭空构造。',
-      parameters: {
-        type: 'object',
-        properties: {
-          messageId: { type: 'string', description: 'search_messages 返回的 hitIds 中的消息 id' },
-          span: { type: 'number', description: '上下文最大条数,默认 24,上限 60' },
+    {
+        name: 'get_context',
+        label: '拉取上下文',
+        description:
+            '按消息 id 拉取该消息前后的完整对话(按 30 分钟时间断层自动截断到当前话题)。当 search_messages 的片段不足以回答问题、需要还原某条命中消息的来龙去脉时用。messageId 必须来自 search_messages 返回的 hitIds,不要凭空构造。',
+        parameters: {
+            type: 'object',
+            properties: {
+                messageId: {
+                    type: 'string',
+                    description: 'search_messages 返回的 hitIds 中的消息 id',
+                },
+                span: { type: 'number', description: '上下文最大条数,默认 24,上限 60' },
+            },
+            required: ['messageId'],
+            additionalProperties: false,
         },
-        required: ['messageId'],
-        additionalProperties: false,
-      },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_recent_messages',
-      description: '直接读取某时间段的聊天记录(超过 limit 时均匀采样,保证时间覆盖)。适合"大家在聊什么/总结一下/有什么话题/氛围如何"这类总结归纳型问题——这类问题不要用关键词搜索,直接读记录后归纳。不适合找具体某句话(用 search_messages)。',
-      parameters: {
-        type: 'object',
-        properties: {
-          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
-          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
-          limit: { type: 'number', description: '最多返回条数,默认120,上限200' },
+    {
+        name: 'get_recent_messages',
+        label: '读取时段',
+        description:
+            '直接读取某时间段的聊天记录(超过 limit 时均匀采样,保证时间覆盖)。适合"大家在聊什么/总结一下/有什么话题/氛围如何"这类总结归纳型问题——这类问题不要用关键词搜索,直接读记录后归纳。不适合找具体某句话(用 search_messages)。',
+        parameters: {
+            type: 'object',
+            properties: {
+                dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
+                dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+                limit: { type: 'number', description: '最多返回条数,默认120,上限200' },
+            },
+            required: ['dateFrom', 'dateTo'],
+            additionalProperties: false,
         },
-        required: ['dateFrom', 'dateTo'],
-        additionalProperties: false,
-      },
     },
-  },
 ];
 
 // ─── LLM reranker ──────────────────────────────────────────────────────
@@ -228,8 +155,8 @@ const TOOLS = [
 // 给出问题 + 编号候选列表，让模型返回真正相关的编号（按相关度排序）。
 // 失败时静默降级为原始 BM25 排序，不影响可用性。
 async function rerankByLLM(config, question, candidates) {
-  const list = candidates.map((c, i) => `${i}. ${c.text.slice(0, 120)}`).join('\n');
-  const prompt = `用户问题：${question}
+    const list = candidates.map((c, i) => `${i}. ${c.text.slice(0, 120)}`).join('\n');
+    const prompt = `用户问题：${question}
 
 以下是候选聊天消息（编号. 内容）：
 ${list}
@@ -237,126 +164,183 @@ ${list}
 请判断哪些消息与用户问题真正相关（语义相关即可，不要求字面匹配；如消息谈论的具体事物属于问题所问的范畴，也算相关）。
 只输出 JSON 数组（相关消息的编号，按相关度从高到低），不要其他文字。例如：[3,0,12]`;
 
-  const resp = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [{ role: 'user', content: prompt }],
-      stream: false,
-    }),
-    // 没有超时的话，LLM 端挂住这条连接就能让整个问答请求永远卡着
-    signal: AbortSignal.timeout(RERANK_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`rerank API ${resp.status}`);
-  const data = await resp.json();
-  const text = data.choices?.[0]?.message?.content || '';
-  const m = text.match(/\[[\d,\s]*\]/);
-  if (!m) throw new Error('rerank: no JSON array in response');
-  const order = JSON.parse(m[0]).filter(i => Number.isInteger(i) && i >= 0 && i < candidates.length);
-  if (!order.length) throw new Error('rerank: empty result');
-  return order;
+    const resp = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+        body: JSON.stringify({
+            model: config.model,
+            messages: [{ role: 'user', content: prompt }],
+            stream: false,
+        }),
+        // 没有超时的话，LLM 端挂住这条连接就能让整个问答请求永远卡着
+        signal: AbortSignal.timeout(RERANK_TIMEOUT_MS),
+    });
+    if (!resp.ok) throw new Error(`rerank API ${resp.status}`);
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    const m = text.match(/\[[\d,\s]*\]/);
+    if (!m) throw new Error('rerank: no JSON array in response');
+    const order = JSON.parse(m[0]).filter(
+        (i) => Number.isInteger(i) && i >= 0 && i < candidates.length
+    );
+    if (!order.length) throw new Error('rerank: empty result');
+    return order;
 }
 
 // ─── Tool execution ────────────────────────────────────────────────────
 // 动态上下文窗口：从命中点向前后扩展，直到出现时间断层（>30 分钟，通常意味
 // 着话题切换）或达到上限。替代固定 ±3 条——群聊话题绵延时不再掐头去尾。
 function expandContext(msgs, hitIdx, { gapMs = 30 * 60 * 1000, maxSpan = 12 } = {}) {
-  let start = hitIdx, end = hitIdx;
-  while (start > 0 && (hitIdx - start) < maxSpan / 2) {
-    const cur = msgs[start], prev = msgs[start - 1];
-    if (cur.timestamp && prev.timestamp && cur.timestamp - prev.timestamp > gapMs) break;
-    start--;
-  }
-  while (end < msgs.length - 1 && (end - hitIdx) < maxSpan / 2) {
-    const cur = msgs[end], next = msgs[end + 1];
-    if (cur.timestamp && next.timestamp && next.timestamp - cur.timestamp > gapMs) break;
-    end++;
-  }
-  return [start, end + 1]; // [start, end)
+    let start = hitIdx,
+        end = hitIdx;
+    while (start > 0 && hitIdx - start < maxSpan / 2) {
+        const cur = msgs[start],
+            prev = msgs[start - 1];
+        if (cur.timestamp && prev.timestamp && cur.timestamp - prev.timestamp > gapMs) break;
+        start--;
+    }
+    while (end < msgs.length - 1 && end - hitIdx < maxSpan / 2) {
+        const cur = msgs[end],
+            next = msgs[end + 1];
+        if (cur.timestamp && next.timestamp && next.timestamp - cur.timestamp > gapMs) break;
+        end++;
+    }
+    return [start, end + 1]; // [start, end)
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** 模型偶尔把 keywords 传成字符串/数字而非数组,归一成字符串数组。 */
 function normalizeKeywords(keywords) {
-  if (keywords == null) return [];
-  const arr = Array.isArray(keywords) ? keywords : [keywords];
-  return arr.map(k => String(k)).filter(Boolean);
+    if (keywords == null) return [];
+    const arr = Array.isArray(keywords) ? keywords : [keywords];
+    return arr.map((k) => String(k)).filter(Boolean);
 }
 
 function msgDate(m) {
-  return (m.time || '').split(' ')[0].replace(/\//g, '-');
+    return (m.time || '').split(' ')[0].replace(/\//g, '-');
 }
 
 /** 日期参数格式校验。非法时返回可操作的错误对象(含格式示例),合法返回 null。 */
 function validateDateArgs({ dateFrom, dateTo }) {
-  for (const [k, v] of [['dateFrom', dateFrom], ['dateTo', dateTo]]) {
-    if (v != null && !DATE_RE.test(v)) {
-      return { error: `${k} 格式非法: "${v}"。必须是 YYYY-MM-DD,例如 "2026-07-03"` };
+    for (const [k, v] of [
+        ['dateFrom', dateFrom],
+        ['dateTo', dateTo],
+    ]) {
+        if (v != null && !DATE_RE.test(v)) {
+            return { error: `${k} 格式非法: "${v}"。必须是 YYYY-MM-DD,例如 "2026-07-03"` };
+        }
     }
-  }
-  return null;
+    return null;
 }
 
 function filterByDate(msgs, dateFrom, dateTo) {
-  if (!dateFrom && !dateTo) return msgs;
-  return msgs.filter(m => {
-    const d = msgDate(m);
-    if (!d) return false;
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo && d > dateTo) return false;
-    return true;
-  });
+    if (!dateFrom && !dateTo) return msgs;
+    return msgs.filter((m) => {
+        const d = msgDate(m);
+        if (!d) return false;
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo && d > dateTo) return false;
+        return true;
+    });
 }
 
 /** 全量数据的可用日期范围(引导 agent 修正越界的日期参数)。 */
 function dateSpanOf(msgs) {
-  if (!msgs.length) return null;
-  return { first: msgDate(msgs[0]), last: msgDate(msgs[msgs.length - 1]) };
+    if (!msgs.length) return null;
+    return { first: msgDate(msgs[0]), last: msgDate(msgs[msgs.length - 1]) };
+}
+
+/**
+ * 按发言人筛选。别名表优先(tk → tombkeeper),再退回精确/子串匹配。
+ *
+ * 匹配不到时刻意保留全量并回传 personNote:人名记错时让关键词兜底,
+ * 比直接返回零结果更可能答对(这是替换前就有的行为,别名只是让它少触发)。
+ *
+ * @returns {{msgs: Array, personNote?: string}}
+ */
+function filterByPerson(msgs, person, groupDir) {
+    if (!person) return { msgs };
+    const aliases = loadAliases(groupDir);
+    const names = resolvePerson(
+        person,
+        msgs.map((m) => m.user),
+        aliases
+    );
+    if (!names.length) {
+        return { msgs, personNote: `未找到发言人 "${person}",已在全部发言人中搜索` };
+    }
+    const wanted = new Set(names);
+    const picked = msgs.filter((m) => wanted.has(String(m.user ?? '')));
+    // 别名命中且与原文不同名时告知模型真名,后续轮次它就能直接用真名
+    const resolved = names.join('、');
+    const note =
+        resolved.toLowerCase() === String(person).trim().toLowerCase()
+            ? undefined
+            : `发言人 "${person}" 已解析为:${resolved}`;
+    return { msgs: picked, ...(note ? { personNote: note } : {}) };
+}
+
+/**
+ * 剔除噪音消息(红包提示、签到机器人等,规则见 lib/text-utils.js isNoise)。
+ *
+ * 只用于检索:噪音块参与 BM25 会稀释真话题的相对分数,且签到机器人实测占
+ * 「提到我」命中的 93%。count_messages 的计数刻意也过滤——否则"某人最近
+ * 活跃吗"会被机器人刷屏带偏。
+ *
+ * 全量都是噪音时退回原数组:宁可让模型看到噪音,也不要给它一个空语料然后
+ * 让它以为这段时间没人说话。
+ */
+function dropNoise(msgs) {
+    const kept = msgs.filter((m) => !isNoise(m));
+    return kept.length ? kept : msgs;
 }
 
 // ─── 检索流水线共用件 ──────────────────────────────────────────────────
 const HALF_LIFE_MS = 2 * 86400000;
 
 function msgText(m) {
-  return (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
+    return (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
 }
 
 // 时间衰减加权:问"最近"时用户更关心新消息,纯相关性会让几天前的
 // 高分讨论把今天的对话挤出 top-N。半衰期 2 天,只在范围内相对衰减。
 function applyTimeDecay(hits, tsOf) {
-  const latestTs = hits.reduce((mx, h) => Math.max(mx, tsOf(h.idx) || 0), 0);
-  if (!latestTs) return hits;
-  return hits
-    .map(h => ({ ...h, score: h.score * Math.pow(0.5, (latestTs - (tsOf(h.idx) || 0)) / HALF_LIFE_MS) }))
-    .sort((a, b) => b.score - a.score);
+    const latestTs = hits.reduce((mx, h) => Math.max(mx, tsOf(h.idx) || 0), 0);
+    if (!latestTs) return hits;
+    return hits
+        .map((h) => ({
+            ...h,
+            score: h.score * Math.pow(0.5, (latestTs - (tsOf(h.idx) || 0)) / HALF_LIFE_MS),
+        }))
+        .sort((a, b) => b.score - a.score);
 }
 
 // LLM 语义精排:跨过词汇鸿沟(BM25 只认字面)。只做「相关性过滤」,
 // 最终顺序仍按时间衰减分——否则语义排序会覆盖新近度偏好。
 // 失败静默降级,返回原 hits。
 async function rerankFilter(hits, textOf, config, question) {
-  if (!config || !question || hits.length <= 3) return { hits, reranked: false };
-  try {
-    const candidates = hits.map(h => ({ idx: h.idx, text: textOf(h.idx) }));
-    const order = await withTimeout(rerankByLLM(config, question, candidates), 20000);
-    const keep = new Set(order);
-    const filtered = hits.filter((_, i) => keep.has(i));
-    if (filtered.length) return { hits: filtered, reranked: true };
-  } catch (e) {
-    console.error('[qa] rerank 降级为 BM25:', e.message);
-  }
-  return { hits, reranked: false };
+    if (!config || !question || hits.length <= 3) return { hits, reranked: false };
+    try {
+        const candidates = hits.map((h) => ({ idx: h.idx, text: textOf(h.idx) }));
+        // 超时由 rerankByLLM 内部的 AbortSignal.timeout(RERANK_TIMEOUT_MS) 兜住
+        const order = await rerankByLLM(config, question, candidates);
+        const keep = new Set(order);
+        const filtered = hits.filter((_, i) => keep.has(i));
+        if (filtered.length) return { hits: filtered, reranked: true };
+    } catch (e) {
+        console.error('[qa] rerank 降级为 BM25:', e.message);
+    }
+    return { hits, reranked: false };
 }
 
 function makeCitation(m) {
-  return {
-    id: m.id,
-    date: msgDate(m),
-    user: m.user,
-    preview: (m.content || m.share?.title || '').slice(0, 60),
-  };
+    return {
+        id: m.id,
+        date: msgDate(m),
+        user: m.user,
+        preview: (m.content || m.share?.title || '').slice(0, 60),
+    };
 }
 
 // 按最终答案内容挑选 sources，而非"先累积先展示"。
@@ -366,357 +350,489 @@ function makeCitation(m) {
 // 用完整消息正文（非 60 字预览）对答案文本做一次 BM25 打分精选 top-N；
 // 打分全零时退回原始顺序，保证有输出而不是空列表。
 function selectRelevantSources(answer, citations, allMessages, limit = 8) {
-  const byId = new Map();
-  for (const c of citations) if (c.id != null) byId.set(c.id, c);
-  const unique = [...byId.values()];
-  if (!unique.length || !answer) return unique.slice(0, limit);
+    const byId = new Map();
+    for (const c of citations) if (c.id != null) byId.set(c.id, c);
+    const unique = [...byId.values()];
+    if (!unique.length || !answer) return unique.slice(0, limit);
 
-  const msgById = new Map(allMessages.map(m => [String(m.id), m]));
-  const docs = unique.map(c => {
-    const m = msgById.get(String(c.id));
-    return m ? msgText(m) : c.preview || '';
-  });
+    const msgById = new Map(allMessages.map((m) => [String(m.id), m]));
+    const docs = unique.map((c) => {
+        const m = msgById.get(String(c.id));
+        return m ? msgText(m) : c.preview || '';
+    });
 
-  const hits = bm25Search(docs, answer, { limit: unique.length });
-  const positive = hits.filter(h => h.score > 0);
-  const ordered = (positive.length ? positive : hits).map(h => unique[h.idx]);
-  return ordered.slice(0, limit);
+    const hits = bm25Search(docs, answer, { limit: unique.length });
+    const positive = hits.filter((h) => h.score > 0);
+    const ordered = (positive.length ? positive : hits).map((h) => unique[h.idx]);
+    return ordered.slice(0, limit);
 }
 
 const ZERO_HIT_HINT = (n) =>
-  `范围内有 ${n} 条消息但关键词无命中。建议:1) 把长关键词拆成 2 字短词 2) 补充同义词/英文缩写 3) 用 count_messages 换关键词探测话题分布在哪些日期`;
+    `范围内有 ${n} 条消息但关键词无命中。建议:1) 把长关键词拆成 2 字短词 2) 补充同义词/英文缩写 3) 用 count_messages 换关键词探测话题分布在哪些日期`;
 
 // ─── 块级检索(主路径) ────────────────────────────────────────────────
 // 检索单元是话题块(时间断层切分,见 lib/chat-chunks.js)而非单条短消息。
 // 有 groupDir 且离线索引新鲜时,块文本前置 LLM 标注(主题/参与者/结论),
 // BM25 与 rerank 都吃到语义信息;索引缺失/过期时即时切块(无标注)。
 // 返回 null 表示应降级到单条路径(语料太小或块级零命中)。
-async function searchByChunks({ msgs, keywords, query, config, question, ledger, personNote, dateFrom, dateTo, person, groupDir }) {
-  const msgById = new Map(msgs.map(m => [String(m.id), m]));
-  const toChunk = (msgIds, annotation, endTs) => {
-    const present = msgIds.map(id => msgById.get(String(id))).filter(Boolean);
-    return present.length ? { msgs: present, annotation, endTs: endTs || present[present.length - 1].timestamp || 0 } : null;
-  };
+async function searchByChunks({
+    msgs,
+    keywords,
+    query,
+    config,
+    question,
+    ledger,
+    personNote,
+    dateFrom,
+    dateTo,
+    person,
+    groupDir,
+}) {
+    const msgById = new Map(msgs.map((m) => [String(m.id), m]));
+    const toChunk = (msgIds, annotation, endTs, aliases) => {
+        const present = msgIds.map((id) => msgById.get(String(id))).filter(Boolean);
+        return present.length
+            ? {
+                  msgs: present,
+                  annotation,
+                  // 别名:索引期生成的「完全不同词汇」改写,只进 BM25 文本,
+                  // 不进展示给模型的 snippet(那会让模型误以为群里有人这么说过)
+                  aliases: Array.isArray(aliases) ? aliases : [],
+                  endTs: endTs || present[present.length - 1].timestamp || 0,
+              }
+            : null;
+    };
 
-  let chunks = [];
-  if (groupDir) {
-    const byDate = new Map();
-    for (const m of msgs) {
-      const d = msgDate(m);
-      if (!d) continue;
-      if (!byDate.has(d)) byDate.set(d, []);
-      byDate.get(d).push(m);
+    let chunks = [];
+    if (groupDir) {
+        const byDate = new Map();
+        for (const m of msgs) {
+            const d = msgDate(m);
+            if (!d) continue;
+            if (!byDate.has(d)) byDate.set(d, []);
+            byDate.get(d).push(m);
+        }
+        const dates = [...byDate.keys()].sort();
+        const { byDate: index } = loadChunkIndex(groupDir, dates);
+        for (const d of dates) {
+            const entry = index.get(d);
+            const raw = entry?.chunks?.length
+                ? entry.chunks.map((c) =>
+                      toChunk(c.msgIds, c.annotation || null, c.endTs, c.aliases)
+                  )
+                : buildChunksForMessages(byDate.get(d)).map((c) =>
+                      toChunk(c.msgIds, null, c.endTs)
+                  );
+            chunks.push(...raw.filter(Boolean));
+        }
+    } else {
+        chunks = buildChunksForMessages(msgs)
+            .map((c) => toChunk(c.msgIds, null, c.endTs))
+            .filter(Boolean);
     }
-    const dates = [...byDate.keys()].sort();
-    const { byDate: index } = loadChunkIndex(groupDir, dates);
-    for (const d of dates) {
-      const entry = index.get(d);
-      const raw = entry?.chunks?.length
-        ? entry.chunks.map(c => toChunk(c.msgIds, c.annotation || null, c.endTs))
-        : buildChunksForMessages(byDate.get(d)).map(c => toChunk(c.msgIds, null, c.endTs));
-      chunks.push(...raw.filter(Boolean));
+
+    if (chunks.length < 2) return null; // 语料太小,块级检索无意义
+
+    // BM25 文本 = 标注 + 别名 + 原文。别名是索引期生成的同义改写,让「减持科技股」
+    // 这类提问也能命中写着「清了一半芯片股」的块——不必每次查询都花一轮 LLM 精排。
+    const chunkDocs = chunks.map(
+        (c) =>
+            (c.annotation ? c.annotation + '\n' : '') +
+            (c.aliases.length ? c.aliases.join(' ') + '\n' : '') +
+            c.msgs.map(msgText).join('\n')
+    );
+    let hits = bm25Search(chunkDocs, query, { limit: 20 });
+    if (!hits.length) return null;
+
+    hits = applyTimeDecay(hits, (i) => chunks[i].endTs);
+    // rerank 候选:标注优先(信息密度远高于随机截断);无标注块用块首消息,
+    // 保证降级块在精排中不被系统性歧视
+    const { hits: kept, reranked } = await rerankFilter(
+        hits,
+        (i) =>
+            (chunks[i].annotation || chunks[i].msgs.slice(0, 2).map(msgText).join(' ')).slice(
+                0,
+                160
+            ),
+        config,
+        question
+    );
+    hits = kept.slice(0, 8);
+
+    const snippets = [];
+    const windowCitations = [];
+    const hitCitations = [];
+    for (const h of hits) {
+        const c = chunks[h.idx];
+        // 块内小 BM25 定位真正的关键词命中点(回给模型的 hitIds 用这个,精确)
+        const inner = bm25Search(c.msgs.map(msgText), query, { limit: 4 });
+        const hitIdxs = inner.length ? inner.map((x) => x.idx) : [0];
+        for (const i of hitIdxs) hitCitations.push(makeCitation(c.msgs[i]));
+
+        // 块即上下文;超长块取首个命中 ±8 条,防吃 token
+        let snippetMsgs = c.msgs;
+        if (c.msgs.length > 30) {
+            const center = hitIdxs[0];
+            snippetMsgs = c.msgs.slice(Math.max(0, center - 8), center + 9);
+        }
+        // ledger.citations(供最终 sources 精选)覆盖 LLM 实际读到的整个 snippet
+        // 窗口，不止关键词命中的那几条——答案可能引用窗口内任意一句(同
+        // get_context 的教训:只记命中点会漏掉真正被引用但不含查询词的那条)
+        for (const wm of snippetMsgs) windowCitations.push(makeCitation(wm));
+
+        const header = c.annotation ? `【话题标注】${c.annotation}\n` : '';
+        snippets.push(header + snippetMsgs.map(formatMessage).join('\n'));
     }
-  } else {
-    chunks = buildChunksForMessages(msgs).map(c => toChunk(c.msgIds, null, c.endTs)).filter(Boolean);
-  }
+    ledger.citations.push(...windowCitations);
+    ledger.searchHistory.push({
+        keywords,
+        person,
+        dateFrom,
+        dateTo,
+        matchCount: hits.length,
+        chunked: true,
+    });
+    ledger.totalMatches += hits.length;
+    if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
+    if (hits.length > 3) ledger.confidence = hits.length > 6 ? 'high' : 'medium';
 
-  if (chunks.length < 2) return null; // 语料太小,块级检索无意义
-
-  const chunkDocs = chunks.map(c => (c.annotation ? c.annotation + '\n' : '') + c.msgs.map(msgText).join('\n'));
-  let hits = bm25Search(chunkDocs, query, { limit: 20 });
-  if (!hits.length) return null;
-
-  hits = applyTimeDecay(hits, i => chunks[i].endTs);
-  // rerank 候选:标注优先(信息密度远高于随机截断);无标注块用块首消息,
-  // 保证降级块在精排中不被系统性歧视
-  const { hits: kept, reranked } = await rerankFilter(
-    hits,
-    i => (chunks[i].annotation || chunks[i].msgs.slice(0, 2).map(msgText).join(' ')).slice(0, 160),
-    config, question
-  );
-  hits = kept.slice(0, 8);
-
-  const snippets = [];
-  const windowCitations = [];
-  const hitCitations = [];
-  for (const h of hits) {
-    const c = chunks[h.idx];
-    // 块内小 BM25 定位真正的关键词命中点(回给模型的 hitIds 用这个,精确)
-    const inner = bm25Search(c.msgs.map(msgText), query, { limit: 4 });
-    const hitIdxs = inner.length ? inner.map(x => x.idx) : [0];
-    for (const i of hitIdxs) hitCitations.push(makeCitation(c.msgs[i]));
-
-    // 块即上下文;超长块取首个命中 ±8 条,防吃 token
-    let snippetMsgs = c.msgs;
-    if (c.msgs.length > 30) {
-      const center = hitIdxs[0];
-      snippetMsgs = c.msgs.slice(Math.max(0, center - 8), center + 9);
-    }
-    // ledger.citations(供最终 sources 精选)覆盖 LLM 实际读到的整个 snippet
-    // 窗口，不止关键词命中的那几条——答案可能引用窗口内任意一句(同
-    // get_context 的教训:只记命中点会漏掉真正被引用但不含查询词的那条)
-    for (const wm of snippetMsgs) windowCitations.push(makeCitation(wm));
-
-    const header = c.annotation ? `【话题标注】${c.annotation}\n` : '';
-    snippets.push(header + snippetMsgs.map(formatMessage).join('\n'));
-  }
-  ledger.citations.push(...windowCitations);
-  ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length, chunked: true });
-  ledger.totalMatches += hits.length;
-  if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
-  if (hits.length > 3) ledger.confidence = hits.length > 6 ? 'high' : 'medium';
-
-  return {
-    matchCount: hits.length,
-    matchUnit: 'topic_chunk',
-    totalInRange: msgs.length,
-    reranked,
-    dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
-    hitIds: hitCitations.slice(0, 8),
-    snippets,
-    ...(personNote ? { personNote } : {}),
-  };
+    return {
+        matchCount: hits.length,
+        matchUnit: 'topic_chunk',
+        totalInRange: msgs.length,
+        reranked,
+        dateRange: dateFrom || dateTo ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
+        hitIds: hitCitations.slice(0, 8),
+        snippets,
+        ...(personNote ? { personNote } : {}),
+    };
 }
 
 // ─── 单条消息检索(兜底路径) ──────────────────────────────────────────
-async function searchFlat({ msgs, keywords, query, config, question, ledger, personNote, dateFrom, dateTo, person }) {
-  const docs = msgs.map(msgText);
-  let hits = bm25Search(docs, query, { limit: 40 });
+async function searchFlat({
+    msgs,
+    keywords,
+    query,
+    config,
+    question,
+    ledger,
+    personNote,
+    dateFrom,
+    dateTo,
+    person,
+}) {
+    const docs = msgs.map(msgText);
+    let hits = bm25Search(docs, query, { limit: 40 });
 
-  if (hits.length === 0) {
-    ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
+    if (hits.length === 0) {
+        ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
+        return {
+            matchCount: 0,
+            totalInRange: msgs.length,
+            hint: ZERO_HIT_HINT(msgs.length),
+            ...(personNote ? { personNote } : {}),
+        };
+    }
+
+    hits = applyTimeDecay(hits, (i) => msgs[i].timestamp).slice(0, 40);
+    const { hits: kept, reranked } = await rerankFilter(
+        hits,
+        (i) => docs[i].slice(0, 160),
+        config,
+        question
+    );
+    hits = kept.slice(0, 15);
+
+    // 命中点 → 动态上下文片段(合并重叠区间)
+    const ranges = hits.map((h) => expandContext(msgs, h.idx)).sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const r of ranges) {
+        const last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push([...r]);
+    }
+    const snippets = merged
+        .slice(0, 8)
+        .map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
+
+    // 回给模型的 hitIds 只含真正的关键词命中点，供 get_context 精确下钻;
+    // ledger.citations 则覆盖整个 snippet 窗口(供最终 sources 精选用)——
+    // 答案可能引用窗口内任意一句,只记命中点会让真正被引用的内容漏出引用池
+    // (同 get_context 的教训)
+    const hitCitations = hits.slice(0, 8).map((h) => makeCitation(msgs[h.idx]));
+    for (const [s, e] of merged.slice(0, 8)) {
+        for (const wm of msgs.slice(s, e)) ledger.citations.push(makeCitation(wm));
+    }
+
+    ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length });
+    ledger.totalMatches += hits.length;
+    if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
+    if (hits.length > 5) ledger.confidence = hits.length > 12 ? 'high' : 'medium';
+
     return {
-      matchCount: 0,
-      totalInRange: msgs.length,
-      hint: ZERO_HIT_HINT(msgs.length),
-      ...(personNote ? { personNote } : {}),
+        matchCount: hits.length,
+        matchUnit: 'message',
+        totalInRange: msgs.length,
+        reranked,
+        dateRange: dateFrom || dateTo ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
+        hitIds: hitCitations,
+        snippets,
+        ...(personNote ? { personNote } : {}),
     };
-  }
-
-  hits = applyTimeDecay(hits, i => msgs[i].timestamp).slice(0, 40);
-  const { hits: kept, reranked } = await rerankFilter(hits, i => docs[i].slice(0, 160), config, question);
-  hits = kept.slice(0, 15);
-
-  // 命中点 → 动态上下文片段(合并重叠区间)
-  const ranges = hits
-    .map(h => expandContext(msgs, h.idx))
-    .sort((a, b) => a[0] - b[0]);
-  const merged = [];
-  for (const r of ranges) {
-    const last = merged[merged.length - 1];
-    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
-    else merged.push([...r]);
-  }
-  const snippets = merged.slice(0, 8).map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
-
-  // 回给模型的 hitIds 只含真正的关键词命中点，供 get_context 精确下钻;
-  // ledger.citations 则覆盖整个 snippet 窗口(供最终 sources 精选用)——
-  // 答案可能引用窗口内任意一句,只记命中点会让真正被引用的内容漏出引用池
-  // (同 get_context 的教训)
-  const hitCitations = hits.slice(0, 8).map(h => makeCitation(msgs[h.idx]));
-  for (const [s, e] of merged.slice(0, 8)) {
-    for (const wm of msgs.slice(s, e)) ledger.citations.push(makeCitation(wm));
-  }
-
-  ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length });
-  ledger.totalMatches += hits.length;
-  if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
-  if (hits.length > 5) ledger.confidence = hits.length > 12 ? 'high' : 'medium';
-
-  return {
-    matchCount: hits.length,
-    matchUnit: 'message',
-    totalInRange: msgs.length,
-    reranked,
-    dateRange: (dateFrom || dateTo) ? `${dateFrom || '?'} ~ ${dateTo || '?'}` : '全部',
-    hitIds: hitCitations,
-    snippets,
-    ...(personNote ? { personNote } : {}),
-  };
 }
 
 async function executeTool(name, args, allMessages, ledger, config, question, opts) {
-  if (name === 'count_messages') {
-    const { person, dateFrom, dateTo } = args;
-    const keywords = normalizeKeywords(args.keywords);
-    const invalid = validateDateArgs(args);
-    if (invalid) return invalid;
+    if (name === 'count_messages') {
+        const { person, dateFrom, dateTo } = args;
+        const keywords = normalizeKeywords(args.keywords);
+        const invalid = validateDateArgs(args);
+        if (invalid) return invalid;
 
-    let msgs = filterByDate(allMessages, dateFrom, dateTo);
-    let personNote;
-    if (person) {
-      const p = String(person).toLowerCase();
-      const byPerson = msgs.filter(m => String(m.user ?? '').toLowerCase().includes(p));
-      if (byPerson.length > 0) msgs = byPerson;
-      else personNote = `未找到发言人 "${person}",统计的是全部发言人`;
-    }
-    // 词面包含匹配(any-of):计数要可预测、可解释,不做相关性打分
-    const kws = keywords.map(k => String(k).toLowerCase()).filter(Boolean);
-    if (kws.length) {
-      msgs = msgs.filter(m => {
-        const text = ((m.content || '') + ' ' + (m.share?.title || '')).toLowerCase();
-        return kws.some(k => text.includes(k));
-      });
-    }
+        // 噪音先剔:签到机器人会把"某人最近活跃吗"的计数彻底带偏
+        let msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
+        const picked = filterByPerson(msgs, person, opts?.groupDir);
+        msgs = picked.msgs;
+        const personNote = picked.personNote;
+        // 词面包含匹配(any-of):计数要可预测、可解释,不做相关性打分
+        const kws = keywords.map((k) => String(k).toLowerCase()).filter(Boolean);
+        if (kws.length) {
+            msgs = msgs.filter((m) => {
+                const text = ((m.content || '') + ' ' + (m.share?.title || '')).toLowerCase();
+                return kws.some((k) => text.includes(k));
+            });
+        }
 
-    const byDate = new Map();
-    for (const m of msgs) {
-      const d = msgDate(m);
-      if (d) byDate.set(d, (byDate.get(d) || 0) + 1);
-    }
-    let groups = [...byDate.entries()].map(([key, count]) => ({ key, count }));
-    groups.sort((a, b) => b.count - a.count);
-    const truncated = groups.length > 40;
-    groups = groups.slice(0, 40).sort((a, b) => (a.key < b.key ? -1 : 1));
+        const byDate = new Map();
+        for (const m of msgs) {
+            const d = msgDate(m);
+            if (d) byDate.set(d, (byDate.get(d) || 0) + 1);
+        }
+        let groups = [...byDate.entries()].map(([key, count]) => ({ key, count }));
+        groups.sort((a, b) => b.count - a.count);
+        const truncated = groups.length > 40;
+        groups = groups.slice(0, 40).sort((a, b) => (a.key < b.key ? -1 : 1));
 
-    ledger.searchHistory.push({ count: true, keywords, person, dateFrom, dateTo, total: msgs.length });
-    return {
-      total: msgs.length,
-      groups,
-      truncated,
-      dateSpan: dateSpanOf(allMessages),
-      ...(personNote ? { personNote } : {}),
-      ...(msgs.length === 0 ? { hint: kws.length ? '没有消息包含这些关键词。建议:换更短的词(2字)或同义词后重试' : '该条件下没有任何消息' } : {}),
-    };
-  }
-
-  if (name === 'get_context') {
-    const { messageId, span } = args;
-    const maxSpan = Math.min(Math.max(Number(span) || 24, 4), 60);
-    const idx = allMessages.findIndex(m => String(m.id) === String(messageId));
-    if (idx === -1) {
-      return { found: false, hint: `消息 id "${messageId}" 不存在。messageId 必须来自 search_messages 返回的 hitIds,不要自行构造` };
-    }
-    const [start, end] = expandContext(allMessages, idx, { maxSpan });
-    const slice = allMessages.slice(start, end);
-    // 整个窗口都读给了 LLM，不能只记锚点消息——回答可能引用窗口内任意一条，
-    // 只存锚点会让 selectRelevantSources 无从选起（曾复现：答案引用的正是
-    // 窗口里非锚点的一条，因未入池而没能出现在 sources）
-    for (const wm of slice) ledger.citations.push(makeCitation(wm));
-    ledger.searchHistory.push({ context: true, messageId });
-    return {
-      found: true,
-      range: { from: msgDate(slice[0]), to: msgDate(slice[slice.length - 1]), count: slice.length },
-      messages: slice.map(formatMessage),
-    };
-  }
-
-  if (name === 'search_messages') {
-    const { person, dateFrom, dateTo } = args;
-    const keywords = normalizeKeywords(args.keywords);
-    const invalid = validateDateArgs(args);
-    if (invalid) return invalid;
-
-    let msgs = filterByDate(allMessages, dateFrom, dateTo);
-    let personNote;
-    if (person) {
-      const p = String(person).toLowerCase();
-      const byPerson = msgs.filter(m => String(m.user ?? '').toLowerCase().includes(p));
-      // 有匹配者按人筛选;没有则保留全量(人名可能记错,让关键词兜底)并显式告知
-      if (byPerson.length > 0) msgs = byPerson;
-      else personNote = `未找到发言人 "${person}",已在全部发言人中搜索`;
+        ledger.searchHistory.push({
+            count: true,
+            keywords,
+            person,
+            dateFrom,
+            dateTo,
+            total: msgs.length,
+        });
+        return {
+            total: msgs.length,
+            groups,
+            truncated,
+            dateSpan: dateSpanOf(allMessages),
+            ...(personNote ? { personNote } : {}),
+            ...(msgs.length === 0
+                ? {
+                      hint: kws.length
+                          ? '没有消息包含这些关键词。建议:换更短的词(2字)或同义词后重试'
+                          : '该条件下没有任何消息',
+                  }
+                : {}),
+        };
     }
 
-    const span = dateSpanOf(allMessages);
-    if (msgs.length === 0) {
-      ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
-      return {
-        matchCount: 0,
-        totalInRange: 0,
-        hint: `日期范围 ${dateFrom || '?'} ~ ${dateTo || '?'} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}`,
-      };
+    if (name === 'get_context') {
+        const { messageId, span } = args;
+        const maxSpan = Math.min(Math.max(Number(span) || 24, 4), 60);
+        const idx = allMessages.findIndex((m) => String(m.id) === String(messageId));
+        if (idx === -1) {
+            return {
+                found: false,
+                hint: `消息 id "${messageId}" 不存在。messageId 必须来自 search_messages 返回的 hitIds,不要自行构造`,
+            };
+        }
+        const [start, end] = expandContext(allMessages, idx, { maxSpan });
+        const slice = allMessages.slice(start, end);
+        // 整个窗口都读给了 LLM，不能只记锚点消息——回答可能引用窗口内任意一条，
+        // 只存锚点会让 selectRelevantSources 无从选起（曾复现：答案引用的正是
+        // 窗口里非锚点的一条，因未入池而没能出现在 sources）
+        for (const wm of slice) ledger.citations.push(makeCitation(wm));
+        ledger.searchHistory.push({ context: true, messageId });
+        return {
+            found: true,
+            range: {
+                from: msgDate(slice[0]),
+                to: msgDate(slice[slice.length - 1]),
+                count: slice.length,
+            },
+            messages: slice.map(formatMessage),
+        };
     }
 
-    const query = keywords.join(' ');
-    const common = { msgs, keywords, query, config, question, ledger, personNote, dateFrom, dateTo, person };
+    if (name === 'search_messages') {
+        const { person, dateFrom, dateTo } = args;
+        const keywords = normalizeKeywords(args.keywords);
+        const invalid = validateDateArgs(args);
+        if (invalid) return invalid;
 
-    // 话题块级检索优先(检索单元是话题串而非单条短消息,BM25 更稳;
-    // 有离线标注时块文本还带 LLM 生成的主题/结论,跨过词汇鸿沟)
-    const chunkResult = await searchByChunks({ ...common, groupDir: opts?.groupDir });
-    if (chunkResult) return chunkResult;
+        let msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
+        const picked = filterByPerson(msgs, person, opts?.groupDir);
+        msgs = picked.msgs;
+        const personNote = picked.personNote;
 
-    // 兜底:单条消息 BM25(块级零命中或语料太小时)
-    return searchFlat(common);
-  }
+        const span = dateSpanOf(allMessages);
+        if (msgs.length === 0) {
+            ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
+            return {
+                matchCount: 0,
+                totalInRange: 0,
+                hint: `日期范围 ${dateFrom || '?'} ~ ${dateTo || '?'} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}`,
+            };
+        }
 
-  if (name === 'get_recent_messages') {
-    const { dateFrom, dateTo, limit } = args;
-    const invalid = validateDateArgs(args);
-    if (invalid) return invalid;
-    const maxCount = Math.min(limit || 120, 200);
-    const msgs = filterByDate(allMessages, dateFrom, dateTo);
-    if (msgs.length === 0) {
-      const span = dateSpanOf(allMessages);
-      return { total: 0, returned: 0, hint: `日期范围 ${dateFrom} ~ ${dateTo} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}` };
+        // 别名同时扩进 BM25 查询:问"tk 说了什么"时正文里出现的可能是
+        // "tombkeeper",也可能是 @tk,两边都该有分
+        const personTerms = expandPersonTerms(person, loadAliases(opts?.groupDir));
+        const query = [...keywords, ...personTerms].join(' ');
+        const common = {
+            msgs,
+            keywords,
+            query,
+            config,
+            question,
+            ledger,
+            personNote,
+            dateFrom,
+            dateTo,
+            person,
+        };
+
+        // 话题块级检索优先(检索单元是话题串而非单条短消息,BM25 更稳;
+        // 有离线标注时块文本还带 LLM 生成的主题/结论,跨过词汇鸿沟)
+        const chunkResult = await searchByChunks({ ...common, groupDir: opts?.groupDir });
+        if (chunkResult) return chunkResult;
+
+        // 兜底:单条消息 BM25(块级零命中或语料太小时)
+        return searchFlat(common);
     }
-    // 超出上限时均匀采样而非只取尾部，避免总结型问题的时间偏差
-    let sample;
-    if (msgs.length <= maxCount) {
-      sample = msgs;
-    } else {
-      sample = [];
-      const step = msgs.length / maxCount;
-      for (let i = 0; i < maxCount; i++) sample.push(msgs[Math.floor(i * step)]);
-    }
-    // 浏览到的消息也进引用池（取均匀几条代表）
-    for (let i = 0; i < sample.length; i += Math.ceil(sample.length / 5) || 1) {
-      const m = sample[i];
-      ledger.citations.push({
-        id: m.id,
-        date: (m.time || '').split(' ')[0].replace(/\//g, '-'),
-        user: m.user,
-        preview: (m.content || m.share?.title || '').slice(0, 60),
-      });
-    }
-    ledger.searchHistory.push({ browse: true, dateFrom, dateTo, total: msgs.length });
-    if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
-    return { total: msgs.length, returned: sample.length, sampled: msgs.length > maxCount, messages: sample.map(formatMessage) };
-  }
 
-  return { error: `Unknown tool: ${name}` };
+    if (name === 'get_recent_messages') {
+        const { dateFrom, dateTo, limit } = args;
+        const invalid = validateDateArgs(args);
+        if (invalid) return invalid;
+        const maxCount = Math.min(limit || 120, 200);
+        // 总结型问题直接读原文,噪音不剔会让"大家在聊什么"答成红包和签到
+        const msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
+        if (msgs.length === 0) {
+            const span = dateSpanOf(allMessages);
+            return {
+                total: 0,
+                returned: 0,
+                hint: `日期范围 ${dateFrom} ~ ${dateTo} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}`,
+            };
+        }
+        // 超出上限时均匀采样而非只取尾部，避免总结型问题的时间偏差
+        let sample;
+        if (msgs.length <= maxCount) {
+            sample = msgs;
+        } else {
+            sample = [];
+            const step = msgs.length / maxCount;
+            for (let i = 0; i < maxCount; i++) sample.push(msgs[Math.floor(i * step)]);
+        }
+        // 浏览到的消息也进引用池（取均匀几条代表）
+        for (let i = 0; i < sample.length; i += Math.ceil(sample.length / 5) || 1) {
+            const m = sample[i];
+            ledger.citations.push({
+                id: m.id,
+                date: (m.time || '').split(' ')[0].replace(/\//g, '-'),
+                user: m.user,
+                preview: (m.content || m.share?.title || '').slice(0, 60),
+            });
+        }
+        ledger.searchHistory.push({ browse: true, dateFrom, dateTo, total: msgs.length });
+        if (dateFrom || dateTo) ledger.dateRangeUsed = { from: dateFrom, to: dateTo };
+        return {
+            total: msgs.length,
+            returned: sample.length,
+            sampled: msgs.length > maxCount,
+            messages: sample.map(formatMessage),
+        };
+    }
+
+    return { error: `Unknown tool: ${name}` };
 }
 
-// ─── LLM call ──────────────────────────────────────────────────────────
-async function callLLM(config, messages) {
-  const resp = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      tools: TOOLS,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
-  });
+// ─── pi-agent-core 适配层 ──────────────────────────────────────────────
+// ai-config.json(baseUrl/apiKey/model)→ pi-ai 的 Model 描述。
+// api 固定 'openai-completions':查看器要求代理兼容 /v1/chat/completions。
+// contextWindow/maxTokens 只用于 provider 侧的 max_tokens 计算,给保守值即可。
+function toPiModel(config) {
+    return {
+        id: config.model,
+        name: config.model,
+        api: 'openai-completions',
+        provider: 'openai-compatible',
+        baseUrl: config.baseUrl,
+        reasoning: false,
+        input: ['text'],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 8192,
+        compat: {
+            // 自建/第三方网关(Bedrock 转发等)常拒绝这些 OpenAI 专有字段,
+            // 而 pi-ai 的自动探测只对已知域名生效,这里显式关掉。
+            supportsStore: false,
+            supportsDeveloperRole: false,
+            supportsReasoningEffort: false,
+            supportsStrictMode: false,
+            maxTokensField: 'max_tokens',
+        },
+    };
+}
 
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`LLM API ${resp.status}: ${text.slice(0, 200)}`);
-  }
-
-  const data = await resp.json();
-  return data.choices?.[0]?.message;
+// TOOL_SPECS → AgentTool。execute 返回 { content, details }:
+// content 是给模型看的文本(JSON 串,与替换前的 role:'tool' 内容一致),
+// details 是结构化副本,供 toolCallLog / 前端渲染,不进 LLM 上下文。
+//
+// prepareArguments 在 pi 的 schema 校验之前跑,用来保住既有的 keywords 容错:
+// 模型偶尔把 keywords 传成字符串/数字而非数组(见 normalizeKeywords),原先由
+// 工具内部归一,能照常出结果;若交给 schema 直接拒,会白费一轮往返让模型重试。
+// 归一在此前置,校验只拦真正无法挽救的参数。
+function buildAgentTools(allMessages, ledger, config, question, opts, toolCallLog) {
+    return TOOL_SPECS.map((spec) => ({
+        ...spec,
+        prepareArguments: (raw) => {
+            if (!raw || typeof raw !== 'object' || !('keywords' in raw)) return raw;
+            return { ...raw, keywords: normalizeKeywords(raw.keywords) };
+        },
+        execute: async (_toolCallId, args) => {
+            const result = await executeTool(
+                spec.name,
+                args,
+                allMessages,
+                ledger,
+                config,
+                question,
+                opts
+            );
+            toolCallLog.push({
+                tool: spec.name,
+                ...args,
+                matchCount: result.matchCount,
+                returned: result.returned,
+                total: result.total,
+            });
+            return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+        },
+    }));
 }
 
 // ─── Agent conversation loop ───────────────────────────────────────────
-// Architecture references:
-//   - Hermes Agent: IterationBudget + grace call + while-loop with interrupt
-//   - Pi-Multi-Agent: state machine + timeout + retry with backoff
-//   - LedgerAgent: structured state accumulation across iterations
+// 循环体(工具调用分发、参数校验、重试、超时、SSE 解析)由 pi-agent-core 的
+// runAgentLoop 提供;本函数只负责提示词、预算闸门与结果提取。
 async function conversationLoop(question, allMessages, config, opts) {
-  const budget = new IterationBudget(6);
-  const state = new AgentState();
-  const ledger = createLedger();
-  const toolCallLog = [];
+    const ledger = createLedger();
+    const toolCallLog = [];
+    const startedAt = Date.now();
 
-  state.transition('running');
-
-  const today = new Date().toISOString().split('T')[0];
-  const systemPrompt = `你是一个群聊记录问答助手。今天是 ${today}。
+    const today = new Date().toISOString().split('T')[0];
+    const systemPrompt = `你是一个群聊记录问答助手。今天是 ${today}。
 
 先判断问题类型,选对工具:
 
@@ -745,71 +861,56 @@ async function conversationLoop(question, allMessages, config, opts) {
 - "最近" = 最近7天 (${new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]} ~ ${today})
 - "上周" = 上一个完整周(周一到周日)`;
 
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: question },
-  ];
+    // 预算闸门:每个 turn 对应一次 LLM 调用。达到上限后 runAgentLoop 在
+    // turn_end 之后收尾退出,不再发起新调用——这是唯一的成本上限。
+    let llmCalls = 0;
+    const tools = buildAgentTools(allMessages, ledger, config, question, opts, toolCallLog);
 
-  // Main loop — modeled after Hermes's while(budget.shouldContinue || graceCall)
-  while (budget.shouldContinue) {
-    // Budget gate (Hermes pattern: consume or break)
-    if (!budget.consume()) {
-      if (!budget.consumeGrace()) {
-        break;
-      }
-    }
-
-    // LLM call with retry + timeout (Pi-Multi-Agent pattern)
-    // 60s:总结型问题携带 200 条消息生成最终回答,30s 会误杀(baseline q15)
-    const assistantMsg = await withRetry(
-      () => withTimeout(callLLM(config, messages), 60000),
-      { maxRetries: 2, initialDelay: 1000 }
+    const messages = await runAgentLoop(
+        [{ role: 'user', content: question, timestamp: Date.now() }],
+        { systemPrompt, messages: [], tools },
+        {
+            model: toPiModel(config),
+            apiKey: config.apiKey,
+            // 本仓的 AgentMessage 就是 LLM 消息,无自定义类型需要转换/过滤
+            convertToLlm: (msgs) => msgs,
+            // 60s:总结型问题携带 200 条消息生成最终回答,30s 会误杀(baseline q15)
+            timeoutMs: LLM_TIMEOUT_MS,
+            maxRetries: LLM_MAX_RETRIES,
+            // 检索工具共享 ledger 的 citations 数组,串行执行避免并发写入交错
+            toolExecution: 'sequential',
+            shouldStopAfterTurn: () => {
+                llmCalls++;
+                return llmCalls >= MAX_LLM_CALLS;
+            },
+        },
+        () => {}
     );
 
-    if (!assistantMsg) throw new Error('Empty LLM response');
+    // 流式失败(网络/鉴权/provider 报错)在消息上以 stopReason 表达而非抛出,
+    // 这里显式转成异常,让 askAgent 走 ok:false 分支而不是返回空答案。
+    const failed = messages.find((m) => m.stopReason === 'error' || m.stopReason === 'aborted');
+    if (failed) throw new Error(failed.errorMessage || `LLM ${failed.stopReason}`);
 
-    state.recordStep({ type: 'llm_call', iteration: budget.used });
-    messages.push(assistantMsg);
+    const answer = messages
+        .filter((m) => m.role === 'assistant')
+        .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+        .filter((c) => c.type === 'text' && c.text.trim())
+        .map((c) => c.text)
+        .pop();
 
-    // Termination: no tool_calls → final answer
-    if (!assistantMsg.tool_calls?.length) {
-      state.transition('completed');
-      return {
-        answer: assistantMsg.content || '未能生成回答',
+    return {
+        answer: answer || '搜索已完成，但未能生成最终回答。',
         toolCallLog,
         ledger,
-        state: state.metrics,
-      };
-    }
-
-    // Execute tool calls
-    for (const tc of assistantMsg.tool_calls) {
-      const args = JSON.parse(tc.function.arguments || '{}');
-      const result = await executeTool(tc.function.name, args, allMessages, ledger, config, question, opts);
-
-      state.recordStep({ type: 'tool_call', tool: tc.function.name, args });
-      toolCallLog.push({ tool: tc.function.name, ...args, matchCount: result.matchCount, returned: result.returned, total: result.total });
-
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: JSON.stringify(result),
-      });
-    }
-
-    // Grace call: 预算刚耗尽时多给一轮让模型收尾（enableGrace 自身保证只发一次）
-    if (budget.remaining === 0) budget.enableGrace();
-  }
-
-  // Budget exhausted — return last assistant content
-  state.transition('completed');
-  const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
-  return {
-    answer: lastAssistant?.content || '搜索已完成，但未能生成最终回答。',
-    toolCallLog,
-    ledger,
-    state: state.metrics,
-  };
+        state: {
+            status: 'completed',
+            totalSteps: llmCalls + toolCallLog.length,
+            toolCalls: toolCallLog.length,
+            llmCalls,
+            executionTime: Date.now() - startedAt,
+        },
+    };
 }
 
 // ─── Public API ────────────────────────────────────────────────────────
@@ -817,29 +918,36 @@ async function conversationLoop(question, allMessages, config, opts) {
 export { executeTool, expandContext };
 
 export async function askAgent(question, allMessages, aiConfigOverride, opts = {}) {
-  const aiConfig = aiConfigOverride || loadAiConfig();
-  if (!aiConfig) return { ok: false, error: 'AI 未配置' };
+    const aiConfig = aiConfigOverride || loadAiConfig();
+    if (!aiConfig) return { ok: false, error: 'AI 未配置' };
 
-  try {
-    const result = await conversationLoop(question, allMessages, aiConfig, opts);
+    try {
+        const result = await conversationLoop(question, allMessages, aiConfig, opts);
 
-    const keywords = [...new Set(result.toolCallLog.flatMap(tc => tc.keywords || []))];
-    // 真实消息引用：按答案内容从累积的 citations 池里精选（见
-    // selectRelevantSources 顶部注释），而非"先累积先展示"——
-    // 保证前端"来源消息"点开能核实到答案真正的依据。
-    const sources = selectRelevantSources(result.answer, result.ledger.citations || [], allMessages, 8)
-      .map(c => ({ id: c.id, date: c.date, user: c.user, preview: c.preview }));
+        const keywords = [...new Set(result.toolCallLog.flatMap((tc) => tc.keywords || []))];
+        // 真实消息引用：按答案内容从累积的 citations 池里精选（见
+        // selectRelevantSources 顶部注释），而非"先累积先展示"——
+        // 保证前端"来源消息"点开能核实到答案真正的依据。
+        const sources = selectRelevantSources(
+            result.answer,
+            result.ledger.citations || [],
+            allMessages,
+            8
+        ).map((c) => ({ id: c.id, date: c.date, user: c.user, preview: c.preview }));
 
-    return {
-      ok: true,
-      answer: result.answer,
-      sources,
-      keywords,
-      toolCalls: result.toolCallLog.map(tc => ({ tool: tc.tool, matchCount: tc.matchCount ?? tc.returned })),
-      steps: result.state.totalSteps,
-      ledger: result.ledger,
-    };
-  } catch (e) {
-    return { ok: false, error: `Agent 错误: ${e.message}` };
-  }
+        return {
+            ok: true,
+            answer: result.answer,
+            sources,
+            keywords,
+            toolCalls: result.toolCallLog.map((tc) => ({
+                tool: tc.tool,
+                matchCount: tc.matchCount ?? tc.returned,
+            })),
+            steps: result.state.totalSteps,
+            ledger: result.ledger,
+        };
+    } catch (e) {
+        return { ok: false, error: `Agent 错误: ${e.message}` };
+    }
 }

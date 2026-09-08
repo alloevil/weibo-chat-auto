@@ -1,12 +1,9 @@
 {
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
-  "remote": {
-    "urls": ["http://127.0.0.1:3456/*"]
-  },
-  "permissions": [
-    "core:default",
-    "shell:default"
-  ]
+    "identifier": "default",
+    "description": "Capability for the main window",
+    "windows": ["main"],
+    "remote": {
+        "urls": ["http://127.0.0.1:3456/*"]
+    },
+    "permissions": ["core:default", "shell:default"]
 }

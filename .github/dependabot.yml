@@ -4,35 +4,35 @@
 version: 2
 
 updates:
-  - package-ecosystem: npm
-    directory: "/"
-    schedule:
-      interval: monthly
-    open-pull-requests-limit: 10
-    groups:
-      npm-all:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-    commit-message:
-      prefix: chore
-  - package-ecosystem: cargo
-    directory: "/src-tauri"
-    schedule:
-      interval: monthly
-    open-pull-requests-limit: 10
-    groups:
-      cargo-all:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-    commit-message:
-      prefix: chore
-  - package-ecosystem: github-actions
-    directory: "/"
-    schedule:
-      interval: monthly
-    open-pull-requests-limit: 10
-    groups:
-      githubactions-all:
-        patterns: ["*"]
-    commit-message:
-      prefix: chore
+    - package-ecosystem: npm
+      directory: '/'
+      schedule:
+          interval: monthly
+      open-pull-requests-limit: 10
+      groups:
+          npm-all:
+              patterns: ['*']
+              update-types: ['minor', 'patch']
+      commit-message:
+          prefix: chore
+    - package-ecosystem: cargo
+      directory: '/src-tauri'
+      schedule:
+          interval: monthly
+      open-pull-requests-limit: 10
+      groups:
+          cargo-all:
+              patterns: ['*']
+              update-types: ['minor', 'patch']
+      commit-message:
+          prefix: chore
+    - package-ecosystem: github-actions
+      directory: '/'
+      schedule:
+          interval: monthly
+      open-pull-requests-limit: 10
+      groups:
+          githubactions-all:
+              patterns: ['*']
+      commit-message:
+          prefix: chore

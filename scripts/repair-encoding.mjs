@@ -34,37 +34,54 @@ const BAD = '\uFFFD';
 function groupId(name) {
     const safe = name.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
     try {
-        return String(JSON.parse(fs.readFileSync(path.join(ROOT, 'state', `last-archive-state_${safe}.json`), 'utf-8')).groupId || '');
+        return String(
+            JSON.parse(
+                fs.readFileSync(
+                    path.join(ROOT, 'state', `last-archive-state_${safe}.json`),
+                    'utf-8'
+                )
+            ).groupId || ''
+        );
     } catch {
         return '';
     }
 }
 
 async function fetchPageBefore(gid, mid, cookieHeader) {
-    const url = 'https://api.weibo.com/webim/groupchat/query_messages.json'
-        + `?convert_emoji=1&query_sender=1&count=20&id=${gid}&max_mid=${mid}&source=209678993&t=${Date.now()}`;
+    const url =
+        'https://api.weibo.com/webim/groupchat/query_messages.json' +
+        `?convert_emoji=1&query_sender=1&count=20&id=${gid}&max_mid=${mid}&source=209678993&t=${Date.now()}`;
     const resp = await fetch(url, {
-        headers: { Cookie: cookieHeader, Referer: 'https://api.weibo.com/chat', 'X-Requested-With': 'XMLHttpRequest' },
+        headers: {
+            Cookie: cookieHeader,
+            Referer: 'https://api.weibo.com/chat',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
         signal: AbortSignal.timeout(15000),
     });
     const data = await resp.json();
     if (data.error_code) throw new Error(`接口错误 ${data.error_code}: ${data.error || ''}`);
-    return (Array.isArray(data.messages) ? data.messages : []).map(normalizeMessage).filter(Boolean);
+    return (Array.isArray(data.messages) ? data.messages : [])
+        .map(normalizeMessage)
+        .filter(Boolean);
 }
 
 const groups = fs.existsSync(OUTPUT_DIR)
-    ? fs.readdirSync(OUTPUT_DIR, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name)
+    ? fs
+          .readdirSync(OUTPUT_DIR, { withFileTypes: true })
+          .filter((e) => e.isDirectory())
+          .map((e) => e.name)
     : [];
 
 let totalBad = 0;
 const plan = [];
 for (const g of groups) {
     if (onlyGroup && g !== onlyGroup) continue;
-    const bad = ms.loadMessages(OUTPUT_DIR, g).filter(m => JSON.stringify(m).includes(BAD));
+    const bad = ms.loadMessages(OUTPUT_DIR, g).filter((m) => JSON.stringify(m).includes(BAD));
     if (bad.length === 0) continue;
     totalBad += bad.length;
     plan.push({ group: g, gid: groupId(g), bad });
-    console.log(`${g}: ${bad.length} 条损坏（${[...new Set(bad.map(m => m.date))].length} 天）`);
+    console.log(`${g}: ${bad.length} 条损坏（${[...new Set(bad.map((m) => m.date))].length} 天）`);
 }
 
 if (totalBad === 0) {
@@ -77,7 +94,11 @@ if (!APPLY) {
     console.log('这是扫描模式。加 --apply 才会重抓并覆盖（会读取群消息）。');
     for (const p of plan.slice(0, 1)) {
         console.log(`\n样例（${p.group}）：`);
-        p.bad.slice(0, 3).forEach(m => console.log(`  ${m.time} ${m.user}: ${String(m.content).slice(0, 50)}`));
+        p.bad
+            .slice(0, 3)
+            .forEach((m) =>
+                console.log(`  ${m.time} ${m.user}: ${String(m.content).slice(0, 50)}`)
+            );
     }
     process.exit(0);
 }
@@ -92,14 +113,14 @@ for (const { group, gid, bad } of plan) {
         continue;
     }
     // 按 id 降序处理，一页 20 条能覆盖邻近的坏消息，跳过已被覆盖的
-    const pending = new Set(bad.map(m => String(m.id)));
+    const pending = new Set(bad.map((m) => String(m.id)));
     const ordered = [...bad].sort((a, b) => Number(b.id) - Number(a.id));
     for (const target of ordered) {
         if (!pending.has(String(target.id))) continue;
         try {
             // max_mid 取 id+1：接口返回比它更老的一页，正好包含目标消息
             const page = await fetchPageBefore(gid, String(BigInt(target.id) + 1n), cookieHeader);
-            const good = page.filter(m => !JSON.stringify(m).includes(BAD));
+            const good = page.filter((m) => !JSON.stringify(m).includes(BAD));
             const byDate = new Map();
             for (const m of good) {
                 if (!byDate.has(m.date)) byDate.set(m.date, []);
@@ -111,7 +132,7 @@ for (const { group, gid, bad } of plan) {
             for (const m of page) {
                 if (pending.delete(String(m.id))) fixed++;
             }
-            await new Promise(r => setTimeout(r, 400));   // 别打太快
+            await new Promise((r) => setTimeout(r, 400)); // 别打太快
         } catch (e) {
             failed++;
             pending.delete(String(target.id));

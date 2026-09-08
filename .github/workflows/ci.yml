@@ -1,57 +1,57 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
+    check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+                  cache: npm
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+            - name: Install dependencies
+              run: npm ci --no-audit --no-fund
 
-      - name: Syntax-check all JS files
-        run: |
-          for f in *.js lib/*.js scripts/*.js test/*.js; do
-            [ -e "$f" ] || continue
-            echo "checking $f"
-            node --check "$f"
-          done
+            - name: Syntax-check all JS files
+              run: |
+                  for f in *.js lib/*.js scripts/*.js test/*.js; do
+                    [ -e "$f" ] || continue
+                    echo "checking $f"
+                    node --check "$f"
+                  done
 
-      - name: Syntax-check inline scripts in viewer.html
-        run: |
-          node -e "
-            const fs = require('fs');
-            const html = fs.readFileSync('viewer.html', 'utf8');
-            const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-            if (!blocks.length) { console.error('No <script> block found in viewer.html'); process.exit(1); }
-            blocks.forEach((m, i) => fs.writeFileSync('.viewer-inline-' + i + '.js', m[1]));
-            console.log(blocks.length + ' inline script block(s) extracted');
-          "
-          for f in .viewer-inline-*.js; do node --check "$f"; done
-          rm -f .viewer-inline-*.js
+            - name: Syntax-check inline scripts in viewer.html
+              run: |
+                  node -e "
+                    const fs = require('fs');
+                    const html = fs.readFileSync('viewer.html', 'utf8');
+                    const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+                    if (!blocks.length) { console.error('No <script> block found in viewer.html'); process.exit(1); }
+                    blocks.forEach((m, i) => fs.writeFileSync('.viewer-inline-' + i + '.js', m[1]));
+                    console.log(blocks.length + ' inline script block(s) extracted');
+                  "
+                  for f in .viewer-inline-*.js; do node --check "$f"; done
+                  rm -f .viewer-inline-*.js
 
-      - name: Lint
-        run: npm run lint
+            - name: Lint
+              run: npm run lint
 
-      - name: Unit tests
-        run: npm test
+            - name: Unit tests
+              run: npm test
 
-      - name: Validate JSON files
-        run: |
-          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json OK')"
-          node -e "JSON.parse(require('fs').readFileSync('config.example.json','utf8')); console.log('config.example.json OK')"
+            - name: Validate JSON files
+              run: |
+                  node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json OK')"
+                  node -e "JSON.parse(require('fs').readFileSync('config.example.json','utf8')); console.log('config.example.json OK')"
 
-      - name: Shellcheck setup.sh
-        run: shellcheck -S warning scripts/setup.sh || true
+            - name: Shellcheck setup.sh
+              run: shellcheck -S warning scripts/setup.sh || true

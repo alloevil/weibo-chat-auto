@@ -10,36 +10,89 @@ const BASE = `http://localhost:${PORT}`;
 
 function makeEl(id) {
     return {
-        innerHTML: '', textContent: '', value: '', className: '', id,
-        style: {}, dataset: {},
-        classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-        appendChild() {}, querySelector() { return null; }, querySelectorAll() { return []; },
-        addEventListener() {}, scrollIntoView() {}, focus() {},
-        scrollTop: 0, scrollHeight: 0, offsetHeight: 0,
-        getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; },
+        innerHTML: '',
+        textContent: '',
+        value: '',
+        className: '',
+        id,
+        style: {},
+        dataset: {},
+        classList: {
+            add() {},
+            remove() {},
+            toggle() {},
+            contains() {
+                return false;
+            },
+        },
+        appendChild() {},
+        querySelector() {
+            return null;
+        },
+        querySelectorAll() {
+            return [];
+        },
+        addEventListener() {},
+        scrollIntoView() {},
+        focus() {},
+        scrollTop: 0,
+        scrollHeight: 0,
+        offsetHeight: 0,
+        getBoundingClientRect() {
+            return { top: 0, left: 0, width: 0, height: 0 };
+        },
     };
 }
 
 async function main() {
     const els = {};
     const sandbox = {
-        console, setTimeout, clearTimeout, clearInterval,
+        console,
+        setTimeout,
+        clearTimeout,
+        clearInterval,
         // 内联脚本会注册轮询（auth 状态等）；unref 让 harness 打完结论能正常退出
-        setInterval(fn, ms) { const t = setInterval(fn, ms); t.unref?.(); return t; },
-        requestAnimationFrame(cb) { cb(); },
+        setInterval(fn, ms) {
+            const t = setInterval(fn, ms);
+            t.unref?.();
+            return t;
+        },
+        requestAnimationFrame(cb) {
+            cb();
+        },
         fetch: (url, opts) => fetch(BASE + url, opts),
-        localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+        localStorage: {
+            getItem() {
+                return null;
+            },
+            setItem() {},
+            removeItem() {},
+        },
         // 页面启动即订阅实时同步；harness 只验证切群逻辑，给个惰性 stub
-        EventSource: class { constructor() { this.readyState = 0; } close() {} },
+        EventSource: class {
+            constructor() {
+                this.readyState = 0;
+            }
+            close() {}
+        },
         navigator: { userAgent: 'node-test' },
         location: { href: BASE + '/', search: '', reload() {} },
-        addEventListener() {}, removeEventListener() {},
+        addEventListener() {},
+        removeEventListener() {},
         document: {
-            getElementById(id) { return els[id] || (els[id] = makeEl(id)); },
-            querySelector() { return null; },
-            querySelectorAll() { return []; },
+            getElementById(id) {
+                return els[id] || (els[id] = makeEl(id));
+            },
+            querySelector() {
+                return null;
+            },
+            querySelectorAll() {
+                return [];
+            },
             addEventListener() {},
-            createElement() { return makeEl(''); },
+            createElement() {
+                return makeEl('');
+            },
             documentElement: { dataset: {} },
             body: makeEl('body'),
             title: '',
@@ -53,12 +106,15 @@ async function main() {
     const html = fs.readFileSync(path.join(ROOT, 'viewer.html'), 'utf-8');
     // viewer.html 有多个内联 <script>（head 的皮肤预加载 + 主逻辑），取最长的主逻辑块
     const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-        .map(b => b[1]).sort((a, b) => b.length - a.length)[0];
+        .map((b) => b[1])
+        .sort((a, b) => b.length - a.length)[0];
     // viewer.html 还通过 <script src> 加载 text-utils(挂到 window)
-    vm.runInContext(fs.readFileSync(path.join(ROOT, 'lib/text-utils.js'), 'utf-8'), sandbox, { filename: 'text-utils.js' });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'lib/text-utils.js'), 'utf-8'), sandbox, {
+        filename: 'text-utils.js',
+    });
     vm.runInContext(script, sandbox, { filename: 'viewer-inline.js' });
 
-    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
     // 页面初始化
     await vm.runInContext('loadData()', sandbox);
@@ -82,9 +138,18 @@ async function main() {
     const usersChanged = users2 !== users1;
     const msgsChanged = msgs2 !== msgs1;
     console.log(`成员区变化: ${usersChanged}  消息区变化: ${msgsChanged}`);
-    if (usersChanged && !msgsChanged) { console.log('*** 复现 bug:成员切换但消息未切换 ***'); process.exit(2); }
-    if (!msgsChanged) { console.log('*** 消息区未变化 ***'); process.exit(1); }
+    if (usersChanged && !msgsChanged) {
+        console.log('*** 复现 bug:成员切换但消息未切换 ***');
+        process.exit(2);
+    }
+    if (!msgsChanged) {
+        console.log('*** 消息区未变化 ***');
+        process.exit(1);
+    }
     console.log('切群流程正常');
 }
 
-main().catch(e => { console.error('harness 异常:', e); process.exit(1); });
+main().catch((e) => {
+    console.error('harness 异常:', e);
+    process.exit(1);
+});

@@ -6,14 +6,19 @@ const path = require('path');
 const em = require('../lib/emotions.js');
 const tu = require('../lib/text-utils.js');
 
-const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'emotions-test-')), 'emotions.json');
+const tmpFile = () =>
+    path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'emotions-test-')), 'emotions.json');
 
 const officialList = [
-    { phrase: '[卡皮巴拉]', url: 'https://face.t.sinajs.cn/x/capybara.png', icon: 'https://face.t.sinajs.cn/x/capybara_s.png' },
+    {
+        phrase: '[卡皮巴拉]',
+        url: 'https://face.t.sinajs.cn/x/capybara.png',
+        icon: 'https://face.t.sinajs.cn/x/capybara_s.png',
+    },
     { phrase: '[锦鲤附体]', url: 'https://face.t.sinajs.cn/x/koi.png' },
-    { value: '[备用字段]', icon: 'https://face.t.sinajs.cn/x/fallback.png' },   // 只有 value/icon
-    { phrase: 'not-a-tag', url: 'https://face.t.sinajs.cn/x/no.png' },          // 非 [..] 形式
-    { phrase: '[坏链]', url: 'ftp://weird' },                                    // 非 http(s)
+    { value: '[备用字段]', icon: 'https://face.t.sinajs.cn/x/fallback.png' }, // 只有 value/icon
+    { phrase: 'not-a-tag', url: 'https://face.t.sinajs.cn/x/no.png' }, // 非 [..] 形式
+    { phrase: '[坏链]', url: 'ftp://weird' }, // 非 http(s)
     null,
 ];
 
@@ -94,13 +99,19 @@ test('processEmoji: 内置 Unicode 表优先于图片', () => {
 test('processEmoji: 官方清单命中时渲染为图片并保留原标签文本', () => {
     const map = { '[卡皮巴拉]': 'https://face.t.sinajs.cn/x/capybara.png' };
     const html = tu.processEmoji('看[卡皮巴拉]', (tag) => map[tag] || null);
-    assert.match(html, /<img class="emoji-img" src="https:\/\/face\.t\.sinajs\.cn\/x\/capybara\.png"/);
+    assert.match(
+        html,
+        /<img class="emoji-img" src="https:\/\/face\.t\.sinajs\.cn\/x\/capybara\.png"/
+    );
     assert.match(html, /alt="\[卡皮巴拉\]"/, 'alt 要保留原标签，图挂了也知道是什么表情');
 });
 
 test('processEmoji: 旧式 [/eeXXXX.png] 拼 CDN 地址（Unicode 无对应）', () => {
     const html = tu.processEmoji('旧[/ee8c92.png]式');
-    assert.match(html, /src="https:\/\/img\.t\.sinajs\.cn\/t4\/appstyle\/expression\/emimage\/ee8c92\.png"/);
+    assert.match(
+        html,
+        /src="https:\/\/img\.t\.sinajs\.cn\/t4\/appstyle\/expression\/emimage\/ee8c92\.png"/
+    );
 });
 
 test('processEmoji: 三级都不中时保留原文，不吞内容', () => {

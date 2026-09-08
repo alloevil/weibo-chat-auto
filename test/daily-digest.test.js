@@ -18,7 +18,9 @@ function makeHarness(overrides = {}) {
         notify: (group, notifications) => calls.notify.push([group, notifications]),
         isArchiverRunning: () => false,
         loadState: () => state,
-        saveState: (s) => { state = JSON.parse(JSON.stringify(s)); },
+        saveState: (s) => {
+            state = JSON.parse(JSON.stringify(s));
+        },
         nowDate: () => new Date('2026-08-21T21:00:00'),
         ...overrides,
     };

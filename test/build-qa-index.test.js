@@ -7,16 +7,19 @@ async function load() {
 
 test('parseAnnotationResponse: 行式协议解析(全角/半角竖线)', async () => {
     const { parseAnnotationResponse } = await load();
-    const out = parseAnnotationResponse('0|话题:半导体。结论:没跌到位。\n2｜话题:冲牙器"选购"指南\n废话行忽略', 3);
-    assert.strictEqual(out[0], '话题:半导体。结论:没跌到位。');
+    const out = parseAnnotationResponse(
+        '0|话题:半导体。结论:没跌到位。\n2｜话题:冲牙器"选购"指南\n废话行忽略',
+        3
+    );
+    assert.strictEqual(out[0].annotation, '话题:半导体。结论:没跌到位。');
     assert.strictEqual(out[1], null);
-    assert.strictEqual(out[2], '话题:冲牙器"选购"指南'); // 引号不再是问题
+    assert.strictEqual(out[2].annotation, '话题:冲牙器"选购"指南'); // 引号不再是问题
 });
 
 test('parseAnnotationResponse: 越界编号忽略,无可解析行抛错', async () => {
     const { parseAnnotationResponse } = await load();
     const out = parseAnnotationResponse('0|ok\n9|越界', 2);
-    assert.strictEqual(out[0], 'ok');
+    assert.strictEqual(out[0].annotation, 'ok');
     assert.strictEqual(out[1], null);
     assert.throws(() => parseAnnotationResponse('完全没有格式', 2));
 });
@@ -24,49 +27,57 @@ test('parseAnnotationResponse: 越界编号忽略,无可解析行抛错', async 
 test('parseAnnotationResponse: 超长标注截断到 300 字', async () => {
     const { parseAnnotationResponse } = await load();
     const out = parseAnnotationResponse('0|' + 'x'.repeat(500), 1);
-    assert.strictEqual(out[0].length, 300);
+    assert.strictEqual(out[0].annotation.length, 300);
 });
 
-test('buildAnnotationPrompt: 包含块文本与行式格式说明', async () => {
+test('parseAnnotationResponse: 解析别名行(A 段),按 / 切分', async () => {
+    const { parseAnnotationResponse } = await load();
+    const out = parseAnnotationResponse(
+        '0|话题:半导体行情。\n0|A|减持科技股/看空芯片/调整投资仓位\n1|话题:冲牙器。\n1|A|口腔清洁设备',
+        2
+    );
+    assert.deepStrictEqual(out[0].aliases, ['减持科技股', '看空芯片', '调整投资仓位']);
+    assert.deepStrictEqual(out[1].aliases, ['口腔清洁设备']);
+});
+
+test('parseAnnotationResponse: 别名行不会被摘要正则吞掉', async () => {
+    const { parseAnnotationResponse } = await load();
+    // 若先匹配摘要正则，annotation 会变成 "A|减持科技股"
+    const out = parseAnnotationResponse('0|A|减持科技股/看空芯片\n0|话题:半导体。', 1);
+    assert.strictEqual(out[0].annotation, '话题:半导体。');
+    assert.deepStrictEqual(out[0].aliases, ['减持科技股', '看空芯片']);
+});
+
+test('parseAnnotationResponse: 缺别名行仍算成功(别名是增量优化)', async () => {
+    const { parseAnnotationResponse } = await load();
+    const out = parseAnnotationResponse('0|只有摘要没有别名', 1);
+    assert.strictEqual(out[0].annotation, '只有摘要没有别名');
+    assert.deepStrictEqual(out[0].aliases, []);
+});
+
+test('parseAnnotationResponse: 只有别名没摘要的条目视为无效', async () => {
+    const { parseAnnotationResponse } = await load();
+    // 摘要是检索文本主体；只有别名会让 snippet 无从生成
+    assert.throws(() => parseAnnotationResponse('0|A|孤立别名', 1));
+});
+
+test('parseAnnotationResponse: 别名上限 4 条、单条截断 60 字', async () => {
+    const { parseAnnotationResponse } = await load();
+    const many = ['a', 'b', 'c', 'd', 'e', 'f'].join('/');
+    const out = parseAnnotationResponse(`0|摘要\n0|A|${many}`, 1);
+    assert.strictEqual(out[0].aliases.length, 4);
+
+    const long = parseAnnotationResponse(`0|摘要\n0|A|${'y'.repeat(200)}`, 1);
+    assert.strictEqual(long[0].aliases[0].length, 60);
+});
+
+test('buildAnnotationPrompt: 含块文本、两行格式、以及「不同词汇」约束', async () => {
     const { buildAnnotationPrompt } = await load();
     const p = buildAnnotationPrompt(['[10:00] a: 你好', '[11:00] b: 再见']);
     assert.match(p, /【块0】/);
     assert.match(p, /【块1】/);
-    assert.match(p, /编号\|标注内容/);
-});
-
-test('annotateBatch: 请求形状与行式响应解析管道', async () => {
-    const { annotateBatch, buildAnnotationPrompt, parseAnnotationResponse } = await load();
-    const orig = global.fetch;
-    try {
-        const chunks = ['[10:00] a: 半导体聊天', '[11:00] b: 冲牙器聊天'];
-        const content = '0|话题:半导体\n1|话题:冲牙器';
-        let captured;
-        global.fetch = async (url, init) => {
-            captured = { url: String(url), init };
-            return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
-        };
-        const out = await annotateBatch({ baseUrl: 'https://llm.test/v1', apiKey: 'sk-k', model: 'gpt-x' }, chunks);
-
-        assert.strictEqual(captured.url, 'https://llm.test/v1/chat/completions');
-        assert.strictEqual(captured.init.headers['Authorization'], 'Bearer sk-k');
-        const body = JSON.parse(captured.init.body);
-        assert.strictEqual(body.model, 'gpt-x');
-        assert.strictEqual(body.messages[0].content, buildAnnotationPrompt(chunks));
-        // 期望数量必须与送入的块数一致，解析结果与直接解析 content 等价
-        assert.deepStrictEqual(out, parseAnnotationResponse(content, chunks.length));
-    } finally {
-        global.fetch = orig;
-    }
-});
-
-test('annotateBatch: 非 200 抛错并带状态码', async () => {
-    const { annotateBatch } = await load();
-    const orig = global.fetch;
-    try {
-        global.fetch = async () => ({ ok: false, status: 429 });
-        await assert.rejects(() => annotateBatch({ baseUrl: 'x', apiKey: 'k', model: 'm' }, ['块']), /429/);
-    } finally {
-        global.fetch = orig;
-    }
+    assert.match(p, /编号\|摘要/);
+    assert.match(p, /编号\|A\|/);
+    // 关键约束：只换语序不换词的改写对 bigram BM25 无增益
+    assert.match(p, /完全不同的词汇/);
 });

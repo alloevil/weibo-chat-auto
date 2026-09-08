@@ -1,55 +1,53 @@
 {
-  "name": "weibo-group-chat-archiver",
-  "version": "1.23.0",
-  "description": "Weibo Group Chat Archiver - 微博群聊消息自动归档工具",
-  "main": "scripts/auto-archive-simple.js",
-  "scripts": {
-    "setup": "./scripts/setup.sh",
-    "desktop": "./scripts/run-desktop.sh",
-    "save-cookies": "node scripts/save-cookies.js",
-    "archive": "node scripts/auto-archive-simple.js",
-    "clean": "node -e \"const fs=require('fs'),p=require('path');function clean(d){if(!fs.existsSync(d))return;fs.readdirSync(d,{withFileTypes:true}).forEach(e=>{const fp=p.join(d,e.name);if(e.isDirectory()){clean(fp)}else if(/T\\d{2}-/.test(e.name)){console.log('Remove:',fp);fs.unlinkSync(fp)}})}clean('output')\"",
-    "clean:cache": "node scripts/clean-cache.js",
-    "start-chrome": "./scripts/start-chrome.sh",
-    "view": "node scripts/viewer-server.js",
-    "test": "node --test",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
-  },
-  "keywords": [
-    "weibo",
-    "chat",
-    "archive",
-    "puppeteer",
-    "viewer"
-  ],
-  "author": "alloevil",
-  "license": "MIT",
-  "type": "commonjs",
-  "engines": {
-    "node": ">=18"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/alloevil/weibo-chat-auto.git"
-  },
-  "bugs": {
-    "url": "https://github.com/alloevil/weibo-chat-auto/issues"
-  },
-  "homepage": "https://github.com/alloevil/weibo-chat-auto#readme",
-  "dependencies": {
-    "@ai-sdk/openai": "^4.0.53",
-    "@ai-sdk/openai-compatible": "^3.0.41",
-    "ai": "^7.0.87",
-    "puppeteer": "^25.9.0",
-    "zod": "^4.5.4"
-  },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@tauri-apps/cli": "^2.11.4",
-    "eslint": "^10.9.1",
-    "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.9.6"
-  }
+    "name": "weibo-group-chat-archiver",
+    "version": "1.23.0",
+    "description": "Weibo Group Chat Archiver - 微博群聊消息自动归档工具",
+    "main": "scripts/auto-archive-simple.js",
+    "scripts": {
+        "setup": "./scripts/setup.sh",
+        "desktop": "./scripts/run-desktop.sh",
+        "save-cookies": "node scripts/save-cookies.js",
+        "archive": "node scripts/auto-archive-simple.js",
+        "clean": "node -e \"const fs=require('fs'),p=require('path');function clean(d){if(!fs.existsSync(d))return;fs.readdirSync(d,{withFileTypes:true}).forEach(e=>{const fp=p.join(d,e.name);if(e.isDirectory()){clean(fp)}else if(/T\\d{2}-/.test(e.name)){console.log('Remove:',fp);fs.unlinkSync(fp)}})}clean('output')\"",
+        "clean:cache": "node scripts/clean-cache.js",
+        "start-chrome": "./scripts/start-chrome.sh",
+        "view": "node scripts/viewer-server.js",
+        "test": "node --test",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "keywords": [
+        "weibo",
+        "chat",
+        "archive",
+        "puppeteer",
+        "viewer"
+    ],
+    "author": "alloevil",
+    "license": "MIT",
+    "type": "commonjs",
+    "engines": {
+        "node": ">=20"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/alloevil/weibo-chat-auto.git"
+    },
+    "bugs": {
+        "url": "https://github.com/alloevil/weibo-chat-auto/issues"
+    },
+    "homepage": "https://github.com/alloevil/weibo-chat-auto#readme",
+    "dependencies": {
+        "@mariozechner/pi-agent-core": "^0.73.1",
+        "@opentelemetry/api": "^1.9.1",
+        "puppeteer": "^25.9.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@tauri-apps/cli": "^2.11.4",
+        "eslint": "^10.9.1",
+        "eslint-config-prettier": "^10.1.8",
+        "prettier": "^3.9.6"
+    }
 }

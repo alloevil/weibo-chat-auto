@@ -19,14 +19,17 @@ test('search：bigram 重叠带来部分匹配（"投资"命中"投资人"）', 
 
 test('search：词频与文档长度影响排序（BM25 特性）', () => {
     const docs = [
-        'AI AI AI 全是 AI 的讨论',                             // 高词频短文档
+        'AI AI AI 全是 AI 的讨论', // 高词频短文档
         '今天天气不错，顺便提了一句 AI，然后聊了很多别的事情什么的', // 低词频长文档
         '完全无关的内容',
     ];
     const hits = search(docs, 'AI');
     assert.strictEqual(hits[0].idx, 0, '高词频短文档应排最前');
-    assert.ok(hits.some(h => h.idx === 1), '低词频文档也应命中');
-    assert.ok(!hits.some(h => h.idx === 2), '无关文档不命中');
+    assert.ok(
+        hits.some((h) => h.idx === 1),
+        '低词频文档也应命中'
+    );
+    assert.ok(!hits.some((h) => h.idx === 2), '无关文档不命中');
 });
 
 test('search：多关键词查询聚合得分', () => {

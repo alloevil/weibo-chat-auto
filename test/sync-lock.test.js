@@ -75,14 +75,26 @@ test('isLocked: 归档器持锁期间为真（第二个 POST /api/sync 走 409�
     const dir = tmpdir();
     const alive = () => true;
 
-    assert.strictEqual(lock.isLocked(dir, { now: () => 0, isPidAlive: alive }), false, '无锁时可放行');
+    assert.strictEqual(
+        lock.isLocked(dir, { now: () => 0, isPidAlive: alive }),
+        false,
+        '无锁时可放行'
+    );
 
     assert.ok(lock.acquireLock(dir, { pid: 1, now: () => 1000 }).ok); // 第一个 POST 的归档器
-    assert.strictEqual(lock.isLocked(dir, { now: () => 2000, isPidAlive: alive }), true, '第二个 POST 必须被拒');
+    assert.strictEqual(
+        lock.isLocked(dir, { now: () => 2000, isPidAlive: alive }),
+        true,
+        '第二个 POST 必须被拒'
+    );
 
     // 持有者已死 → 不再拦路（陈旧锁不该阻止手动 Sync）
     assert.strictEqual(lock.isLocked(dir, { now: () => 2000, isPidAlive: () => false }), false);
 
     lock.releaseLock(dir, { pid: 1 });
-    assert.strictEqual(lock.isLocked(dir, { now: () => 3000, isPidAlive: alive }), false, '释放后放行');
+    assert.strictEqual(
+        lock.isLocked(dir, { now: () => 3000, isPidAlive: alive }),
+        false,
+        '释放后放行'
+    );
 });

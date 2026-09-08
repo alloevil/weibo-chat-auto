@@ -241,17 +241,20 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 **Agent 模式**（默认）：LLM 迭代搜索，自主决定关键词和搜索范围，多轮查找直到信息充分。
 
+💡 **群友有外号就写张别名表**：新建 `output/<群名>/aliases.json`，内容形如 `{"tombkeeper": ["tk", "TK"]}`（键是归档里的真实昵称）。这样问「tk 最近说了什么」就能直接筛到人，不必靠 LLM 自己猜。文件可选，缺失时行为不变。
+
+检索会自动剔除红包提示与签到机器人（规则同查看器的「隐藏噪音」），所以「大家在聊什么」不会被刷屏带偏。
+
 <details>
 <summary><b>技术方案</b></summary>
 
-采用 Agentic Search 模式，loop 机制参考：
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — IterationBudget + grace call
-- [Pi-Multi-Agent](https://github.com/jwangkun/Pi-Multi-Agent) — state machine + retry with backoff + timeout
-- LedgerAgent 论文 — 结构化状态累积
+采用 Agentic Search 模式。工具循环由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层（bigram BM25 + 话题块索引 + LLM 精排）、提示词与预算闸门（≤7 次 LLM 调用）。结构化状态累积参考 LedgerAgent 论文。
+
+注意：AI 代理需支持 SSE 流式响应。
 
 详见 [`docs/agent-qa.md`](docs/agent-qa.md)
 
-**Benchmark (Agent vs Legacy):**
+**Benchmark (Agent vs Legacy)** — 2026-07 在单个私有群（56 天历史、5 个问题）上实测：
 
 | 指标 | Agent | Legacy |
 |------|-------|--------|
@@ -260,6 +263,10 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 | 日期推理 | 正确 | 偶尔错误 |
 | 搜索覆盖 | 多轮扩展 | 单次 |
 | 答案质量 | 高 | 中 |
+
+⚠️ **这组数字已过期且不可复现。** 它早于块级 BM25 检索重写与 pi-agent-core 迁移；原始脚本在 `eval/`（agent 工作目录，随 ee2a63d 一起 untrack 移除），且依赖私有归档数据。请把这张表当作「为什么 Agent 模式是默认」的方向性记录，而不是当前实测值。延迟一项现在应当更低：新循环不再付固定重试等待，并遵循 `Retry-After`（实测两次 429 的自愈 3011ms → 1407ms），所以偏保守而非偏乐观。
+
+要拿当前数字，在自己的归档上跑 `node scripts/benchmark-qa.js --group <群名>`（详见 [`docs/agent-qa.md`](docs/agent-qa.md#benchmark-结果)）。
 
 </details>
 
@@ -294,7 +301,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 | 必需 | 说明 |
 | --- | --- |
 | 🖥 **macOS / Linux / WSL** | 归档与查看器跨平台运行；定时任务全平台自动安装（launchd / systemd / cron） |
-| 🟢 **Node.js 18+** | [brew install node](https://brew.sh)（macOS）/ `apt install nodejs`（Linux）/ [nodejs.org](https://nodejs.org) |
+| 🟢 **Node.js 20+** | [brew install node](https://brew.sh)（macOS）/ `apt install nodejs`（Linux）/ [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | 归档器用它登录并抓取消息；路径自动探测 |
 | 📱 **微博账号 + 手机 App** | 首次需用 App 扫码登录网页版 |
 | 🦀 **Rust + Bun** | 仅桌面应用需要；`npm run desktop` 会自动安装 |

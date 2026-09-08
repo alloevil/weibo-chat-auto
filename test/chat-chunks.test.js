@@ -26,7 +26,7 @@ test('splitIntoChunks: 长块在内部最大间隔处递归二分', () => {
     assert.strictEqual(chunks.length, 2);
     assert.deepStrictEqual(chunks[0].msgIds, [1, 2, 3, 4, 5, 6]);
     assert.deepStrictEqual(chunks[1].msgIds, [7, 8, 9, 10, 11, 12]);
-    assert.ok(chunks.every(c => c.msgIds.length <= 8));
+    assert.ok(chunks.every((c) => c.msgIds.length <= 8));
 });
 
 test('splitIntoChunks: 确定性(同输入同输出)+ 元数据正确', () => {
@@ -52,10 +52,10 @@ test('splitIntoChunks: 全部消息都被分配,无遗漏无重复', () => {
     for (let i = 0; i < 137; i++) msgs.push(mk(i + 1, i * 3 + (i % 17 === 0 ? 40 : 0)));
     msgs.sort((a, b) => a.timestamp - b.timestamp);
     const chunks = splitIntoChunks(msgs, { maxMsgs: 20 });
-    const ids = chunks.flatMap(c => c.msgIds);
+    const ids = chunks.flatMap((c) => c.msgIds);
     assert.strictEqual(ids.length, 137);
     assert.strictEqual(new Set(ids).size, 137);
-    assert.ok(chunks.every(c => c.msgIds.length <= 20));
+    assert.ok(chunks.every((c) => c.msgIds.length <= 20));
 });
 
 test('chunkKey: 由 msgIds 决定,稳定且可区分', () => {
