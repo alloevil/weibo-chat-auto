@@ -306,7 +306,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 | --- | --- |
 | 🖥 **macOS / Linux / WSL** | 归档与查看器跨平台运行；定时任务全平台自动安装（launchd / systemd / cron） |
 | 🟢 **Node.js 20+** | [brew install node](https://brew.sh)（macOS）/ `apt install nodejs`（Linux）/ [nodejs.org](https://nodejs.org) |
-| 🌐 **Google Chrome** | 归档器用它登录并抓取消息；路径自动探测 |
+| 🌐 **Google Chrome** | 归档器用它登录并抓取消息；路径自动探测（也可在 `config.json` 的 `chromePath` 指定）。项目只用系统已装的 Chrome，因此 `package.json` 里设了 `puppeteer.skipDownload`，`npm install` 不会再下载一份 ~650 MB 的 Chromium；确实想用自带 Chromium 的话，用 `PUPPETEER_SKIP_DOWNLOAD=0 npm install` 装回来 |
 | 📱 **微博账号 + 手机 App** | 首次需用 App 扫码登录网页版 |
 | 🦀 **Rust + Bun** | 仅桌面应用需要；`npm run desktop` 会自动安装 |
 
