@@ -221,7 +221,11 @@ button, select, input { font-family: inherit; }
 .main { display: flex; flex: 1; overflow: hidden; }
 
 /* Sidebar user list */
-.sidebar { width: 290px; border-right: 1px solid var(--hairline); display: flex; flex-direction: column; flex-shrink: 0; background: var(--canvas); }
+/* 成员栏可折叠。窄屏下它占 290px —— 900px 视口里就是 32%,而消息气泡实际只用
+   到 71px;统计面板展开时它更是完全无关。折叠走 width:0 + overflow:hidden
+   而不是 display:none,这样 width 的 transition 还能生效。 */
+.sidebar { width: 290px; border-right: 1px solid var(--hairline); display: flex; flex-direction: column; flex-shrink: 0; background: var(--canvas); transition: width .16s ease; }
+.sidebar.collapsed { width: 0; overflow: hidden; border-right: none; }
 .sidebar-header { padding: 12px 16px; font-size: 18px; font-weight: 600; letter-spacing: -0.4px; }
 .user-list { flex: 1; overflow-y: auto; }
 .user-item { display: flex; align-items: center; padding: 10px 16px; cursor: pointer; transition: background .15s; gap: 12px; border-left: 2px solid transparent; }
@@ -394,7 +398,10 @@ button, select, input { font-family: inherit; }
 .msg-item:not(.msg-item-continuation) { padding-top: 3px; padding-bottom: 3px; display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: start; column-gap: 10px; }
 .msg-item:not(.msg-item-continuation) .msg-header { margin-bottom: 0; }
 .msg-item:hover { background: var(--surface-1); }
-.msg-item-continuation { padding-top: 1px; padding-bottom: 1px; border-bottom-color: transparent; }
+/* continuation 行的气泡要和普通行对齐:普通行的气泡被 200px 头部列推到
+   左边距 48+200,而 continuation 没有那一列,气泡会跳回 51px —— 同一个人
+   连续两条消息左边缘差 210px,看着像换了层级。用 padding-left 补上。 */
+.msg-item-continuation { padding-top: 1px; padding-bottom: 1px; padding-left: 258px; border-bottom-color: transparent; }
 .msg-item-continuation .msg-header { display: none; }
 .cont-avatar { position: absolute; left: 12px; top: 2px; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; overflow: hidden; }
@@ -774,6 +781,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                 <a id="exportHtml" download>网页 (.html)</a>
             </div>
         </div>
+        <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠/展开成员栏">👥 成员</button>
         <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
         <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none">@我</button>
         <div class="nav-stats" id="stats"></div>
@@ -913,7 +921,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 </div>
 
 <div class="main">
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-header" data-tooltip="点击成员只看他的消息">成员</div>
         <div class="user-list" id="userList"></div>
         <div class="user-clear"><button onclick="clearUserFilter()">清除成员筛选</button></div>
@@ -2426,7 +2434,7 @@ function renderMessages(msgs) {
                     <span class="msg-file-icon">${icon}</span>
                     <div class="msg-file-info">
                         <div class="msg-file-name">${fileName}</div>
-                        <a class="msg-file-download" href="${fileUrl}" download="${fileName}">Download</a>
+                        <a class="msg-file-download" href="${fileUrl}" download="${fileName}">下载</a>
                     </div>
                 </div>`;
             } else {
@@ -2564,6 +2572,7 @@ function renderAll() {
         : '';
     bar.className = 'filter-bar' + (parts.length ? ' show' : '');
     updateToolsIndicator(parts.length > 0);
+    updateSidebarIndicator(selectedUsers.size > 0);
 
     if (statsView) renderStats();
 }
@@ -2636,6 +2645,33 @@ function restoreToolsState() {
     document.getElementById('toolsPanel').classList.add('show');
     document.getElementById('toolsToggle').classList.add('open');
 }
+
+// 成员栏开关。默认展开;状态存 localStorage,跨会话保持(与筛选面板同一套做法)。
+function toggleSidebar() {
+    const el = document.getElementById('sidebar');
+    const collapsed = !el.classList.contains('collapsed');
+    el.classList.toggle('collapsed', collapsed);
+    document.getElementById('sidebarToggle').classList.toggle('open', !collapsed);
+    try {
+        collapsed
+            ? localStorage.setItem('viewer-sidebar-collapsed', '1')
+            : localStorage.removeItem('viewer-sidebar-collapsed');
+    } catch { /* 隐私模式 */ }
+}
+
+function restoreSidebarState() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('viewer-sidebar-collapsed') === '1'; } catch { /* 隐私模式 */ }
+    // 折叠时成员筛选可能仍生效,按钮上的小圆点由 updateSidebarIndicator 提示
+    if (collapsed) document.getElementById('sidebar').classList.add('collapsed');
+    else document.getElementById('sidebarToggle').classList.add('open');
+}
+restoreSidebarState();
+
+/** 成员栏折叠时,若仍有成员筛选生效,用小圆点提示 —— 否则会以为消息莫名变少。 */
+function updateSidebarIndicator(hasUserFilter) {
+    document.getElementById('sidebarToggle').classList.toggle('filtered', !!hasUserFilter);
+}
 restoreToolsState();
 
 function renderStats() {
@@ -2675,7 +2711,7 @@ function renderDayChart() {
         const height = maxCount > 0 ? Math.max(2, (count / maxCount) * 150) : 2;
         return `<div class="stats-bar-wrap"><div class="stats-bar" style="height:${height}px"><span class="stats-bar-val">${count}</span></div><div class="stats-bar-label">${d.slice(5)}</div></div>`;
     }).join('');
-    return `<div class="stats-section"><div class="stats-section-title">Messages Per Day (total: ${total})</div><div class="stats-chart">${bars}</div></div>`;
+    return `<div class="stats-section"><div class="stats-section-title">每日消息量（共 ${total} 条）</div><div class="stats-chart">${bars}</div></div>`;
 }
 
 function renderUserRanking(msgs) {
@@ -2688,7 +2724,7 @@ function renderUserRanking(msgs) {
         const barWidth = maxCount > 0 ? (count / maxCount) * 100 : 0;
         return `<tr><td class="rank">${i + 1}</td><td>${escapeHtml(user)}</td><td>${count}</td><td class="bar-cell"><div class="mini-bar" style="width:${barWidth}%"></div></td></tr>`;
     }).join('');
-    return `<div class="stats-section"><div class="stats-section-title">Top Active Users</div><table class="stats-table"><tr><th>#</th><th>User</th><th>Messages</th><th></th></tr>${rows}</table></div>`;
+    return `<div class="stats-section"><div class="stats-section-title">发言排行</div><table class="stats-table"><tr><th>#</th><th>成员</th><th>消息数</th><th></th></tr>${rows}</table></div>`;
 }
 
 function renderHourChart(msgs) {
@@ -2701,7 +2737,7 @@ function renderHourChart(msgs) {
         const height = maxCount > 0 ? Math.max(2, (count / maxCount) * 150) : 2;
         bars.push(`<div class="stats-bar-wrap"><div class="stats-bar" style="height:${height}px"><span class="stats-bar-val">${count}</span></div><div class="stats-bar-label">${String(h).padStart(2, '0')}</div></div>`);
     }
-    return `<div class="stats-section"><div class="stats-section-title">Hourly Distribution</div><div class="stats-chart">${bars.join('')}</div></div>`;
+    return `<div class="stats-section"><div class="stats-section-title">时段分布</div><div class="stats-chart">${bars.join('')}</div></div>`;
 }
 
 function renderMediaBreakdown(msgs) {
@@ -2718,14 +2754,14 @@ function renderMediaBreakdown(msgs) {
         if (!hasPics && !hasVideo && !hasShare && !hasLink) plain++;
     });
     const cards = [
-        { num: msgs.length, label: 'Total' },
-        { num: plain, label: 'Text Only' },
-        { num: pics, label: 'Photos' },
-        { num: videos, label: 'Videos' },
-        { num: shares, label: 'Shares' },
-        { num: links, label: 'Links' },
+        { num: msgs.length, label: '总计' },
+        { num: plain, label: '纯文字' },
+        { num: pics, label: '图片' },
+        { num: videos, label: '视频' },
+        { num: shares, label: '分享' },
+        { num: links, label: '链接' },
     ].map(c => `<div class="stats-media-card"><div class="num">${c.num}</div><div class="label">${c.label}</div></div>`).join('');
-    return `<div class="stats-section"><div class="stats-section-title">Media Breakdown</div><div class="stats-media-grid">${cards}</div></div>`;
+    return `<div class="stats-section"><div class="stats-section-title">消息类型分布</div><div class="stats-media-grid">${cards}</div></div>`;
 }
 
 function renderWordFrequency(msgs) {
@@ -2742,7 +2778,7 @@ function renderWordFrequency(msgs) {
     const sorted = Object.entries(wordCounts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 50);
     if (sorted.length === 0) return '';
     const words = sorted.map(([word, count]) => `<span class="stats-word">${escapeHtml(word)} <span class="count">×${count}</span></span>`).join('');
-    return `<div class="stats-section"><div class="stats-section-title">Frequent Words</div><div class="stats-word-list">${words}</div></div>`;
+    return `<div class="stats-section"><div class="stats-section-title">高频词</div><div class="stats-word-list">${words}</div></div>`;
 }
 
 // Update last visit timestamp
