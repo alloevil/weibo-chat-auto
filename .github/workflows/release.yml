@@ -2,66 +2,66 @@ name: Release Desktop App
 
 # 打 v* tag 时自动构建 macOS 桌面应用并附到对应 GitHub Release。
 on:
-  push:
-    tags: ['v*']
+    push:
+        tags: ['v*']
 
 permissions:
-  contents: write
+    contents: write
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
+    build-macos:
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+                  cache: npm
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
+            - name: Rust cache
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: src-tauri
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+            - name: Install dependencies
+              run: npm ci --no-audit --no-fund
 
-      - name: Build app (tauri build)
-        # .app 打包完成即够用；.dmg 打包脚本在 CI 的无头环境同样可能失败，
-        # 所以只要 .app 存在就继续（与本地行为一致）
-        run: npx tauri build || test -d "src-tauri/target/release/bundle/macos/微博群聊.app"
+            - name: Build app (tauri build)
+              # .app 打包完成即够用；.dmg 打包脚本在 CI 的无头环境同样可能失败，
+              # 所以只要 .app 存在就继续（与本地行为一致）
+              run: npx tauri build || test -d "src-tauri/target/release/bundle/macos/微博群聊.app"
 
-      - name: Zip .app
-        run: |
-          cd src-tauri/target/release/bundle/macos
-          ditto -c -k --keepParent "微博群聊.app" "weibo-chat_${GITHUB_REF_NAME}_aarch64.app.zip"
+            - name: Zip .app
+              run: |
+                  cd src-tauri/target/release/bundle/macos
+                  ditto -c -k --keepParent "微博群聊.app" "weibo-chat_${GITHUB_REF_NAME}_aarch64.app.zip"
 
-      - name: Upload to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            "src-tauri/target/release/bundle/macos/weibo-chat_${GITHUB_REF_NAME}_aarch64.app.zip" \
-            --clobber
+            - name: Upload to release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release upload "$GITHUB_REF_NAME" \
+                    "src-tauri/target/release/bundle/macos/weibo-chat_${GITHUB_REF_NAME}_aarch64.app.zip" \
+                    --clobber
 
-      - name: Append install instructions to release body
-        # 「下载 .app」是首选安装路径(#17)：每个 release 末尾统一追加安装说明
-        # (Gatekeeper 右键打开 + 仅 Apple Silicon)。已有该段落则跳过,不覆盖手写正文。
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          body="$(gh release view "$GITHUB_REF_NAME" --json body -q .body)"
-          if printf '%s' "$body" | grep -q '## 📦 安装'; then
-            echo "Install section already present, skipping."
-            exit 0
-          fi
-          printf '%s\n\n## 📦 安装\n\n1. 下载下方 `weibo-chat_%s_aarch64.app.zip` 并解压。\n2. 应用未签名，首次打开请**右键 .app → 打开 → 打开**（绕过 Gatekeeper，只需一次）。\n3. 点击 🔑 登录扫码即可使用。\n\n> ⚠️ 仅支持 Apple Silicon (M1/M2/M3/M4)。其他平台请用[网页版](https://github.com/alloevil/weibo-chat-auto#-quick-start)。\n' "$body" "$GITHUB_REF_NAME" > /tmp/release-body.md
-          gh release edit "$GITHUB_REF_NAME" --notes-file /tmp/release-body.md
+            - name: Append install instructions to release body
+              # 「下载 .app」是首选安装路径(#17)：每个 release 末尾统一追加安装说明
+              # (Gatekeeper 右键打开 + 仅 Apple Silicon)。已有该段落则跳过,不覆盖手写正文。
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  body="$(gh release view "$GITHUB_REF_NAME" --json body -q .body)"
+                  if printf '%s' "$body" | grep -q '## 📦 安装'; then
+                    echo "Install section already present, skipping."
+                    exit 0
+                  fi
+                  printf '%s\n\n## 📦 安装\n\n1. 下载下方 `weibo-chat_%s_aarch64.app.zip` 并解压。\n2. 应用未签名，首次打开请**右键 .app → 打开 → 打开**（绕过 Gatekeeper，只需一次）。\n3. 点击 🔑 登录扫码即可使用。\n\n> ⚠️ 仅支持 Apple Silicon (M1/M2/M3/M4)。其他平台请用[网页版](https://github.com/alloevil/weibo-chat-auto#-quick-start)。\n' "$body" "$GITHUB_REF_NAME" > /tmp/release-body.md
+                  gh release edit "$GITHUB_REF_NAME" --notes-file /tmp/release-body.md

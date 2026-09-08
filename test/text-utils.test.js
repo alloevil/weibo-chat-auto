@@ -15,7 +15,10 @@ test('escapeAttr 额外转义单引号', () => {
 
 test('processEmoji 已知表情转 Unicode，未知保留为标签', () => {
     assert.strictEqual(t.processEmoji('[doge]'), '<span class="emoji">🐶</span>');
-    assert.strictEqual(t.processEmoji('[未知表情]'), '<span class="emoji-unknown">[未知表情]</span>');
+    assert.strictEqual(
+        t.processEmoji('[未知表情]'),
+        '<span class="emoji-unknown">[未知表情]</span>'
+    );
     assert.strictEqual(t.processEmoji('无表情'), '无表情');
     // 多个表情
     assert.ok(t.processEmoji('[赞][哈哈]').includes('👍'));
@@ -23,7 +26,10 @@ test('processEmoji 已知表情转 Unicode，未知保留为标签', () => {
 
 test('processMentions 高亮 @用户名', () => {
     assert.strictEqual(t.processMentions('@小明'), '<span class="mention">@小明</span>');
-    assert.strictEqual(t.processMentions('hi @Alice 你好'), 'hi <span class="mention">@Alice</span> 你好');
+    assert.strictEqual(
+        t.processMentions('hi @Alice 你好'),
+        'hi <span class="mention">@Alice</span> 你好'
+    );
     // 不误伤邮箱（@ 前无边界）
     assert.strictEqual(t.processMentions('a@b.com'), 'a@b.com');
     // 多个提及
@@ -61,8 +67,10 @@ test('processUrls 链接化，图片 URL 加缩略图', () => {
 });
 
 test('highlightText 高亮匹配（大小写不敏感、正则安全）', () => {
-    assert.strictEqual(t.highlightText('Hello', 'hello'),
-        '<span class="search-highlight">Hello</span>');
+    assert.strictEqual(
+        t.highlightText('Hello', 'hello'),
+        '<span class="search-highlight">Hello</span>'
+    );
     assert.strictEqual(t.highlightText('abc', ''), 'abc');
     // 特殊字符不应破坏正则
     assert.doesNotThrow(() => t.highlightText('a.b(c)', '.('));

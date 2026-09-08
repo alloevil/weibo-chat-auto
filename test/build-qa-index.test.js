@@ -7,7 +7,10 @@ async function load() {
 
 test('parseAnnotationResponse: 行式协议解析(全角/半角竖线)', async () => {
     const { parseAnnotationResponse } = await load();
-    const out = parseAnnotationResponse('0|话题:半导体。结论:没跌到位。\n2｜话题:冲牙器"选购"指南\n废话行忽略', 3);
+    const out = parseAnnotationResponse(
+        '0|话题:半导体。结论:没跌到位。\n2｜话题:冲牙器"选购"指南\n废话行忽略',
+        3
+    );
     assert.strictEqual(out[0], '话题:半导体。结论:没跌到位。');
     assert.strictEqual(out[1], null);
     assert.strictEqual(out[2], '话题:冲牙器"选购"指南'); // 引号不再是问题
@@ -46,7 +49,10 @@ test('annotateBatch: 请求形状与行式响应解析管道', async () => {
             captured = { url: String(url), init };
             return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
         };
-        const out = await annotateBatch({ baseUrl: 'https://llm.test/v1', apiKey: 'sk-k', model: 'gpt-x' }, chunks);
+        const out = await annotateBatch(
+            { baseUrl: 'https://llm.test/v1', apiKey: 'sk-k', model: 'gpt-x' },
+            chunks
+        );
 
         assert.strictEqual(captured.url, 'https://llm.test/v1/chat/completions');
         assert.strictEqual(captured.init.headers['Authorization'], 'Bearer sk-k');
@@ -65,7 +71,10 @@ test('annotateBatch: 非 200 抛错并带状态码', async () => {
     const orig = global.fetch;
     try {
         global.fetch = async () => ({ ok: false, status: 429 });
-        await assert.rejects(() => annotateBatch({ baseUrl: 'x', apiKey: 'k', model: 'm' }, ['块']), /429/);
+        await assert.rejects(
+            () => annotateBatch({ baseUrl: 'x', apiKey: 'k', model: 'm' }, ['块']),
+            /429/
+        );
     } finally {
         global.fetch = orig;
     }

@@ -9,7 +9,13 @@ function tmpdir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'day-file-test-'));
 }
 
-const msg = (id, ts) => ({ id, timestamp: ts, time: df.formatLocalTime(ts), date: df.formatLocalDate(ts), content: 'c' + id });
+const msg = (id, ts) => ({
+    id,
+    timestamp: ts,
+    time: df.formatLocalTime(ts),
+    date: df.formatLocalDate(ts),
+    content: 'c' + id,
+});
 
 test('formatLocalDate/formatLocalTime 用本地时区且零填充', () => {
     // 选一个 UTC 与本地不同天的时刻（UTC+8 下为次日 01:30）
@@ -45,10 +51,15 @@ test('mergeIntoDayFile: 文件不存在时新建', () => {
     const f = path.join(dir, 'weibo_chat_2026-07-03.json');
     const r = df.mergeIntoDayFile(f, [msg(2, 2000), msg(1, 1000)]);
 
-    assert.deepStrictEqual({ existing: r.existing, total: r.total, corruptBackup: r.corruptBackup },
-        { existing: 0, total: 2, corruptBackup: null });
+    assert.deepStrictEqual(
+        { existing: r.existing, total: r.total, corruptBackup: r.corruptBackup },
+        { existing: 0, total: 2, corruptBackup: null }
+    );
     // 按 timestamp 升序落盘
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf-8')).map(m => m.id), [1, 2]);
+    assert.deepStrictEqual(
+        JSON.parse(fs.readFileSync(f, 'utf-8')).map((m) => m.id),
+        [1, 2]
+    );
 });
 
 test('mergeIntoDayFile: 与既有消息按 id 去重合并', () => {
@@ -59,7 +70,10 @@ test('mergeIntoDayFile: 与既有消息按 id 去重合并', () => {
     const r = df.mergeIntoDayFile(f, [msg(2, 2000), msg(3, 3000)]);
     assert.strictEqual(r.existing, 2);
     assert.strictEqual(r.total, 3);
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf-8')).map(m => m.id), [1, 2, 3]);
+    assert.deepStrictEqual(
+        JSON.parse(fs.readFileSync(f, 'utf-8')).map((m) => m.id),
+        [1, 2, 3]
+    );
 });
 
 test('mergeIntoDayFile: 兼容 {messages:[...]} 包装格式', () => {
@@ -69,7 +83,10 @@ test('mergeIntoDayFile: 兼容 {messages:[...]} 包装格式', () => {
 
     const r = df.mergeIntoDayFile(f, [msg(2, 2000)]);
     assert.strictEqual(r.existing, 1);
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf-8')).map(m => m.id), [1, 2]);
+    assert.deepStrictEqual(
+        JSON.parse(fs.readFileSync(f, 'utf-8')).map((m) => m.id),
+        [1, 2]
+    );
 });
 
 test('mergeIntoDayFile: 半截 JSON 备份后重建，历史不被静默丢弃', () => {
@@ -84,7 +101,10 @@ test('mergeIntoDayFile: 半截 JSON 备份后重建，历史不被静默丢弃',
     assert.ok(r.corruptBackup, '必须报告备份路径');
     // 原始字节完整保留在备份里 —— 旧版直接覆盖，整天历史无声消失
     assert.strictEqual(fs.readFileSync(r.corruptBackup, 'utf-8'), halfWritten);
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf-8')).map(m => m.id), [9]);
+    assert.deepStrictEqual(
+        JSON.parse(fs.readFileSync(f, 'utf-8')).map((m) => m.id),
+        [9]
+    );
 });
 
 test('mergeIntoDayFile: 合法 JSON 但不是消息数组也走备份', () => {
@@ -94,5 +114,8 @@ test('mergeIntoDayFile: 合法 JSON 但不是消息数组也走备份', () => {
 
     const r = df.mergeIntoDayFile(f, [msg(9, 9000)]);
     assert.ok(r.corruptBackup);
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf-8')).map(m => m.id), [9]);
+    assert.deepStrictEqual(
+        JSON.parse(fs.readFileSync(f, 'utf-8')).map((m) => m.id),
+        [9]
+    );
 });

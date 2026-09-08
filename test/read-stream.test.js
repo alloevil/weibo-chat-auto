@@ -62,6 +62,10 @@ test('readUtf8: 超过字节上限时拒绝（防止无界内存）', async () =
 });
 
 test('readUtf8: 流报错时拒绝', async () => {
-    const s = new Readable({ read() { this.destroy(new Error('boom')); } });
+    const s = new Readable({
+        read() {
+            this.destroy(new Error('boom'));
+        },
+    });
     await assert.rejects(() => readUtf8(s), /boom/);
 });

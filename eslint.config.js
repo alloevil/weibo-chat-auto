@@ -5,7 +5,18 @@ const js = require('@eslint/js');
 const prettier = require('eslint-config-prettier');
 
 module.exports = [
-    { ignores: ['node_modules/**', 'output/**', 'cache/**', 'docs/**', 'src-tauri/**', 'sidecar/dist/**', '.archiver-script.js', '.*.js'] },
+    {
+        ignores: [
+            'node_modules/**',
+            'output/**',
+            'cache/**',
+            'docs/**',
+            'src-tauri/**',
+            'sidecar/dist/**',
+            '.archiver-script.js',
+            '.*.js',
+        ],
+    },
     js.configs.recommended,
     prettier,
     // 通用 Node 脚本
@@ -74,7 +85,11 @@ module.exports = [
     // scripts/save-cookies.js / scripts/auto-archive-simple.js / lib/browser-login.js
     // 含 puppeteer page.evaluate 回调，这些回调在浏览器上下文执行，DOM 全局是合法的
     {
-        files: ['scripts/save-cookies.js', 'scripts/auto-archive-simple.js', 'lib/browser-login.js'],
+        files: [
+            'scripts/save-cookies.js',
+            'scripts/auto-archive-simple.js',
+            'lib/browser-login.js',
+        ],
         languageOptions: {
             globals: {
                 document: 'readonly',

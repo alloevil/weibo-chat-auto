@@ -1,6 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseVersion, isNewer, extractLatest, createVersionChecker, CURRENT_VERSION } = require('../lib/version-check.js');
+const {
+    parseVersion,
+    isNewer,
+    extractLatest,
+    createVersionChecker,
+    CURRENT_VERSION,
+} = require('../lib/version-check.js');
 
 test('parseVersion: 接受 v 前缀与裸版本,拒绝垃圾输入', () => {
     assert.deepStrictEqual(parseVersion('v1.23.0'), [1, 23, 0]);
@@ -46,7 +52,10 @@ test('checker: 网络失败静默——ok 仍为 true,updateAvailable=false,失�
         currentVersion: '1.23.0',
         ttlMs: 1000,
         now: () => t,
-        fetchLatest: async () => { calls++; throw new Error('offline'); },
+        fetchLatest: async () => {
+            calls++;
+            throw new Error('offline');
+        },
     });
     const r1 = await checker.check();
     assert.strictEqual(r1.ok, true);
@@ -67,7 +76,10 @@ test('checker: TTL 内命中缓存,只发一次网络请求', async () => {
         currentVersion: '1.23.0',
         ttlMs: 60000,
         now: () => 0,
-        fetchLatest: async () => { calls++; return { tag_name: 'v1.23.0' }; },
+        fetchLatest: async () => {
+            calls++;
+            return { tag_name: 'v1.23.0' };
+        },
     });
     const [a, b] = await Promise.all([checker.check(), checker.check()]);
     await checker.check();

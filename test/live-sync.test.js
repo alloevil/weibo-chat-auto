@@ -26,7 +26,10 @@ function fakeFetch(pages) {
 }
 
 const raw = (id, tsSec, content = 'c' + id, user = 'u1') => ({
-    id, time: tsSec, content, from_user: { screen_name: user },
+    id,
+    time: tsSec,
+    content,
+    from_user: { screen_name: user },
 });
 
 // 2026-08-07 10:00:00 本地时间
@@ -40,7 +43,10 @@ test('fetchRecent: 标准化 + 按时间升序 + 透出 error_code', async () =>
     const impl = fakeFetch([{ messages: [raw(2, T0 + 5), raw(1, T0)] }]);
     const r = await ls.fetchRecent({ groupId: '123', cookieHeader: 'SUB=x', fetchImpl: impl });
     assert.strictEqual(r.errorCode, 0);
-    assert.deepStrictEqual(r.messages.map(m => m.id), [1, 2]);
+    assert.deepStrictEqual(
+        r.messages.map((m) => m.id),
+        [1, 2]
+    );
     // 与归档器同一套标准化：本地时区零填充时间 + YYYY-MM-DD
     assert.match(r.messages[0].time, /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/);
     assert.match(r.messages[0].date, /^\d{4}-\d{2}-\d{2}$/);
@@ -51,7 +57,11 @@ test('fetchRecent: 标准化 + 按时间升序 + 透出 error_code', async () =>
 });
 
 test('fetchRecent: 未鉴权透出 21301', async () => {
-    const r = await ls.fetchRecent({ groupId: '1', cookieHeader: '', fetchImpl: fakeFetch([{ error_code: 21301 }]) });
+    const r = await ls.fetchRecent({
+        groupId: '1',
+        cookieHeader: '',
+        fetchImpl: fakeFetch([{ error_code: 21301 }]),
+    });
     assert.strictEqual(r.errorCode, 21301);
     assert.deepStrictEqual(r.messages, []);
 });
@@ -76,7 +86,7 @@ test('pollGroupOnce: 只广播真正新增，重复轮询幂等', async () => {
     const page2 = { messages: [raw(1, T0), raw(2, T0 + 1), raw(3, T0 + 2, '新消息')] };
     const impl = fakeFetch([page1, page2, page2]);
 
-    await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });  // primed
+    await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl }); // primed
     const r2 = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
     assert.strictEqual(r2.newMessages.length, 1);
     assert.strictEqual(r2.newMessages[0].content, '新消息');
@@ -87,7 +97,10 @@ test('pollGroupOnce: 只广播真正新增，重复轮询幂等', async () => {
     // 落盘：只写新增那条，且走 day-file（数组形态、含 timestamp）
     const file = path.join(dir, 'weibo_chat_' + r2.newMessages[0].date + '.json');
     const saved = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    assert.deepStrictEqual(saved.map(m => m.id), [3]);
+    assert.deepStrictEqual(
+        saved.map((m) => m.id),
+        [3]
+    );
 });
 
 test('pollGroupOnce: 跨日界的一轮增量分别落进各自日文件', async () => {
@@ -104,14 +117,19 @@ test('pollGroupOnce: 跨日界的一轮增量分别落进各自日文件', async
     const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
 
     assert.deepStrictEqual(r.dates.sort(), ['2026-08-07', '2026-08-08']);
-    assert.deepStrictEqual(fs.readdirSync(dir).sort(),
-        ['weibo_chat_2026-08-07.json', 'weibo_chat_2026-08-08.json']);
+    assert.deepStrictEqual(fs.readdirSync(dir).sort(), [
+        'weibo_chat_2026-08-07.json',
+        'weibo_chat_2026-08-08.json',
+    ]);
 });
 
 test('pollGroupOnce: 21301 直接上报未鉴权，不落盘不广播', async () => {
     const dir = tmpdir();
     const g = mkGroup(dir);
-    const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: fakeFetch([{ error_code: 21301 }]) });
+    const r = await ls.pollGroupOnce(g, {
+        cookieHeader: () => 'x',
+        fetchImpl: fakeFetch([{ error_code: 21301 }]),
+    });
     assert.strictEqual(r.status, 'unauthenticated');
     assert.deepStrictEqual(r.newMessages, []);
     assert.deepStrictEqual(fs.readdirSync(dir), []);
@@ -160,7 +178,7 @@ test('createLiveSync: 跳过没有 groupId 的群，单群失败不影响其它�
     let calls = 0;
     const live = ls.createLiveSync({
         resolveGroups: () => [
-            { name: '无ID群', groupId: '', dir },        // 归档器还没解析出会话 id
+            { name: '无ID群', groupId: '', dir }, // 归档器还没解析出会话 id
             { name: '炸群', groupId: '900', dir },
             { name: '好群', groupId: '901', dir },
         ],
@@ -176,7 +194,10 @@ test('createLiveSync: 跳过没有 groupId 的群，单群失败不影响其它�
 
     await live.tick();
     assert.strictEqual(calls, 2, '无 groupId 的群不得发起请求');
-    assert.deepStrictEqual(events.map(e => [e.type, e.group]), [['error', '炸群']]);
+    assert.deepStrictEqual(
+        events.map((e) => [e.type, e.group]),
+        [['error', '炸群']]
+    );
     // 好群第一轮 primed（不广播），第二轮才可能有新消息 —— 关键是它确实被轮询到了
     live.stop();
 });
@@ -191,19 +212,24 @@ test('createLiveSync: 未鉴权时停止轮询并上报 auth 事件', async () =
         intervalMs: 60000,
         fetchImpl: fakeFetch([{ error_code: 21301 }]),
     });
-    live.addSubscriber();       // 启动并立即跑一轮
-    await live.tick();          // tick() 返回进行中那一轮的 promise
+    live.addSubscriber(); // 启动并立即跑一轮
+    await live.tick(); // tick() 返回进行中那一轮的 promise
     assert.deepStrictEqual(events, [{ type: 'auth', ok: false }]);
     assert.strictEqual(live.running, false, 'Cookie 失效后继续轮询只是空转');
 });
 
 test('groupByDate: 按 date 分桶，缺 date 归入 unknown', () => {
     const byDate = ls.groupByDate([
-        { id: 1, date: '2026-08-07' }, { id: 2, date: '2026-08-08' },
-        { id: 3, date: '2026-08-07' }, { id: 4 },
+        { id: 1, date: '2026-08-07' },
+        { id: 2, date: '2026-08-08' },
+        { id: 3, date: '2026-08-07' },
+        { id: 4 },
     ]);
     assert.deepStrictEqual([...byDate.keys()].sort(), ['2026-08-07', '2026-08-08', 'unknown']);
-    assert.deepStrictEqual(byDate.get('2026-08-07').map(m => m.id), [1, 3]);
+    assert.deepStrictEqual(
+        byDate.get('2026-08-07').map((m) => m.id),
+        [1, 3]
+    );
 });
 test('createLiveSync: 开关关闭时一个请求都不发（保住原生客户端未读提示）', async () => {
     const dir = tmpdir();
@@ -215,7 +241,10 @@ test('createLiveSync: 开关关闭时一个请求都不发（保住原生客户�
         emit: () => {},
         intervalMs: 60000,
         isEnabled: () => enabled,
-        fetchImpl: async () => { calls++; return { json: async () => ({ messages: [raw(1, T0)] }) }; },
+        fetchImpl: async () => {
+            calls++;
+            return { json: async () => ({ messages: [raw(1, T0)] }) };
+        },
     });
 
     live.addSubscriber();
@@ -246,7 +275,9 @@ test('createLiveSync: 关闭时即使有订阅者也不启动轮询', () => {
         cookieHeader: () => 'x',
         emit: () => {},
         isEnabled: () => false,
-        fetchImpl: async () => { throw new Error('不该被调用'); },
+        fetchImpl: async () => {
+            throw new Error('不该被调用');
+        },
     });
     live.addSubscriber();
     assert.strictEqual(live.running, false);
@@ -263,7 +294,7 @@ function pagedFetch(allRaw, { count = 20 } = {}) {
     const impl = async (url) => {
         const maxMid = Number(new URL(url).searchParams.get('max_mid')) || 0;
         calls.push(maxMid);
-        const pool = maxMid ? asc.filter(m => m.id < maxMid) : asc;
+        const pool = maxMid ? asc.filter((m) => m.id < maxMid) : asc;
         return { json: async () => ({ messages: pool.slice(-count) }) };
     };
     impl.calls = calls;
@@ -285,15 +316,20 @@ test('pollGroupOnce: 一轮涌入超过一页时回补，不丢中间的消息',
     const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
 
     assert.strictEqual(r.newMessages.length, 45, '45 条新消息一条都不能少');
-    assert.deepStrictEqual(r.newMessages.map(m => m.id), allMsgs.slice(5).map(m => m.id),
-        '必须按时间升序、且正是未见过的那 45 条');
+    assert.deepStrictEqual(
+        r.newMessages.map((m) => m.id),
+        allMsgs.slice(5).map((m) => m.id),
+        '必须按时间升序、且正是未见过的那 45 条'
+    );
     assert.strictEqual(r.caughtUp, true, '翻到与已见集重叠即算追上');
     assert.ok(impl.calls.length >= 3, `应多次翻页，实际 ${impl.calls.length} 次`);
     assert.strictEqual(impl.calls[0], 0, '第一页从最新拉起');
     assert.ok(impl.calls[1] > 0, '后续页必须带 max_mid 往回翻');
 
     // 落盘同样完整
-    const saved = JSON.parse(fs.readFileSync(path.join(dir, `weibo_chat_${r.newMessages[0].date}.json`), 'utf-8'));
+    const saved = JSON.parse(
+        fs.readFileSync(path.join(dir, `weibo_chat_${r.newMessages[0].date}.json`), 'utf-8')
+    );
     assert.strictEqual(saved.length, 45);
 });
 
@@ -328,10 +364,13 @@ test('pollGroupOnce: 回补途中 max_mid 不推进也不死循环', async () =>
     const dir = tmpdir();
     const g = mkGroup(dir);
     g.primed = true;
-    g.seen.add('999');   // 有游标但与返回内容无交集
+    g.seen.add('999'); // 有游标但与返回内容无交集
     let calls = 0;
     // 无论 max_mid 是什么都返回同一页（模拟接口忽略游标）
-    const impl = async () => { calls++; return { json: async () => ({ messages: [raw(7, T0)] }) }; };
+    const impl = async () => {
+        calls++;
+        return { json: async () => ({ messages: [raw(7, T0)] }) };
+    };
 
     const r = await ls.pollGroupOnce(g, { cookieHeader: () => 'x', fetchImpl: impl });
     assert.ok(calls <= ls.MAX_BACKFILL_PAGES, `不得无限翻页，实际 ${calls} 次`);

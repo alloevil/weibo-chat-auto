@@ -30,7 +30,10 @@ test('buildSyncResult: 非零退出取最后一条"错误:"行作为真实原因
         '    at main (/x/auto-archive-simple.js:917:15)',
     ].join('\n');
     const r = buildSyncResult(1, out);
-    assert.deepStrictEqual(r, { ok: false, error: '2/3 个群未归档: 猫咪AI研究(未取到群 ID)、赛博动物园w(会话未切换)' });
+    assert.deepStrictEqual(r, {
+        ok: false,
+        error: '2/3 个群未归档: 猫咪AI研究(未取到群 ID)、赛博动物园w(会话未切换)',
+    });
 });
 
 test('buildSyncResult: 无可解析原因时回退到退出码', () => {

@@ -18,7 +18,11 @@ test('本机 Origin 放行（页面自己的 fetch / 桌面版 WebView）', () =
 });
 
 test('外站 Origin 拦截 —— 这正是实测可利用的那条路径', () => {
-    for (const o of ['https://evil.example.com', 'http://weibo.com', 'https://127.0.0.1.evil.com']) {
+    for (const o of [
+        'https://evil.example.com',
+        'http://weibo.com',
+        'https://127.0.0.1.evil.com',
+    ]) {
         assert.strictEqual(isCrossSiteRequest({ origin: o }), true, o);
     }
 });
@@ -36,7 +40,11 @@ test('Sec-Fetch-Site 优先：浏览器自打的标记，攻击页改不了', ()
     assert.strictEqual(isCrossSiteRequest({ 'sec-fetch-site': 'cross-site' }), true);
     assert.strictEqual(isCrossSiteRequest({ 'sec-fetch-site': 'same-site' }), true);
     // 即使 Origin 伪装成本机，cross-site 标记也必须拦住
-    assert.strictEqual(isCrossSiteRequest({
-        'sec-fetch-site': 'cross-site', origin: 'http://127.0.0.1:3456',
-    }), true);
+    assert.strictEqual(
+        isCrossSiteRequest({
+            'sec-fetch-site': 'cross-site',
+            origin: 'http://127.0.0.1:3456',
+        }),
+        true
+    );
 });

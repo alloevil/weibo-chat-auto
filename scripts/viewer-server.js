@@ -71,21 +71,35 @@ const isSyncLockFree = () => !syncLock.isLocked(path.join(ROOT, 'state'));
 // 这里只注入真实的 GitHub API 请求。任何失败都静默为「无更新」。
 const { createVersionChecker, RELEASES_LATEST_API } = require('../lib/version-check');
 const versionChecker = createVersionChecker({
-    fetchLatest: () => new Promise((resolve, reject) => {
-        const r = https.get(RELEASES_LATEST_API, {
-            headers: { 'User-Agent': 'weibo-chat-auto', Accept: 'application/vnd.github+json' },
-            timeout: 8000,
-        }, (resp) => {
-            let body = '';
-            resp.setEncoding('utf-8');
-            resp.on('data', (c) => { body += c; });
-            resp.on('end', () => {
-                try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
-            });
-        });
-        r.on('timeout', () => r.destroy(new Error('timeout')));
-        r.on('error', reject);
-    }),
+    fetchLatest: () =>
+        new Promise((resolve, reject) => {
+            const r = https.get(
+                RELEASES_LATEST_API,
+                {
+                    headers: {
+                        'User-Agent': 'weibo-chat-auto',
+                        Accept: 'application/vnd.github+json',
+                    },
+                    timeout: 8000,
+                },
+                (resp) => {
+                    let body = '';
+                    resp.setEncoding('utf-8');
+                    resp.on('data', (c) => {
+                        body += c;
+                    });
+                    resp.on('end', () => {
+                        try {
+                            resolve(JSON.parse(body));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    });
+                }
+            );
+            r.on('timeout', () => r.destroy(new Error('timeout')));
+            r.on('error', reject);
+        }),
 });
 
 // 当前账号（用于判定"提到我"、排除自己发的消息）。惰性取：/api/me 首次被问
@@ -93,10 +107,17 @@ const versionChecker = createVersionChecker({
 const meState = { screenName: '', uid: '', fetchedAt: 0 };
 async function refreshMe() {
     try {
-        const r = await fetch('https://api.weibo.com/webim/query_primary_info.json?source=209678993', {
-            headers: { Cookie: loadCookies(), Referer: 'https://api.weibo.com/chat', 'X-Requested-With': 'XMLHttpRequest' },
-            signal: AbortSignal.timeout(10000),
-        });
+        const r = await fetch(
+            'https://api.weibo.com/webim/query_primary_info.json?source=209678993',
+            {
+                headers: {
+                    Cookie: loadCookies(),
+                    Referer: 'https://api.weibo.com/chat',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                signal: AbortSignal.timeout(10000),
+            }
+        );
         const d = await r.json();
         const name = d?.profile?.screen_name;
         const uid = d?.profile?.id || d?.id;
@@ -105,7 +126,9 @@ async function refreshMe() {
             meState.uid = uid ? String(uid) : '';
             meState.fetchedAt = Date.now();
         }
-    } catch { /* 拿不到就只是没有"提到我"判定，不影响其它功能 */ }
+    } catch {
+        /* 拿不到就只是没有"提到我"判定，不影响其它功能 */
+    }
 }
 
 // 通知偏好（与实时同步同一套路：存盘、默认保守 —— 只提醒提到我）
@@ -113,7 +136,11 @@ const NOTIFY_CONFIG_PATH = path.join(ROOT, 'notify-config.json');
 function readNotifyConfig() {
     try {
         const c = JSON.parse(fs.readFileSync(NOTIFY_CONFIG_PATH, 'utf-8'));
-        return { enabled: c.enabled !== false, keywords: Array.isArray(c.keywords) ? c.keywords : [], notifyAll: c.notifyAll === true };
+        return {
+            enabled: c.enabled !== false,
+            keywords: Array.isArray(c.keywords) ? c.keywords : [],
+            notifyAll: c.notifyAll === true,
+        };
     } catch {
         return { enabled: true, keywords: [], notifyAll: false };
     }
@@ -124,7 +151,9 @@ let notifyConfig = readNotifyConfig();
 function readGroupState(groupName) {
     const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
     try {
-        return JSON.parse(fs.readFileSync(path.join(ROOT, 'state', `last-archive-state_${safe}.json`), 'utf-8'));
+        return JSON.parse(
+            fs.readFileSync(path.join(ROOT, 'state', `last-archive-state_${safe}.json`), 'utf-8')
+        );
     } catch {
         return null;
     }
@@ -138,7 +167,11 @@ function resolveLiveGroups() {
         if (!entry.isDirectory()) continue;
         const st = readGroupState(entry.name);
         if (!st?.groupId) continue;
-        out.push({ name: entry.name, groupId: String(st.groupId), dir: path.join(OUTPUT_DIR, entry.name) });
+        out.push({
+            name: entry.name,
+            groupId: String(st.groupId),
+            dir: path.join(OUTPUT_DIR, entry.name),
+        });
     }
     return out;
 }
@@ -152,7 +185,7 @@ function readLiveEnabled() {
     try {
         return JSON.parse(fs.readFileSync(LIVE_CONFIG_PATH, 'utf-8')).enabled === true;
     } catch {
-        return false;   // 文件缺失/损坏 → 关闭（保守侧）
+        return false; // 文件缺失/损坏 → 关闭（保守侧）
     }
 }
 function writeLiveEnabled(enabled) {
@@ -164,7 +197,11 @@ const sseClients = new Set();
 function broadcast(event) {
     const payload = `data: ${JSON.stringify(event)}\n\n`;
     for (const res of sseClients) {
-        try { res.write(payload); } catch { sseClients.delete(res); }
+        try {
+            res.write(payload);
+        } catch {
+            sseClients.delete(res);
+        }
     }
 }
 
@@ -257,7 +294,7 @@ function readDigestConfig() {
         const c = JSON.parse(fs.readFileSync(DIGEST_CONFIG_PATH, 'utf-8'));
         return { enabled: c.enabled === true, hour: Number.isInteger(c.hour) ? c.hour : 20 };
     } catch {
-        return { enabled: false, hour: 20 };   // 文件缺失/损坏 → 关闭（保守侧）
+        return { enabled: false, hour: 20 }; // 文件缺失/损坏 → 关闭（保守侧）
     }
 }
 let digestConfig = readDigestConfig();
@@ -267,16 +304,19 @@ function hasAiConfigComplete() {
     try {
         const c = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
         return !!(c.baseUrl && c.apiKey && c.model);
-    } catch { return false; }
+    } catch {
+        return false;
+    }
 }
 
 /** output/ 下有归档数据的群名（不要求 groupId —— 摘要只读本地日文件）。 */
 function listArchivedGroups() {
     if (!fs.existsSync(OUTPUT_DIR)) return [];
-    return fs.readdirSync(OUTPUT_DIR, { withFileTypes: true })
-        .filter(e => e.isDirectory())
-        .map(e => e.name)
-        .filter(name => messageStore.listDates(OUTPUT_DIR, name).length > 0);
+    return fs
+        .readdirSync(OUTPUT_DIR, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .filter((name) => messageStore.listDates(OUTPUT_DIR, name).length > 0);
 }
 
 // 摘要生成复用 /api/summary 的同一条路径（缓存 + vision 两步），自请求本机端口
@@ -284,14 +324,24 @@ function listArchivedGroups() {
 function generateDigestSummary(group, date) {
     return new Promise((resolve) => {
         const q = `group=${encodeURIComponent(group)}&date=${encodeURIComponent(date)}`;
-        const r = http.get(`http://127.0.0.1:${PORT}/api/summary?${q}`, { timeout: 180000 }, (resp) => {
-            let body = '';
-            resp.setEncoding('utf-8');
-            resp.on('data', (c) => { body += c; });
-            resp.on('end', () => {
-                try { resolve(JSON.parse(body)); } catch (e) { resolve({ ok: false, error: e.message }); }
-            });
-        });
+        const r = http.get(
+            `http://127.0.0.1:${PORT}/api/summary?${q}`,
+            { timeout: 180000 },
+            (resp) => {
+                let body = '';
+                resp.setEncoding('utf-8');
+                resp.on('data', (c) => {
+                    body += c;
+                });
+                resp.on('end', () => {
+                    try {
+                        resolve(JSON.parse(body));
+                    } catch (e) {
+                        resolve({ ok: false, error: e.message });
+                    }
+                });
+            }
+        );
         r.on('timeout', () => r.destroy(new Error('timeout')));
         r.on('error', (e) => resolve({ ok: false, error: e.message }));
     });
@@ -306,19 +356,34 @@ const dailyDigest = createDailyDigest({
     notify: (group, notifications) => broadcast({ type: 'digest', group, notifications }),
     // 定时归档在另一个进程：跨进程锁被持有或本进程 sync 在跑都算「归档中」
     isArchiverRunning: () => !!global.__syncProgress?.running || !isSyncLockFree(),
-    loadState: () => { try { return JSON.parse(fs.readFileSync(DIGEST_STATE_PATH, 'utf-8')); } catch { return {}; } },
+    loadState: () => {
+        try {
+            return JSON.parse(fs.readFileSync(DIGEST_STATE_PATH, 'utf-8'));
+        } catch {
+            return {};
+        }
+    },
     saveState: (s) => {
         try {
             fs.mkdirSync(path.dirname(DIGEST_STATE_PATH), { recursive: true });
             fs.writeFileSync(DIGEST_STATE_PATH, JSON.stringify(s, null, 2), 'utf-8');
-        } catch (e) { console.error('[digest] 状态保存失败:', e.message); }
+        } catch (e) {
+            console.error('[digest] 状态保存失败:', e.message);
+        }
     },
     log: (m) => console.log(m),
 });
 // 定时归档进程结束的时刻 viewer 感知不到，用 5 分钟周期检查逼近「归档完成后」；
 // 条件链短路极快，摘要与通知本身有按日去重，多查无害。
-setInterval(() => { dailyDigest.check().catch(() => {}); }, 5 * 60 * 1000).unref();
-setTimeout(() => { dailyDigest.check().catch(() => {}); }, 30 * 1000).unref();
+setInterval(
+    () => {
+        dailyDigest.check().catch(() => {});
+    },
+    5 * 60 * 1000
+).unref();
+setTimeout(() => {
+    dailyDigest.check().catch(() => {});
+}, 30 * 1000).unref();
 
 // 序列化时改写副本（#15）：缓存永远保存原始 URL，代理路径只存在于
 // /api/messages 的响应里。实现与回归测试见 lib/rewrite-image-urls。
@@ -332,7 +397,10 @@ function callLlmApi(messages, callback) {
     let aiConfig;
     try {
         aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
-    } catch { callback(null, 'AI 未配置'); return; }
+    } catch {
+        callback(null, 'AI 未配置');
+        return;
+    }
     const reqBody = JSON.stringify({ model: aiConfig.model, messages });
     const apiUrl = new URL(aiConfig.baseUrl.replace(/\/$/, '') + '/chat/completions');
     const isHttps = apiUrl.protocol === 'https:';
@@ -342,23 +410,31 @@ function callLlmApi(messages, callback) {
         port: apiUrl.port || (isHttps ? 443 : 80),
         path: apiUrl.pathname + apiUrl.search,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aiConfig.apiKey}` },
         agent: false,
     };
     const llmReq = httpModule.request(options, (llmRes) => {
         const chunks = [];
-        llmRes.on('data', chunk => chunks.push(chunk));
+        llmRes.on('data', (chunk) => chunks.push(chunk));
         llmRes.on('end', () => {
             const body = Buffer.concat(chunks).toString();
             try {
                 const data = JSON.parse(body);
-                if (data.error) { callback(null, data.error.message || JSON.stringify(data.error)); return; }
+                if (data.error) {
+                    callback(null, data.error.message || JSON.stringify(data.error));
+                    return;
+                }
                 callback(data.choices?.[0]?.message?.content || '');
-            } catch (e) { callback(null, '解析失败: ' + e.message); }
+            } catch (e) {
+                callback(null, '解析失败: ' + e.message);
+            }
         });
     });
     llmReq.on('error', (e) => callback(null, '请求失败: ' + e.message));
-    llmReq.setTimeout(90000, () => { llmReq.destroy(); callback(null, '请求超时（90s）'); });
+    llmReq.setTimeout(90000, () => {
+        llmReq.destroy();
+        callback(null, '请求超时（90s）');
+    });
     llmReq.end(reqBody);
 }
 
@@ -375,7 +451,9 @@ function serveImage(res, filePath, contentType) {
 function qaLegacy(question, allMessages, reply) {
     const today = new Date().toISOString().split('T')[0];
     const extractPrompt = [
-        { role: 'system', content: `你是一个搜索查询解析器。今天是 ${today}。根据用户的问题，提取搜索关键词和时间范围。
+        {
+            role: 'system',
+            content: `你是一个搜索查询解析器。今天是 ${today}。根据用户的问题，提取搜索关键词和时间范围。
 
 输出严格JSON格式（不要输出其他内容）：
 {"keywords": ["关键词1", "关键词2", ...], "person": "人名或null", "dateFrom": "YYYY-MM-DD或null", "dateTo": "YYYY-MM-DD或null"}
@@ -384,11 +462,15 @@ function qaLegacy(question, allMessages, reply) {
 - keywords: 3-5个最相关的搜索关键词（排除人名和时间词）
 - person: 如果问题针对某个人（如"xx说了什么"），提取人名，否则null
 - dateFrom/dateTo: 将时间表述转为绝对日期（"昨天"→昨天日期，"最近"→7天前到今天，无时间→null）
-- 不要把时间词放入keywords` },
-        { role: 'user', content: question }
+- 不要把时间词放入keywords`,
+        },
+        { role: 'user', content: question },
     ];
     callLlmApi(extractPrompt, (extraction, err) => {
-        if (err) { reply({ ok: false, error: '查询解析失败: ' + err }); return; }
+        if (err) {
+            reply({ ok: false, error: '查询解析失败: ' + err });
+            return;
+        }
 
         let keywordList, dateFrom, dateTo, person;
         try {
@@ -398,13 +480,15 @@ function qaLegacy(question, allMessages, reply) {
             dateTo = parsed.dateTo || null;
             person = parsed.person || null;
         } catch {
-            keywordList = extraction.split(/[,，、\s]+/).filter(k => k.length > 0);
-            dateFrom = null; dateTo = null; person = null;
+            keywordList = extraction.split(/[,，、\s]+/).filter((k) => k.length > 0);
+            dateFrom = null;
+            dateTo = null;
+            person = null;
         }
 
         let messages = allMessages;
         if (dateFrom || dateTo) {
-            messages = allMessages.filter(m => {
+            messages = allMessages.filter((m) => {
                 const d = (m.time || '').split(' ')[0].replace(/\//g, '-');
                 if (!d) return false;
                 if (dateFrom && d < dateFrom) return false;
@@ -412,7 +496,12 @@ function qaLegacy(question, allMessages, reply) {
                 return true;
             });
             if (!messages.length) {
-                reply({ ok: true, answer: `在 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间未找到聊天记录。`, sources: [], keywords: keywordList });
+                reply({
+                    ok: true,
+                    answer: `在 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间未找到聊天记录。`,
+                    sources: [],
+                    keywords: keywordList,
+                });
                 return;
             }
         }
@@ -431,25 +520,56 @@ function qaLegacy(question, allMessages, reply) {
 
         if (!scored.length && (dateFrom || dateTo)) {
             const sample = messages.slice(-50);
-            const ctx = sample.map(m => {
-                const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-                const date = m.time ? m.time.split(' ')[0] : '';
-                let text = m.content || '';
-                if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
-                return `[${date} ${t}] ${m.user}: ${text}`;
-            }).join('\n');
-            callLlmApi([
-                { role: 'system', content: '你是一个群聊记录问答助手。根据提供的聊天记录回答用户问题。只基于记录回答，不要编造。用简洁的中文回答。' },
-                { role: 'user', content: `问题：${question}\n\n以下是 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间的群聊记录：\n\n${ctx.slice(0, 8000)}` }
-            ], (answer, ansErr) => {
-                if (ansErr) { reply({ ok: false, error: '回答生成失败: ' + ansErr }); return; }
-                reply({ ok: true, answer, sources: [{ date: dateFrom || dateTo || '', preview: `${messages.length} 条消息` }], keywords: keywordList, dateRange: { from: dateFrom, to: dateTo } });
-            });
+            const ctx = sample
+                .map((m) => {
+                    const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+                    const date = m.time ? m.time.split(' ')[0] : '';
+                    let text = m.content || '';
+                    if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
+                    return `[${date} ${t}] ${m.user}: ${text}`;
+                })
+                .join('\n');
+            callLlmApi(
+                [
+                    {
+                        role: 'system',
+                        content:
+                            '你是一个群聊记录问答助手。根据提供的聊天记录回答用户问题。只基于记录回答，不要编造。用简洁的中文回答。',
+                    },
+                    {
+                        role: 'user',
+                        content: `问题：${question}\n\n以下是 ${dateFrom || '?'} 至 ${dateTo || '?'} 期间的群聊记录：\n\n${ctx.slice(0, 8000)}`,
+                    },
+                ],
+                (answer, ansErr) => {
+                    if (ansErr) {
+                        reply({ ok: false, error: '回答生成失败: ' + ansErr });
+                        return;
+                    }
+                    reply({
+                        ok: true,
+                        answer,
+                        sources: [
+                            {
+                                date: dateFrom || dateTo || '',
+                                preview: `${messages.length} 条消息`,
+                            },
+                        ],
+                        keywords: keywordList,
+                        dateRange: { from: dateFrom, to: dateTo },
+                    });
+                }
+            );
             return;
         }
 
         if (!scored.length) {
-            reply({ ok: true, answer: '未找到与该问题相关的聊天记录。请尝试换一种问法或使用更具体的关键词。', sources: [], keywords: keywordList });
+            reply({
+                ok: true,
+                answer: '未找到与该问题相关的聊天记录。请尝试换一种问法或使用更具体的关键词。',
+                sources: [],
+                keywords: keywordList,
+            });
             return;
         }
 
@@ -465,19 +585,29 @@ function qaLegacy(question, allMessages, reply) {
             let skip = false;
             for (const existing of segments) {
                 const [es, ee] = existing.split('-').map(Number);
-                if (start >= es && end <= ee) { skip = true; break; }
+                if (start >= es && end <= ee) {
+                    skip = true;
+                    break;
+                }
             }
             if (skip) continue;
             segments.add(segKey);
-            const chunk = messages.slice(start, end).map(m => {
-                const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-                const date = m.time ? m.time.split(' ')[0] : '';
-                let text = m.content || '';
-                if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
-                if (m.pics?.length) text += ` [图片x${m.pics.length}]`;
-                return `[${date} ${t}] ${m.user}: ${text}`;
-            }).join('\n');
-            contextChunks.push({ text: chunk, date: (messages[start].time?.split(' ')[0] || '').replace(/\//g, '-'), score: hit.score });
+            const chunk = messages
+                .slice(start, end)
+                .map((m) => {
+                    const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+                    const date = m.time ? m.time.split(' ')[0] : '';
+                    let text = m.content || '';
+                    if (m.share) text += ` [分享: ${m.share.title || m.share.url || ''}]`;
+                    if (m.pics?.length) text += ` [图片x${m.pics.length}]`;
+                    return `[${date} ${t}] ${m.user}: ${text}`;
+                })
+                .join('\n');
+            contextChunks.push({
+                text: chunk,
+                date: (messages[start].time?.split(' ')[0] || '').replace(/\//g, '-'),
+                score: hit.score,
+            });
         }
 
         let totalLen = 0;
@@ -488,15 +618,39 @@ function qaLegacy(question, allMessages, reply) {
             totalLen += c.text.length;
         }
 
-        const contextText = finalChunks.map((c, i) => `--- 片段 ${i + 1}（${c.date}）---\n${c.text}`).join('\n\n');
-        callLlmApi([
-            { role: 'system', content: '你是一个群聊记录问答助手。根据提供的聊天记录片段回答用户问题。只基于记录回答，不要编造。引用具体发言人和日期。用简洁的中文回答。' },
-            { role: 'user', content: `问题：${question}\n\n以下是相关的群聊记录片段：\n\n${contextText}` }
-        ], (answer, ansErr) => {
-            if (ansErr) { reply({ ok: false, error: '回答生成失败: ' + ansErr }); return; }
-            const sources = finalChunks.map(c => ({ date: c.date, preview: c.text.split('\n').slice(0, 3).join(' | ').slice(0, 100) }));
-            reply({ ok: true, answer, sources, keywords: keywordList, dateRange: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined });
-        });
+        const contextText = finalChunks
+            .map((c, i) => `--- 片段 ${i + 1}（${c.date}）---\n${c.text}`)
+            .join('\n\n');
+        callLlmApi(
+            [
+                {
+                    role: 'system',
+                    content:
+                        '你是一个群聊记录问答助手。根据提供的聊天记录片段回答用户问题。只基于记录回答，不要编造。引用具体发言人和日期。用简洁的中文回答。',
+                },
+                {
+                    role: 'user',
+                    content: `问题：${question}\n\n以下是相关的群聊记录片段：\n\n${contextText}`,
+                },
+            ],
+            (answer, ansErr) => {
+                if (ansErr) {
+                    reply({ ok: false, error: '回答生成失败: ' + ansErr });
+                    return;
+                }
+                const sources = finalChunks.map((c) => ({
+                    date: c.date,
+                    preview: c.text.split('\n').slice(0, 3).join(' | ').slice(0, 100),
+                }));
+                reply({
+                    ok: true,
+                    answer,
+                    sources,
+                    keywords: keywordList,
+                    dateRange: dateFrom || dateTo ? { from: dateFrom, to: dateTo } : undefined,
+                });
+            }
+        );
     });
 }
 
@@ -509,7 +663,9 @@ const server = http.createServer((req, res) => {
     // /api/summary 是 GET 但会写摘要文件并花 AI 额度，一并纳入。
     const isWrite = req.method === 'POST' || url.pathname === '/api/summary';
     if (isWrite && isCrossSiteRequest(req.headers)) {
-        console.error(`[security] 拒绝跨站请求 ${req.method} ${url.pathname} (origin=${req.headers.origin || '-'})`);
+        console.error(
+            `[security] 拒绝跨站请求 ${req.method} ${url.pathname} (origin=${req.headers.origin || '-'})`
+        );
         res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: '拒绝跨站请求' }));
         return;
@@ -521,7 +677,9 @@ const server = http.createServer((req, res) => {
         let lastArchived = 0;
         // Check root output dir (backward compat)
         if (fs.existsSync(OUTPUT_DIR)) {
-            const rootFiles = fs.readdirSync(OUTPUT_DIR).filter(f => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
+            const rootFiles = fs
+                .readdirSync(OUTPUT_DIR)
+                .filter((f) => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
             if (rootFiles.length > 0) {
                 const latestMtime = rootFiles.reduce((max, f) => {
                     const mt = fs.statSync(path.join(OUTPUT_DIR, f)).mtimeMs;
@@ -534,7 +692,9 @@ const server = http.createServer((req, res) => {
             for (const entry of fs.readdirSync(OUTPUT_DIR, { withFileTypes: true })) {
                 if (entry.isDirectory()) {
                     const subDir = path.join(OUTPUT_DIR, entry.name);
-                    const files = fs.readdirSync(subDir).filter(f => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
+                    const files = fs
+                        .readdirSync(subDir)
+                        .filter((f) => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
                     if (files.length > 0) {
                         const latestMtime = files.reduce((max, f) => {
                             const mt = fs.statSync(path.join(subDir, f)).mtimeMs;
@@ -568,7 +728,9 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/messages') {
         const group = url.searchParams.get('group') || '';
         const date = url.searchParams.get('date') || '';
-        const messages = rewriteImageUrls(date ? loadMessagesByDate(group, date) : loadMessages(group));
+        const messages = rewriteImageUrls(
+            date ? loadMessagesByDate(group, date) : loadMessages(group)
+        );
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ messages }));
         return;
@@ -590,17 +752,20 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({ ok: false, error: 'format 需为 md 或 html' }));
             return;
         }
-        const messages = exportChat.filterMessages(
-            loadMessagesByDate(group, date),
-            { keepNoise: url.searchParams.get('noise') === '1' },
-        );
-        const body = format === 'md'
-            ? exportChat.renderMarkdown(messages, { group, date })
-            : exportChat.renderHtml(messages, { group, date });
+        const messages = exportChat.filterMessages(loadMessagesByDate(group, date), {
+            keepNoise: url.searchParams.get('noise') === '1',
+        });
+        const body =
+            format === 'md'
+                ? exportChat.renderMarkdown(messages, { group, date })
+                : exportChat.renderHtml(messages, { group, date });
         // 群名可含中文，Content-Disposition 用 RFC 5987 编码
-        const filename = encodeURIComponent(`${group || 'weibo-chat'}_${date}.${format === 'md' ? 'md' : 'html'}`);
+        const filename = encodeURIComponent(
+            `${group || 'weibo-chat'}_${date}.${format === 'md' ? 'md' : 'html'}`
+        );
         res.writeHead(200, {
-            'Content-Type': format === 'md' ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8',
+            'Content-Type':
+                format === 'md' ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8',
             'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
         });
         res.end(body);
@@ -608,12 +773,14 @@ const server = http.createServer((req, res) => {
     }
 
     // Get available dates and message counts
-    if (url.pathname === '/api/dates') {        const group = url.searchParams.get('group') || '';
+    if (url.pathname === '/api/dates') {
+        const group = url.searchParams.get('group') || '';
         const dir = getGroupDir(group);
         const dates = {};
         if (fs.existsSync(dir)) {
-            const files = fs.readdirSync(dir)
-                .filter(f => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
+            const files = fs
+                .readdirSync(dir)
+                .filter((f) => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
             for (const file of files) {
                 const dateMatch = file.match(/weibo_chat_(\d{4}-\d{2}-\d{2})\.json/);
                 if (dateMatch) {
@@ -641,18 +808,29 @@ const server = http.createServer((req, res) => {
         // setEncoding 后 Node 用 StringDecoder 保留不完整的多字节序列；
         // 少了它，中文请求体跨 chunk 就会碎成 ���（见 lib/read-stream.js）
         req.setEncoding('utf-8');
-        req.on('data', c => { body += c; if (body.length > 1e5) req.destroy(); });
+        req.on('data', (c) => {
+            body += c;
+            if (body.length > 1e5) req.destroy();
+        });
         req.on('end', async () => {
             const reply = (r) => {
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify(r));
             };
             let params;
-            try { params = JSON.parse(body); } catch { reply({ ok: false, error: '参数解析失败' }); return; }
+            try {
+                params = JSON.parse(body);
+            } catch {
+                reply({ ok: false, error: '参数解析失败' });
+                return;
+            }
             const group = params.group || '';
-            const target = resolveLiveGroups().find(g => g.name === group);
+            const target = resolveLiveGroups().find((g) => g.name === group);
             if (!target) {
-                reply({ ok: false, error: `群「${group}」没有可用的会话 id，先跑一次归档（Sync Now）让它被记录` });
+                reply({
+                    ok: false,
+                    error: `群「${group}」没有可用的会话 id，先跑一次归档（Sync Now）让它被记录`,
+                });
                 return;
             }
             try {
@@ -662,7 +840,9 @@ const server = http.createServer((req, res) => {
                     cookieHeader: loadCookies(),
                 });
                 if (r.ok) {
-                    console.log(`[send] → ${group}: ${String(params.content).slice(0, 40)} (mid=${r.messageId || '?'})`);
+                    console.log(
+                        `[send] → ${group}: ${String(params.content).slice(0, 40)} (mid=${r.messageId || '?'})`
+                    );
                     // 实时同步关闭时不催轮询：那也是一次读取，会破坏"关掉就
                     // 一个请求都不发"的承诺。此时自己发的消息等下次归档出现。
                     if (liveEnabled) liveSync.tick();
@@ -685,7 +865,10 @@ const server = http.createServer((req, res) => {
         let bytes = 0;
         req.on('data', (c) => {
             bytes += c.length;
-            if (bytes > 30 * 1024 * 1024) { req.destroy(); return; }   // 30MB 硬顶
+            if (bytes > 30 * 1024 * 1024) {
+                req.destroy();
+                return;
+            } // 30MB 硬顶
             chunks.push(c);
         });
         req.on('end', async () => {
@@ -694,17 +877,31 @@ const server = http.createServer((req, res) => {
                 res.end(JSON.stringify(r));
             };
             let params;
-            try { params = JSON.parse(Buffer.concat(chunks).toString('utf-8')); } catch { reply({ ok: false, error: '参数解析失败' }); return; }
+            try {
+                params = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+            } catch {
+                reply({ ok: false, error: '参数解析失败' });
+                return;
+            }
             const group = params.group || '';
-            const target = resolveLiveGroups().find(g => g.name === group);
+            const target = resolveLiveGroups().find((g) => g.name === group);
             if (!target) {
-                reply({ ok: false, error: `群「${group}」没有可用的会话 id，先跑一次归档（同步）让它被记录` });
+                reply({
+                    ok: false,
+                    error: `群「${group}」没有可用的会话 id，先跑一次归档（同步）让它被记录`,
+                });
                 return;
             }
             let buffer;
             try {
-                buffer = Buffer.from(String(params.dataBase64 || '').replace(/^data:[^,]+,/, ''), 'base64');
-            } catch { reply({ ok: false, error: '图片数据无法解析' }); return; }
+                buffer = Buffer.from(
+                    String(params.dataBase64 || '').replace(/^data:[^,]+,/, ''),
+                    'base64'
+                );
+            } catch {
+                reply({ ok: false, error: '图片数据无法解析' });
+                return;
+            }
             try {
                 const r = await sendGroupImage({
                     groupId: target.groupId,
@@ -714,13 +911,19 @@ const server = http.createServer((req, res) => {
                     cookieHeader: loadCookies(),
                 });
                 if (r.ok) {
-                    console.log(`[send] → ${group}: 图片 ${(buffer.length / 1024).toFixed(0)}KB (fid=${r.fid} mid=${r.messageId || '?'})`);
+                    console.log(
+                        `[send] → ${group}: 图片 ${(buffer.length / 1024).toFixed(0)}KB (fid=${r.fid} mid=${r.messageId || '?'})`
+                    );
                     if (liveEnabled) liveSync.tick();
                 } else if (r.needLogin) {
                     authState.ok = false;
                     authState.code = weiboAuth.UNAUTHENTICATED_CODE;
                 }
-                reply(r.ok ? { ok: true, fid: r.fid } : { ok: false, needLogin: r.needLogin, error: r.error });
+                reply(
+                    r.ok
+                        ? { ok: true, fid: r.fid }
+                        : { ok: false, needLogin: r.needLogin, error: r.error }
+                );
             } catch (e) {
                 reply({ ok: false, error: `发送图片失败: ${e.message}` });
             }
@@ -738,7 +941,9 @@ const server = http.createServer((req, res) => {
         if (req.method === 'POST') {
             let body = '';
             req.setEncoding('utf-8');
-            req.on('data', c => { body += c; });
+            req.on('data', (c) => {
+                body += c;
+            });
             req.on('end', () => {
                 try {
                     const p = JSON.parse(body);
@@ -746,10 +951,22 @@ const server = http.createServer((req, res) => {
                         enabled: p.enabled !== false,
                         notifyAll: p.notifyAll === true,
                         // 关键词去空去重，避免空串命中一切
-                        keywords: [...new Set((Array.isArray(p.keywords) ? p.keywords : []).map(k => String(k).trim()).filter(Boolean))].slice(0, 30),
+                        keywords: [
+                            ...new Set(
+                                (Array.isArray(p.keywords) ? p.keywords : [])
+                                    .map((k) => String(k).trim())
+                                    .filter(Boolean)
+                            ),
+                        ].slice(0, 30),
                     };
-                    fs.writeFileSync(NOTIFY_CONFIG_PATH, JSON.stringify(notifyConfig, null, 2), 'utf-8');
-                    console.log(`[notify] 通知设置已更新（提到我${notifyConfig.enabled ? '开' : '关'}，关键词 ${notifyConfig.keywords.length} 个，全部新消息${notifyConfig.notifyAll ? '开' : '关'}）`);
+                    fs.writeFileSync(
+                        NOTIFY_CONFIG_PATH,
+                        JSON.stringify(notifyConfig, null, 2),
+                        'utf-8'
+                    );
+                    console.log(
+                        `[notify] 通知设置已更新（提到我${notifyConfig.enabled ? '开' : '关'}，关键词 ${notifyConfig.keywords.length} 个，全部新消息${notifyConfig.notifyAll ? '开' : '关'}）`
+                    );
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true, ...notifyConfig }));
                 } catch (e) {
@@ -771,9 +988,15 @@ const server = http.createServer((req, res) => {
                 const configured = groupConfig.readGroups(CONFIG_PATH);
                 const { matched, missing } = diffConfiguredGroups(configured, r.groups);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true, groups: r.groups, configured, matched, missing }));
+                res.end(
+                    JSON.stringify({ ok: true, groups: r.groups, configured, matched, missing })
+                );
             } else {
-                if (r.unauthenticated) { authState.ok = false; authState.code = weiboAuth.UNAUTHENTICATED_CODE; authState.checkedAt = Date.now(); }
+                if (r.unauthenticated) {
+                    authState.ok = false;
+                    authState.code = weiboAuth.UNAUTHENTICATED_CODE;
+                    authState.checkedAt = Date.now();
+                }
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify(r));
             }
@@ -791,13 +1014,20 @@ const server = http.createServer((req, res) => {
         if (req.method === 'POST') {
             let body = '';
             req.setEncoding('utf-8');
-            req.on('data', c => { body += c; });
+            req.on('data', (c) => {
+                body += c;
+            });
             req.on('end', () => {
                 try {
                     const p = JSON.parse(body);
                     const r = groupConfig.writeGroups(CONFIG_PATH, p.groups);
-                    if (r.ok) console.log(`[groups] 已选群写入 config.json（${r.groups.length} 个）: ${r.groups.join('、')}`);
-                    res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    if (r.ok)
+                        console.log(
+                            `[groups] 已选群写入 config.json（${r.groups.length} 个）: ${r.groups.join('、')}`
+                        );
+                    res.writeHead(r.ok ? 200 : 400, {
+                        'Content-Type': 'application/json; charset=utf-8',
+                    });
                     res.end(JSON.stringify(r));
                 } catch (e) {
                     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -817,7 +1047,7 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({ ok: true, screenName: meState.screenName, uid: meState.uid }));
         };
         if (meState.screenName) send();
-        else refreshMe().then(send, send);   // 取不到也要回，前端自己隐藏按钮
+        else refreshMe().then(send, send); // 取不到也要回，前端自己隐藏按钮
         return;
     }
 
@@ -825,13 +1055,17 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/digest-config') {
         if (req.method === 'GET') {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: true, ...digestConfig, aiConfigured: hasAiConfigComplete() }));
+            res.end(
+                JSON.stringify({ ok: true, ...digestConfig, aiConfigured: hasAiConfigComplete() })
+            );
             return;
         }
         if (req.method === 'POST') {
             let body = '';
             req.setEncoding('utf-8');
-            req.on('data', c => { body += c; });
+            req.on('data', (c) => {
+                body += c;
+            });
             req.on('end', () => {
                 try {
                     const p = JSON.parse(body);
@@ -840,8 +1074,14 @@ const server = http.createServer((req, res) => {
                         // 时点限定 0-23 的整数，畸形输入回落默认 20 点
                         hour: Number.isInteger(p.hour) && p.hour >= 0 && p.hour <= 23 ? p.hour : 20,
                     };
-                    fs.writeFileSync(DIGEST_CONFIG_PATH, JSON.stringify(digestConfig, null, 2), 'utf-8');
-                    console.log(`[digest] 每日摘要已${digestConfig.enabled ? `开启（${digestConfig.hour} 点后生成）` : '关闭'}`);
+                    fs.writeFileSync(
+                        DIGEST_CONFIG_PATH,
+                        JSON.stringify(digestConfig, null, 2),
+                        'utf-8'
+                    );
+                    console.log(
+                        `[digest] 每日摘要已${digestConfig.enabled ? `开启（${digestConfig.hour} 点后生成）` : '关闭'}`
+                    );
                     // 开启即检查一次：过了时点的话当晚立即生效，不必等下个周期
                     if (digestConfig.enabled) dailyDigest.check().catch(() => {});
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -859,19 +1099,27 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/live-config') {
         if (req.method === 'GET') {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: true, enabled: liveEnabled, groups: resolveLiveGroups().map(g => g.name) }));
+            res.end(
+                JSON.stringify({
+                    ok: true,
+                    enabled: liveEnabled,
+                    groups: resolveLiveGroups().map((g) => g.name),
+                })
+            );
             return;
         }
         if (req.method === 'POST') {
             let body = '';
             req.setEncoding('utf-8');
-            req.on('data', c => { body += c; });
+            req.on('data', (c) => {
+                body += c;
+            });
             req.on('end', () => {
                 try {
                     const { enabled } = JSON.parse(body);
                     liveEnabled = !!enabled;
                     writeLiveEnabled(liveEnabled);
-                    liveSync.refresh();   // 立即生效：开则起轮询，关则停
+                    liveSync.refresh(); // 立即生效：开则起轮询，关则停
                     console.log(`[live] 实时同步已${liveEnabled ? '开启' : '关闭'}`);
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true, enabled: liveEnabled }));
@@ -893,7 +1141,9 @@ const server = http.createServer((req, res) => {
             Connection: 'keep-alive',
             'X-Accel-Buffering': 'no',
         });
-        res.write(`data: ${JSON.stringify({ type: 'hello', enabled: liveEnabled, groups: resolveLiveGroups().map(g => g.name), intervalMs: LIVE_INTERVAL_MS })}\n\n`);
+        res.write(
+            `data: ${JSON.stringify({ type: 'hello', enabled: liveEnabled, groups: resolveLiveGroups().map((g) => g.name), intervalMs: LIVE_INTERVAL_MS })}\n\n`
+        );
         sseClients.add(res);
         liveSync.addSubscriber();
         // 通知判定要知道"我"是谁。页面只在首次加载时调 /api/me，服务重启后
@@ -901,10 +1151,16 @@ const server = http.createServer((req, res) => {
         // liveEnabled 是硬闸门：关闭时这条路径一个请求都不许发。
         if (liveEnabled && notifyConfig.enabled && !meState.screenName) refreshMe();
         // 心跳注释：浏览器与代理都会掐掉长时间静默的连接
-        const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* 已断开 */ } }, 25000);
+        const beat = setInterval(() => {
+            try {
+                res.write(': ping\n\n');
+            } catch {
+                /* 已断开 */
+            }
+        }, 25000);
         beat.unref?.();
         const cleanup = () => {
-            if (!sseClients.delete(res)) return;   // 只在首次断开时结算订阅数
+            if (!sseClients.delete(res)) return; // 只在首次断开时结算订阅数
             clearInterval(beat);
             liveSync.removeSubscriber();
         };
@@ -919,7 +1175,8 @@ const server = http.createServer((req, res) => {
         loadEmotions(path.join(ROOT, 'cache', 'emotions.json'), { cookieHeader: loadCookies() })
             .then(({ map, source, count }) => {
                 if (source === 'network') console.log(`[emotions] 已更新表情清单 ${count} 条`);
-                else if (source === 'empty') console.warn('[emotions] 表情清单拉取失败且无缓存，未知表情将显示为文字标签');
+                else if (source === 'empty')
+                    console.warn('[emotions] 表情清单拉取失败且无缓存，未知表情将显示为文字标签');
                 res.writeHead(200, {
                     'Content-Type': 'application/json; charset=utf-8',
                     // 前端每次加载都会取一次；缓存一天避免频繁请求（服务端另有 7 天磁盘缓存）
@@ -962,62 +1219,77 @@ const server = http.createServer((req, res) => {
             return;
         }
         (async () => {
-        // 预检登录态：Cookie 已死时秒级明确失败并引导重新扫码，而不是让
-        // 归档器空跑几分钟后只报一句 "code 1"。探测本身失败（断网、接口
-        // 抖动）不拦路 —— 那种情况交给归档器自己判定。
-        try {
-            const code = await weiboAuth.probeAuthCodeHttp(loadCookies());
-            authState.ok = code !== weiboAuth.UNAUTHENTICATED_CODE;
-            authState.code = code;
-            authState.checkedAt = Date.now();
-            if (!authState.ok) {
-                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: false, needLogin: true, error: '微博 Cookie 已失效，请重新扫码登录' }));
-                return;
+            // 预检登录态：Cookie 已死时秒级明确失败并引导重新扫码，而不是让
+            // 归档器空跑几分钟后只报一句 "code 1"。探测本身失败（断网、接口
+            // 抖动）不拦路 —— 那种情况交给归档器自己判定。
+            try {
+                const code = await weiboAuth.probeAuthCodeHttp(loadCookies());
+                authState.ok = code !== weiboAuth.UNAUTHENTICATED_CODE;
+                authState.code = code;
+                authState.checkedAt = Date.now();
+                if (!authState.ok) {
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(
+                        JSON.stringify({
+                            ok: false,
+                            needLogin: true,
+                            error: '微博 Cookie 已失效，请重新扫码登录',
+                        })
+                    );
+                    return;
+                }
+            } catch {
+                /* 探测失败不拦路 */
             }
-        } catch { /* 探测失败不拦路 */ }
 
-        // Invalidate all message caches
-        messageStore.clearCaches();
-        const isBundled = !process.execPath.endsWith('node') && !process.execPath.endsWith('bun');
-        const jsRuntime = isBundled ? 'node' : process.execPath;
+            // Invalidate all message caches
+            messageStore.clearCaches();
+            const isBundled =
+                !process.execPath.endsWith('node') && !process.execPath.endsWith('bun');
+            const jsRuntime = isBundled ? 'node' : process.execPath;
 
-        // 进度状态：spawn 增量读 stdout，前端轮询 /api/sync-progress 获取
-        const progress = { running: true, stage: '启动归档器…', current: 0, total: 0, startedAt: Date.now() };
-        global.__syncProgress = progress;
+            // 进度状态：spawn 增量读 stdout，前端轮询 /api/sync-progress 获取
+            const progress = {
+                running: true,
+                stage: '启动归档器…',
+                current: 0,
+                total: 0,
+                startedAt: Date.now(),
+            };
+            global.__syncProgress = progress;
 
-        const { spawn } = require('child_process');
-        const child = spawn(jsRuntime, [path.join(ROOT, 'scripts', 'auto-archive-simple.js')], {
-            env: { ...process.env, PATH: process.env.PATH },
-        });
-        let out = '';
-        const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
-        const onChunk = (chunk) => {
-            const text = chunk.toString();
-            out += text;
-            // 从归档器输出提取人类可读的进度（解析规则见 lib/sync-report）
-            for (const line of text.split('\n')) syncReport.updateProgress(progress, line);
-        };
-        // 归档器输出含中文，同样必须按流解码而不是逐块 toString
-        child.stdout.setEncoding('utf-8');
-        child.stderr.setEncoding('utf-8');
-        child.stdout.on('data', onChunk);
-        child.stderr.on('data', onChunk);
-        child.on('close', (code) => {
-            clearTimeout(timer);
-            progress.running = false;
-            const result = syncReport.buildSyncResult(code, out);
-            if (result.ok) console.log(`[sync] done (archived=${result.archived})`);
-            else console.error('[sync] archiver exited with code', code);
-            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(result));
-        });
-        child.on('error', (err) => {
-            clearTimeout(timer);
-            progress.running = false;
-            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: false, error: err.message }));
-        });
+            const { spawn } = require('child_process');
+            const child = spawn(jsRuntime, [path.join(ROOT, 'scripts', 'auto-archive-simple.js')], {
+                env: { ...process.env, PATH: process.env.PATH },
+            });
+            let out = '';
+            const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
+            const onChunk = (chunk) => {
+                const text = chunk.toString();
+                out += text;
+                // 从归档器输出提取人类可读的进度（解析规则见 lib/sync-report）
+                for (const line of text.split('\n')) syncReport.updateProgress(progress, line);
+            };
+            // 归档器输出含中文，同样必须按流解码而不是逐块 toString
+            child.stdout.setEncoding('utf-8');
+            child.stderr.setEncoding('utf-8');
+            child.stdout.on('data', onChunk);
+            child.stderr.on('data', onChunk);
+            child.on('close', (code) => {
+                clearTimeout(timer);
+                progress.running = false;
+                const result = syncReport.buildSyncResult(code, out);
+                if (result.ok) console.log(`[sync] done (archived=${result.archived})`);
+                else console.error('[sync] archiver exited with code', code);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(result));
+            });
+            child.on('error', (err) => {
+                clearTimeout(timer);
+                progress.running = false;
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: false, error: err.message }));
+            });
         })();
         return;
     }
@@ -1050,23 +1322,28 @@ const server = http.createServer((req, res) => {
         const loadedLabels = (cb) => {
             exec('launchctl list', (err, stdout) => {
                 if (err) return cb([]);
-                cb(agents.filter(a => stdout.includes(a.label)).map(a => a.label));
+                cb(agents.filter((a) => stdout.includes(a.label)).map((a) => a.label));
             });
         };
 
         if (req.method === 'GET') {
             loadedLabels((loaded) => {
-                const active = agents.filter(a => loaded.includes(a.label));
+                const active = agents.filter((a) => loaded.includes(a.label));
                 // interval 供下拉回显；日历触发型没有 interval，用 describe 说明真实节奏
-                const withInterval = active.find(a => a.interval > 0);
+                const withInterval = active.find((a) => a.interval > 0);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({
-                    supported: true,
-                    enabled: active.length > 0,
-                    interval: withInterval ? withInterval.interval : 0,
-                    jobs: active.map(a => ({ label: a.label, schedule: describeSchedule(a) })),
-                    known: agents.map(a => a.label),
-                }));
+                res.end(
+                    JSON.stringify({
+                        supported: true,
+                        enabled: active.length > 0,
+                        interval: withInterval ? withInterval.interval : 0,
+                        jobs: active.map((a) => ({
+                            label: a.label,
+                            schedule: describeSchedule(a),
+                        })),
+                        known: agents.map((a) => a.label),
+                    })
+                );
             });
             return;
         }
@@ -1074,7 +1351,9 @@ const server = http.createServer((req, res) => {
         if (req.method === 'POST') {
             let body = '';
             req.setEncoding('utf-8');
-            req.on('data', chunk => { body += chunk; });
+            req.on('data', (chunk) => {
+                body += chunk;
+            });
             req.on('end', () => {
                 try {
                     const { interval } = JSON.parse(body);
@@ -1085,21 +1364,32 @@ const server = http.createServer((req, res) => {
                     }
 
                     // 关闭必须卸载全部任务：只卸自己那一个，用户以为关了、别的还在跑
-                    const unloadAll = agents.map(a => `launchctl unload "${a.file}" 2>/dev/null`).join('; ') || 'true';
+                    const unloadAll =
+                        agents.map((a) => `launchctl unload "${a.file}" 2>/dev/null`).join('; ') ||
+                        'true';
 
                     if (interval === 0) {
                         exec(unloadAll, () => {
                             console.log(`[schedule] 已停用 ${agents.length} 个定时归档任务`);
-                            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                            res.writeHead(200, {
+                                'Content-Type': 'application/json; charset=utf-8',
+                            });
                             res.end(JSON.stringify({ ok: true, enabled: false, interval: 0 }));
                         });
                         return;
                     }
 
                     let content;
-                    try { content = fs.readFileSync(CANONICAL_PATH, 'utf-8'); } catch {
+                    try {
+                        content = fs.readFileSync(CANONICAL_PATH, 'utf-8');
+                    } catch {
                         res.writeHead(404, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ ok: false, error: 'Plist not found. Run scripts/setup.sh first.' }));
+                        res.end(
+                            JSON.stringify({
+                                ok: false,
+                                error: 'Plist not found. Run scripts/setup.sh first.',
+                            })
+                        );
                         return;
                     }
                     content = content.replace(
@@ -1115,7 +1405,9 @@ const server = http.createServer((req, res) => {
                             res.end(JSON.stringify({ ok: false, error: err.message }));
                             return;
                         }
-                        console.log(`[schedule] 定时归档已设为每 ${interval} 秒（仅 ${CANONICAL_LABEL}）`);
+                        console.log(
+                            `[schedule] 定时归档已设为每 ${interval} 秒（仅 ${CANONICAL_LABEL}）`
+                        );
                         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                         res.end(JSON.stringify({ ok: true, enabled: true, interval }));
                     });
@@ -1131,7 +1423,11 @@ const server = http.createServer((req, res) => {
     // Image proxy: /api/image?fid=xxx (with disk cache)
     if (url.pathname === '/api/image') {
         const fid = url.searchParams.get('fid');
-        if (!fid) { res.writeHead(400); res.end('Missing fid'); return; }
+        if (!fid) {
+            res.writeHead(400);
+            res.end('Missing fid');
+            return;
+        }
 
         const cacheFile = path.join(CACHE_DIR, `${fid}.jpg`);
         if (fs.existsSync(cacheFile)) {
@@ -1141,64 +1437,100 @@ const server = http.createServer((req, res) => {
 
         const imageUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
         const cookieHeader = loadCookies();
-        const proxyReq = https.get(imageUrl, {
-            headers: {
-                'Cookie': cookieHeader,
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                'Referer': 'https://api.weibo.com/chat',
-                'X-Requested-With': 'XMLHttpRequest',
+        const proxyReq = https.get(
+            imageUrl,
+            {
+                headers: {
+                    Cookie: cookieHeader,
+                    'User-Agent':
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                    Referer: 'https://api.weibo.com/chat',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
             },
-        }, (proxyRes) => {
-            absorbSetCookies(proxyRes, imageUrl);
-            if (proxyRes.statusCode !== 200) {
-                res.writeHead(proxyRes.statusCode);
-                res.end('Image fetch failed');
-                return;
+            (proxyRes) => {
+                absorbSetCookies(proxyRes, imageUrl);
+                if (proxyRes.statusCode !== 200) {
+                    res.writeHead(proxyRes.statusCode);
+                    res.end('Image fetch failed');
+                    return;
+                }
+                const ct = proxyRes.headers['content-type'] || 'image/jpeg';
+                res.writeHead(200, {
+                    'Content-Type': ct,
+                    'Cache-Control': 'public, max-age=86400',
+                });
+                const chunks = [];
+                proxyRes.on('data', (chunk) => chunks.push(chunk));
+                proxyRes.on('end', () => {
+                    const buffer = Buffer.concat(chunks);
+                    // 超大条目不写缓存：代理把任何响应都按 ${fid}.jpg 落盘，视频也被
+                    // 当图片缓存过（实测单个 75MB），白占空间还挤掉真正的图片
+                    if (isCacheable(buffer.length)) fs.writeFile(cacheFile, buffer, () => {});
+                    res.end(buffer);
+                });
             }
-            const ct = proxyRes.headers['content-type'] || 'image/jpeg';
-            res.writeHead(200, {
-                'Content-Type': ct,
-                'Cache-Control': 'public, max-age=86400',
-            });
-            const chunks = [];
-            proxyRes.on('data', chunk => chunks.push(chunk));
-            proxyRes.on('end', () => {
-                const buffer = Buffer.concat(chunks);
-                // 超大条目不写缓存：代理把任何响应都按 ${fid}.jpg 落盘，视频也被
-                // 当图片缓存过（实测单个 75MB），白占空间还挤掉真正的图片
-                if (isCacheable(buffer.length)) fs.writeFile(cacheFile, buffer, () => {});
-                res.end(buffer);
-            });
+        );
+        proxyReq.on('error', () => {
+            if (!res.headersSent) {
+                res.writeHead(500);
+                res.end('Proxy error');
+            }
         });
-        proxyReq.on('error', () => { if (!res.headersSent) { res.writeHead(500); res.end('Proxy error'); } });
-        proxyReq.setTimeout(15000, () => { proxyReq.destroy(); if (!res.headersSent) { res.writeHead(504); res.end('Timeout'); } });
+        proxyReq.setTimeout(15000, () => {
+            proxyReq.destroy();
+            if (!res.headersSent) {
+                res.writeHead(504);
+                res.end('Timeout');
+            }
+        });
         return;
     }
 
     // sinaimg CDN image proxy
     if (url.pathname === '/api/sinaimg') {
         const imgUrl = url.searchParams.get('url');
-        if (!imgUrl || !/^https:\/\/[a-z0-9]+\.sinaimg\.cn\//.test(imgUrl)) { res.writeHead(403); res.end('Forbidden'); return; }
-        const proxyReq = https.get(imgUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                'Referer': 'https://weibo.com/',
+        if (!imgUrl || !/^https:\/\/[a-z0-9]+\.sinaimg\.cn\//.test(imgUrl)) {
+            res.writeHead(403);
+            res.end('Forbidden');
+            return;
+        }
+        const proxyReq = https.get(
+            imgUrl,
+            {
+                headers: {
+                    'User-Agent':
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                    Referer: 'https://weibo.com/',
+                },
             },
-        }, (proxyRes) => {
-            if (proxyRes.statusCode !== 200) {
-                res.writeHead(proxyRes.statusCode);
-                res.end('Image fetch failed');
-                return;
+            (proxyRes) => {
+                if (proxyRes.statusCode !== 200) {
+                    res.writeHead(proxyRes.statusCode);
+                    res.end('Image fetch failed');
+                    return;
+                }
+                const ct = proxyRes.headers['content-type'] || 'image/jpeg';
+                res.writeHead(200, {
+                    'Content-Type': ct,
+                    'Cache-Control': 'public, max-age=86400',
+                });
+                proxyRes.pipe(res);
             }
-            const ct = proxyRes.headers['content-type'] || 'image/jpeg';
-            res.writeHead(200, {
-                'Content-Type': ct,
-                'Cache-Control': 'public, max-age=86400',
-            });
-            proxyRes.pipe(res);
+        );
+        proxyReq.on('error', () => {
+            if (!res.headersSent) {
+                res.writeHead(500);
+                res.end('Proxy error');
+            }
         });
-        proxyReq.on('error', () => { if (!res.headersSent) { res.writeHead(500); res.end('Proxy error'); } });
-        proxyReq.setTimeout(15000, () => { proxyReq.destroy(); if (!res.headersSent) { res.writeHead(504); res.end('Timeout'); } });
+        proxyReq.setTimeout(15000, () => {
+            proxyReq.destroy();
+            if (!res.headersSent) {
+                res.writeHead(504);
+                res.end('Timeout');
+            }
+        });
         return;
     }
 
@@ -1226,13 +1558,23 @@ const server = http.createServer((req, res) => {
         if (req.method === 'POST') {
             let body = '';
             req.setEncoding('utf-8');
-            req.on('data', chunk => { body += chunk; });
+            req.on('data', (chunk) => {
+                body += chunk;
+            });
             req.on('end', () => {
                 try {
                     const { baseUrl, apiKey, model, vision } = JSON.parse(body);
                     let existingKey = '';
-                    try { existingKey = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8')).apiKey || ''; } catch {}
-                    const cfg = { baseUrl: baseUrl || '', apiKey: apiKey || existingKey, model: model || '', vision: !!vision };
+                    try {
+                        existingKey =
+                            JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8')).apiKey || '';
+                    } catch {}
+                    const cfg = {
+                        baseUrl: baseUrl || '',
+                        apiKey: apiKey || existingKey,
+                        model: model || '',
+                        vision: !!vision,
+                    };
                     fs.writeFileSync(AI_CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8');
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true }));
@@ -1258,7 +1600,9 @@ const server = http.createServer((req, res) => {
 
         const AI_CONFIG_PATH = path.join(ROOT, 'ai-config.json');
         let aiConfig;
-        try { aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8')); } catch {
+        try {
+            aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
+        } catch {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ ok: false, error: '未配置 AI，请先在设置中配置' }));
             return;
@@ -1290,13 +1634,15 @@ const server = http.createServer((req, res) => {
         }
 
         // Format messages for LLM — track pic positions for vision enrichment
-        let formatted = messages.map((m) => {
-            const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-            let text = m.content || '';
-            if (m.share) text += ` [分享: ${m.share.title || m.share.text || m.share.url}]`;
-            if (m.pics && m.pics.length) text += ` [图片x${m.pics.length}]`;
-            return `[${t}] ${m.user}: ${text}`;
-        }).join('\n');
+        let formatted = messages
+            .map((m) => {
+                const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
+                let text = m.content || '';
+                if (m.share) text += ` [分享: ${m.share.title || m.share.text || m.share.url}]`;
+                if (m.pics && m.pics.length) text += ` [图片x${m.pics.length}]`;
+                return `[${t}] ${m.user}: ${text}`;
+            })
+            .join('\n');
 
         const systemPrompt = `你是一个群聊记录分析助手。请对以下微博群聊记录进行话题提炼和总结。
 
@@ -1341,24 +1687,32 @@ const server = http.createServer((req, res) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${aiConfig.apiKey}`,
+                    Authorization: `Bearer ${aiConfig.apiKey}`,
                 },
                 agent: false,
             };
             const llmReq = httpModule.request(options, (llmRes) => {
                 const chunks = [];
-                llmRes.on('data', chunk => chunks.push(chunk));
+                llmRes.on('data', (chunk) => chunks.push(chunk));
                 llmRes.on('end', () => {
                     const body = Buffer.concat(chunks).toString();
                     try {
                         const data = JSON.parse(body);
-                        if (data.error) { onError(data.error.message || JSON.stringify(data.error)); return; }
+                        if (data.error) {
+                            onError(data.error.message || JSON.stringify(data.error));
+                            return;
+                        }
                         onSuccess(data.choices?.[0]?.message?.content || '');
-                    } catch (e) { onError('LLM 返回解析失败: ' + e.message); }
+                    } catch (e) {
+                        onError('LLM 返回解析失败: ' + e.message);
+                    }
                 });
             });
             llmReq.on('error', (e) => onError('LLM 请求失败: ' + e.message));
-            llmReq.setTimeout(90000, () => { llmReq.destroy(); onError('LLM 请求超时（90s）'); });
+            llmReq.setTimeout(90000, () => {
+                llmReq.destroy();
+                onError('LLM 请求超时（90s）');
+            });
             llmReq.end(reqBody);
         }
 
@@ -1366,18 +1720,35 @@ const server = http.createServer((req, res) => {
         function callSummary() {
             const llmMessages = [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: `以下是 ${date} 的群聊记录（${messages.length} 条消息）：\n\n${formatted}` }
+                {
+                    role: 'user',
+                    content: `以下是 ${date} 的群聊记录（${messages.length} 条消息）：\n\n${formatted}`,
+                },
             ];
-            callApi(llmMessages, (summary) => {
-                try { fs.writeFileSync(cacheFile, JSON.stringify({ summary, date, generatedAt: new Date().toISOString() }), 'utf-8'); } catch {}
-                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true, summary, cached: false }));
-            }, (err) => {
-                if (!res.headersSent) {
+            callApi(
+                llmMessages,
+                (summary) => {
+                    try {
+                        fs.writeFileSync(
+                            cacheFile,
+                            JSON.stringify({
+                                summary,
+                                date,
+                                generatedAt: new Date().toISOString(),
+                            }),
+                            'utf-8'
+                        );
+                    } catch {}
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ ok: false, error: err }));
+                    res.end(JSON.stringify({ ok: true, summary, cached: false }));
+                },
+                (err) => {
+                    if (!res.headersSent) {
+                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ ok: false, error: err }));
+                    }
                 }
-            });
+            );
         }
 
         // Vision two-step: describe images first, enrich text, then summarize
@@ -1389,107 +1760,184 @@ const server = http.createServer((req, res) => {
                     for (const pic of m.pics) {
                         if (imageItems.length >= 5) break;
                         const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-                        imageItems.push({ url: pic, user: m.user, time: t, context: (m.content || '').slice(0, 50) });
+                        imageItems.push({
+                            url: pic,
+                            user: m.user,
+                            time: t,
+                            context: (m.content || '').slice(0, 50),
+                        });
                     }
                 }
             }
             if (imageItems.length > 0) {
                 const cookieHeader = loadCookies();
-                const fetchImage = (picUrl) => new Promise((resolve) => {
-                    let imgUrl = picUrl;
-                    let fid = null;
-                    if (picUrl.startsWith('/api/image?fid=')) {
-                        fid = picUrl.split('fid=')[1];
-                        imgUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
-                    } else {
-                        const fidMatch = picUrl.match(/fid=(\d+)/);
-                        if (fidMatch) fid = fidMatch[1];
-                    }
-                    const imgCacheFile = fid ? path.join(CACHE_DIR, `${fid}.jpg`) : path.join(CACHE_DIR, picUrl.replace(/[^a-zA-Z0-9]/g, '_').slice(-40) + '.jpg');
-                    if (fs.existsSync(imgCacheFile)) {
-                        const stat = fs.statSync(imgCacheFile);
-                        if (stat.size > 3.5 * 1024 * 1024) { resolve(null); return; }
-                        const imgBuf = fs.readFileSync(imgCacheFile);
-                        const isPng = imgBuf[0] === 0x89 && imgBuf[1] === 0x50;
-                        if (imgBuf[0] !== 0xFF && !isPng) { resolve(null); return; }
-                        const mime = isPng ? 'image/png' : 'image/jpeg';
-                        resolve(`data:${mime};base64,` + imgBuf.toString('base64'));
-                        return;
-                    }
-                    https.get(imgUrl, { headers: { 'Cookie': cookieHeader, 'Referer': 'https://api.weibo.com/chat' } }, (imgRes) => {
-                        absorbSetCookies(imgRes, imgUrl);
-                        if (imgRes.statusCode !== 200) { resolve(null); return; }
-                        const chunks = [];
-                        imgRes.on('data', c => chunks.push(c));
-                        imgRes.on('end', () => {
-                            const buf = Buffer.concat(chunks);
-                            if (buf.length > 3.5 * 1024 * 1024) { resolve(null); return; }
-                            const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
-                            const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
-                            if (!isJpeg && !isPng) { resolve(null); return; }
-                            try { fs.writeFileSync(imgCacheFile, buf); } catch {}
+                const fetchImage = (picUrl) =>
+                    new Promise((resolve) => {
+                        let imgUrl = picUrl;
+                        let fid = null;
+                        if (picUrl.startsWith('/api/image?fid=')) {
+                            fid = picUrl.split('fid=')[1];
+                            imgUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
+                        } else {
+                            const fidMatch = picUrl.match(/fid=(\d+)/);
+                            if (fidMatch) fid = fidMatch[1];
+                        }
+                        const imgCacheFile = fid
+                            ? path.join(CACHE_DIR, `${fid}.jpg`)
+                            : path.join(
+                                  CACHE_DIR,
+                                  picUrl.replace(/[^a-zA-Z0-9]/g, '_').slice(-40) + '.jpg'
+                              );
+                        if (fs.existsSync(imgCacheFile)) {
+                            const stat = fs.statSync(imgCacheFile);
+                            if (stat.size > 3.5 * 1024 * 1024) {
+                                resolve(null);
+                                return;
+                            }
+                            const imgBuf = fs.readFileSync(imgCacheFile);
+                            const isPng = imgBuf[0] === 0x89 && imgBuf[1] === 0x50;
+                            if (imgBuf[0] !== 0xff && !isPng) {
+                                resolve(null);
+                                return;
+                            }
                             const mime = isPng ? 'image/png' : 'image/jpeg';
-                            resolve(`data:${mime};base64,` + buf.toString('base64'));
-                        });
-                    }).on('error', () => resolve(null));
-                });
+                            resolve(`data:${mime};base64,` + imgBuf.toString('base64'));
+                            return;
+                        }
+                        https
+                            .get(
+                                imgUrl,
+                                {
+                                    headers: {
+                                        Cookie: cookieHeader,
+                                        Referer: 'https://api.weibo.com/chat',
+                                    },
+                                },
+                                (imgRes) => {
+                                    absorbSetCookies(imgRes, imgUrl);
+                                    if (imgRes.statusCode !== 200) {
+                                        resolve(null);
+                                        return;
+                                    }
+                                    const chunks = [];
+                                    imgRes.on('data', (c) => chunks.push(c));
+                                    imgRes.on('end', () => {
+                                        const buf = Buffer.concat(chunks);
+                                        if (buf.length > 3.5 * 1024 * 1024) {
+                                            resolve(null);
+                                            return;
+                                        }
+                                        const isJpeg =
+                                            buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+                                        const isPng =
+                                            buf[0] === 0x89 &&
+                                            buf[1] === 0x50 &&
+                                            buf[2] === 0x4e &&
+                                            buf[3] === 0x47;
+                                        if (!isJpeg && !isPng) {
+                                            resolve(null);
+                                            return;
+                                        }
+                                        try {
+                                            fs.writeFileSync(imgCacheFile, buf);
+                                        } catch {}
+                                        const mime = isPng ? 'image/png' : 'image/jpeg';
+                                        resolve(`data:${mime};base64,` + buf.toString('base64'));
+                                    });
+                                }
+                            )
+                            .on('error', () => resolve(null));
+                    });
 
                 // Step 1: Download all images
-                Promise.all(imageItems.map(item => fetchImage(item.url))).then((base64Results) => {
-                    // Pair images with their context
-                    const validImages = [];
-                    for (let i = 0; i < base64Results.length; i++) {
-                        if (base64Results[i]) {
-                            validImages.push({ base64: base64Results[i], ...imageItems[i] });
+                Promise.all(imageItems.map((item) => fetchImage(item.url))).then(
+                    (base64Results) => {
+                        // Pair images with their context
+                        const validImages = [];
+                        for (let i = 0; i < base64Results.length; i++) {
+                            if (base64Results[i]) {
+                                validImages.push({ base64: base64Results[i], ...imageItems[i] });
+                            }
                         }
-                    }
-                    if (!validImages.length) { callSummary(); return; }
+                        if (!validImages.length) {
+                            callSummary();
+                            return;
+                        }
 
-                    // Step 2: Describe each image via vision API
-                    let described = 0;
-                    const descriptions = new Array(validImages.length);
-                    validImages.forEach((img, idx) => {
-                        const descMessages = [
-                            { role: 'user', content: [
-                                { type: 'text', text: `这是群聊中 ${img.user} 在 ${img.time} 发的图片${img.context ? '，消息文字：' + img.context : ''}。请用一句话简要描述图片内容（20-50字），只描述你看到的，不要猜测。` },
-                                { type: 'image_url', image_url: { url: img.base64 } }
-                            ] }
-                        ];
-                        callApi(descMessages, (desc) => {
-                            descriptions[idx] = desc.replace(/\n/g, ' ').slice(0, 100);
-                            described++;
-                            if (described === validImages.length) {
-                                // Step 3: Enrich formatted text with descriptions
-                                for (let i = 0; i < validImages.length; i++) {
-                                    const img = validImages[i];
-                                    const placeholder = `[${img.time}] ${img.user}:`;
-                                    const line = formatted.split('\n').find(l => l.includes(placeholder) && l.includes('[图片'));
-                                    if (line) {
-                                        const enriched = line.replace(/\[图片x\d+\]/, `[图片: ${descriptions[i]}]`);
-                                        formatted = formatted.replace(line, enriched);
+                        // Step 2: Describe each image via vision API
+                        let described = 0;
+                        const descriptions = new Array(validImages.length);
+                        validImages.forEach((img, idx) => {
+                            const descMessages = [
+                                {
+                                    role: 'user',
+                                    content: [
+                                        {
+                                            type: 'text',
+                                            text: `这是群聊中 ${img.user} 在 ${img.time} 发的图片${img.context ? '，消息文字：' + img.context : ''}。请用一句话简要描述图片内容（20-50字），只描述你看到的，不要猜测。`,
+                                        },
+                                        { type: 'image_url', image_url: { url: img.base64 } },
+                                    ],
+                                },
+                            ];
+                            callApi(
+                                descMessages,
+                                (desc) => {
+                                    descriptions[idx] = desc.replace(/\n/g, ' ').slice(0, 100);
+                                    described++;
+                                    if (described === validImages.length) {
+                                        // Step 3: Enrich formatted text with descriptions
+                                        for (let i = 0; i < validImages.length; i++) {
+                                            const img = validImages[i];
+                                            const placeholder = `[${img.time}] ${img.user}:`;
+                                            const line = formatted
+                                                .split('\n')
+                                                .find(
+                                                    (l) =>
+                                                        l.includes(placeholder) &&
+                                                        l.includes('[图片')
+                                                );
+                                            if (line) {
+                                                const enriched = line.replace(
+                                                    /\[图片x\d+\]/,
+                                                    `[图片: ${descriptions[i]}]`
+                                                );
+                                                formatted = formatted.replace(line, enriched);
+                                            }
+                                        }
+                                        callSummary();
+                                    }
+                                },
+                                (_err) => {
+                                    descriptions[idx] = null;
+                                    described++;
+                                    if (described === validImages.length) {
+                                        for (let i = 0; i < validImages.length; i++) {
+                                            if (!descriptions[i]) continue;
+                                            const img = validImages[i];
+                                            const placeholder = `[${img.time}] ${img.user}:`;
+                                            const line = formatted
+                                                .split('\n')
+                                                .find(
+                                                    (l) =>
+                                                        l.includes(placeholder) &&
+                                                        l.includes('[图片')
+                                                );
+                                            if (line) {
+                                                const enriched = line.replace(
+                                                    /\[图片x\d+\]/,
+                                                    `[图片: ${descriptions[i]}]`
+                                                );
+                                                formatted = formatted.replace(line, enriched);
+                                            }
+                                        }
+                                        callSummary();
                                     }
                                 }
-                                callSummary();
-                            }
-                        }, (_err) => {
-                            descriptions[idx] = null;
-                            described++;
-                            if (described === validImages.length) {
-                                for (let i = 0; i < validImages.length; i++) {
-                                    if (!descriptions[i]) continue;
-                                    const img = validImages[i];
-                                    const placeholder = `[${img.time}] ${img.user}:`;
-                                    const line = formatted.split('\n').find(l => l.includes(placeholder) && l.includes('[图片'));
-                                    if (line) {
-                                        const enriched = line.replace(/\[图片x\d+\]/, `[图片: ${descriptions[i]}]`);
-                                        formatted = formatted.replace(line, enriched);
-                                    }
-                                }
-                                callSummary();
-                            }
+                            );
                         });
-                    });
-                });
+                    }
+                );
             } else {
                 callSummary();
             }
@@ -1526,10 +1974,12 @@ const server = http.createServer((req, res) => {
             const modPath = require('path').join(ROOT, 'lib', 'browser-login.js');
             const { browserLogin } = require(modPath);
             // 扫码成功后立即保活一次：拿到全新会话的同时把 24h 滚动 Cookie 也续上
-            browserLogin().then(async (r) => {
-                if (r.ok) await keepAliveTick('扫码登录');
-                reply(r);
-            }).catch(e => reply({ ok: false, error: e.message }));
+            browserLogin()
+                .then(async (r) => {
+                    if (r.ok) await keepAliveTick('扫码登录');
+                    reply(r);
+                })
+                .catch((e) => reply({ ok: false, error: e.message }));
         } catch (e) {
             reply({ ok: false, error: '浏览器登录不可用：' + e.message });
         }
@@ -1540,16 +1990,30 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/qa' && req.method === 'POST') {
         let body = '';
         req.setEncoding('utf-8');
-        req.on('data', c => body += c);
+        req.on('data', (c) => (body += c));
         req.on('end', () => {
-            const reply = (data) => { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
+            const reply = (data) => {
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify(data));
+            };
             let params;
-            try { params = JSON.parse(body); } catch { reply({ ok: false, error: '参数解析失败' }); return; }
+            try {
+                params = JSON.parse(body);
+            } catch {
+                reply({ ok: false, error: '参数解析失败' });
+                return;
+            }
             const { group, question, mode } = params;
-            if (!group || !question) { reply({ ok: false, error: '缺少 group 或 question' }); return; }
+            if (!group || !question) {
+                reply({ ok: false, error: '缺少 group 或 question' });
+                return;
+            }
 
             const allMessages = loadMessages(group);
-            if (!allMessages.length) { reply({ ok: false, error: '该群无消息数据' }); return; }
+            if (!allMessages.length) {
+                reply({ ok: false, error: '该群无消息数据' });
+                return;
+            }
 
             if (mode === 'legacy') {
                 // Legacy mode: original keyword extraction approach
@@ -1559,21 +2023,27 @@ const server = http.createServer((req, res) => {
 
             // Agent mode (default): Vercel AI SDK with tool-use loop
             let aiConfig;
-            try { aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8')); } catch {
-                reply({ ok: false, error: 'AI 未配置' }); return;
+            try {
+                aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
+            } catch {
+                reply({ ok: false, error: 'AI 未配置' });
+                return;
             }
-            import('./qa-agent.mjs').then(({ askAgent }) => {
-                // groupDir 供块级检索读取 qa-index/ 离线标注(缺失时自动降级)
-                askAgent(question, allMessages, aiConfig, { groupDir: getGroupDir(group) }).then(reply).catch(e => {
-                    reply({ ok: false, error: 'Agent 异常: ' + e.message });
+            import('./qa-agent.mjs')
+                .then(({ askAgent }) => {
+                    // groupDir 供块级检索读取 qa-index/ 离线标注(缺失时自动降级)
+                    askAgent(question, allMessages, aiConfig, { groupDir: getGroupDir(group) })
+                        .then(reply)
+                        .catch((e) => {
+                            reply({ ok: false, error: 'Agent 异常: ' + e.message });
+                        });
+                })
+                .catch((e) => {
+                    reply({ ok: false, error: '加载 Agent 模块失败: ' + e.message });
                 });
-            }).catch(e => {
-                reply({ ok: false, error: '加载 Agent 模块失败: ' + e.message });
-            });
         });
         return;
     }
-
 
     // Static page
     if (url.pathname === '/' || url.pathname === '/index.html') {
@@ -1583,7 +2053,10 @@ const server = http.createServer((req, res) => {
         // Rust 原生扫码窗），也能服务普通浏览器（登录走 Puppeteer 扫码）。
         const ua = req.headers['user-agent'] || '';
         const isDesktop = ua.includes('WeiboChatDesktop');
-        html = html.replace('<head>', `<head><script>window.__WEIBO_DESKTOP=${isDesktop};</script>`);
+        html = html.replace(
+            '<head>',
+            `<head><script>window.__WEIBO_DESKTOP=${isDesktop};</script>`
+        );
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -1632,16 +2105,22 @@ server.listen(PORT, '127.0.0.1', () => {
     const evictTick = () => {
         const r = evictCache(CACHE_DIR);
         if (r.deleted > 0) {
-            console.log(`[cache] 淘汰 ${r.deleted} 个条目，释放 ${(r.freedBytes / 1048576).toFixed(0)} MB，`
-                + `剩余 ${(r.remainingBytes / 1048576).toFixed(0)} MB`);
+            console.log(
+                `[cache] 淘汰 ${r.deleted} 个条目，释放 ${(r.freedBytes / 1048576).toFixed(0)} MB，` +
+                    `剩余 ${(r.remainingBytes / 1048576).toFixed(0)} MB`
+            );
         }
     };
     evictTick();
     setInterval(evictTick, 6 * 3600 * 1000).unref();
     // 自动打开浏览器（设 NO_OPEN=1 可禁用）
     if (!process.env.NO_OPEN) {
-        const opener = process.platform === 'darwin' ? 'open'
-            : process.platform === 'win32' ? 'start' : 'xdg-open';
+        const opener =
+            process.platform === 'darwin'
+                ? 'open'
+                : process.platform === 'win32'
+                  ? 'start'
+                  : 'xdg-open';
         require('child_process').exec(`${opener} ${url}`, () => {});
     }
 });

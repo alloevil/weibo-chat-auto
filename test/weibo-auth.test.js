@@ -26,12 +26,19 @@ function fakePage(...codes) {
 function withFetch(t, impl) {
     const orig = global.fetch;
     global.fetch = impl;
-    t.after(() => { global.fetch = orig; });
+    t.after(() => {
+        global.fetch = orig;
+    });
 }
 
 test('probeAuthCode: 在页面上下文取 error_code，缺省为 0', async (t) => {
     // evaluate 直接执行回调，走真实的回调体（fetch → json → error_code || 0）
-    const page = { evaluate: (fn, url) => { assert.strictEqual(url, wa.PROBE_PATH); return fn(url); } };
+    const page = {
+        evaluate: (fn, url) => {
+            assert.strictEqual(url, wa.PROBE_PATH);
+            return fn(url);
+        },
+    };
     withFetch(t, async (_url, init) => {
         assert.strictEqual(init.credentials, 'include'); // 同源必须带 Cookie
         return { json: async () => ({ error_code: 21301 }) };
@@ -55,8 +62,14 @@ test('waitForAuth: 轮询至鉴权通过', async () => {
 });
 
 test('waitForAuth: 超时返回 false（探测失败也不误报成功）', async () => {
-    assert.strictEqual(await wa.waitForAuth(fakePage(21301), { timeoutMs: 8, intervalMs: 3 }), false);
-    assert.strictEqual(await wa.waitForAuth(fakePage(new Error('boom')), { timeoutMs: 8, intervalMs: 3 }), false);
+    assert.strictEqual(
+        await wa.waitForAuth(fakePage(21301), { timeoutMs: 8, intervalMs: 3 }),
+        false
+    );
+    assert.strictEqual(
+        await wa.waitForAuth(fakePage(new Error('boom')), { timeoutMs: 8, intervalMs: 3 }),
+        false
+    );
 });
 
 test('probeAuthCodeHttp: 带 Cookie 打探测端点并取 error_code', async (t) => {
@@ -71,20 +84,31 @@ test('probeAuthCodeHttp: 带 Cookie 打探测端点并取 error_code', async (t)
     assert.ok(captured.init.signal, '必须带超时 signal，避免探测悬死');
 
     // 探测自身失败必须向上抛（由调用方决定拦路还是放行），不得吞成某个 code
-    withFetch(t, async () => { throw new Error('network down'); });
+    withFetch(t, async () => {
+        throw new Error('network down');
+    });
     await assert.rejects(() => wa.probeAuthCodeHttp('SUB=x'), /network down/);
 });
 
 test('refreshSession: 未登录只探测不续期、绝不吸收（防游客 Cookie 污染）', async (t) => {
     const origHeader = cs.cookieHeader;
     const origAbsorb = cs.absorbSetCookies;
-    t.after(() => { cs.cookieHeader = origHeader; cs.absorbSetCookies = origAbsorb; });
+    t.after(() => {
+        cs.cookieHeader = origHeader;
+        cs.absorbSetCookies = origAbsorb;
+    });
 
     cs.cookieHeader = () => 'SUB=dead';
     let absorbed = 0;
-    cs.absorbSetCookies = () => { absorbed++; return { ok: true, changed: 9 }; };
+    cs.absorbSetCookies = () => {
+        absorbed++;
+        return { ok: true, changed: 9 };
+    };
     let fetches = 0;
-    withFetch(t, async () => { fetches++; return { json: async () => ({ error_code: 21301 }) }; });
+    withFetch(t, async () => {
+        fetches++;
+        return { json: async () => ({ error_code: 21301 }) };
+    });
 
     assert.deepStrictEqual(await wa.refreshSession(), { ok: false, code: 21301, renewed: 0 });
     assert.strictEqual(fetches, 1, '21301 后不得再发续期请求');
@@ -94,13 +118,22 @@ test('refreshSession: 未登录只探测不续期、绝不吸收（防游客 Coo
 test('refreshSession: 已登录时向 weibo.com 续期并吸收滚动 Cookie', async (t) => {
     const origHeader = cs.cookieHeader;
     const origAbsorb = cs.absorbSetCookies;
-    t.after(() => { cs.cookieHeader = origHeader; cs.absorbSetCookies = origAbsorb; });
+    t.after(() => {
+        cs.cookieHeader = origHeader;
+        cs.absorbSetCookies = origAbsorb;
+    });
 
     cs.cookieHeader = () => 'SUB=alive';
     let absorbArgs = null;
-    cs.absorbSetCookies = (lines, url) => { absorbArgs = { lines, url }; return { ok: true, changed: 2 }; };
+    cs.absorbSetCookies = (lines, url) => {
+        absorbArgs = { lines, url };
+        return { ok: true, changed: 2 };
+    };
 
-    const setCookieLines = ['WBPSESS=new; Domain=.weibo.com; Max-Age=86400', 'XSRF-TOKEN=t; Domain=.weibo.com'];
+    const setCookieLines = [
+        'WBPSESS=new; Domain=.weibo.com; Max-Age=86400',
+        'XSRF-TOKEN=t; Domain=.weibo.com',
+    ];
     withFetch(t, async (url, init) => {
         if (String(url).startsWith('https://api.weibo.com')) {
             return { json: async () => ({ error_code: 21201 }) }; // 业务码 = 已鉴权
