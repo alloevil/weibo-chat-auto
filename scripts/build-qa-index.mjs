@@ -38,32 +38,79 @@ function msgLine(m) {
     return `[${t}] ${m.user}: ${text}`;
 }
 
+// 标注 = 摘要行 + 别名行。
+//
+// 别名行的依据:Chronos(arXiv 2603.16862)在抽取事件时额外生成 2-4 条「用完全
+// 不同词汇」的改写("bought Fitbit" → "picked up a fitness tracker"),专门用来
+// 提升字面检索的召回。这是不引 embedding 就跨过词汇鸿沟的办法:把同义改写在
+// 索引期写进文本,BM25 自己就能匹配上,不必每次查询再花一轮 LLM 精排。
+//
+// 关键约束是「不要复用原话里的关键名词」——只换语序不换词的改写对 bigram
+// BM25 毫无增益(切出来的 bigram 完全相同)。
 export function buildAnnotationPrompt(chunkTexts) {
     const list = chunkTexts.map((t, i) => `【块${i}】\n${t}`).join('\n\n');
     // 行式协议而非 JSON:聊天文本充满引号/特殊字符,模型转义 JSON 极易出错
-    return `以下是群聊的 ${chunkTexts.length} 个话题片段。请为每个片段写一段 50-100 字的中文标注,概括:话题是什么、主要参与者、有无结论/关键判断。标注用于检索,请包含话题的关键名词及其常见同义说法。
+    return `以下是群聊的 ${chunkTexts.length} 个话题片段。请为每个片段输出两行。
+
+第一行(摘要):50-100 字中文,概括话题是什么、主要参与者、有无结论/关键判断。
+第二行(别名):2-4 个检索用的替代说法,用「/」分隔。
+
+别名的要求(这是提升检索召回的关键):
+- 必须换用**完全不同的词汇**,不要复用摘要或原话里的关键名词。
+- 想象别人事后回忆这段对话时会怎么问,用那种措辞。
+- 例:原话是"把芯片股清了一半" → 别名写"减持半导体持仓/卖出科技股/调整投资仓位",
+  而不是"清掉芯片股"(只换语序,对检索没有增益)。
 
 ${list}
 
-输出格式:每个片段一行,格式为"编号|标注内容",不要其他文字。例如:
+输出格式:每个片段两行,格式为"编号|摘要"和"编号|A|别名1/别名2",不要其他文字。例如:
 0|话题:半导体行情。参与:张三、李四。结论:还没跌到位。
-1|话题:冲牙器选购。参与:王五。结论:推荐博皓。`;
+0|A|减持科技股/看空芯片/调整投资仓位
+1|话题:冲牙器选购。参与:王五。结论:推荐博皓。
+1|A|口腔清洁设备推荐/牙齿护理用品/水牙线怎么选`;
 }
 
+/**
+ * 解析标注响应。返回 { annotation, aliases } 数组。
+ *
+ * 行格式:"N|摘要" 与 "N|A|别名1/别名2"。只要有摘要行就算这条成功——别名是
+ * 增量优化,模型漏写别名不该让整批标注失败(那会退化成纯文本检索)。
+ */
 export function parseAnnotationResponse(text, expectedCount) {
     const out = new Array(expectedCount).fill(null);
     let matched = 0;
     for (const line of String(text).split('\n')) {
+        // 先试别名行(它多一个 |A| 段,必须在摘要行之前匹配,否则摘要正则会
+        // 把 "A|别名..." 整段当成摘要内容吞掉)
+        const alias = line.match(/^\s*(\d+)\s*[|｜]\s*A\s*[|｜]\s*(.+)$/i);
+        if (alias) {
+            const i = Number(alias[1]);
+            if (i >= 0 && i < expectedCount) {
+                const terms = alias[2]
+                    .split(/[/／|｜]/)
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .slice(0, 4);
+                if (terms.length) {
+                    // 摘要行可能后到,先占位
+                    out[i] = out[i] || { annotation: null, aliases: [] };
+                    out[i].aliases = terms.map((t) => t.slice(0, 60));
+                }
+            }
+            continue;
+        }
         const m = line.match(/^\s*(\d+)\s*[|｜]\s*(.+)$/);
         if (!m) continue;
         const i = Number(m[1]);
         if (i >= 0 && i < expectedCount && m[2].trim()) {
-            out[i] = m[2].trim().slice(0, 300);
+            out[i] = out[i] || { annotation: null, aliases: [] };
+            out[i].annotation = m[2].trim().slice(0, 300);
             matched++;
         }
     }
     if (!matched) throw new Error('annotation: no parseable lines in response');
-    return out;
+    // 只有别名没摘要的条目视为无效(摘要是检索文本的主体)
+    return out.map((e) => (e && e.annotation ? e : null));
 }
 
 export async function annotateBatch(config, chunkTexts) {
@@ -123,7 +170,7 @@ async function main() {
 
     fs.mkdirSync(path.join(groupDir, INDEX_DIR), { recursive: true });
 
-    const stats = { llmCalls: 0, annotated: 0, reused: 0, skippedFresh: 0 };
+    const stats = { llmCalls: 0, annotated: 0, aliased: 0, reused: 0, skippedFresh: 0 };
 
     async function processDate(date) {
         const dayPath = dayFilePathFor(groupDir, date);
@@ -165,13 +212,15 @@ async function main() {
             ...c,
             key: chunkKey(c),
             annotation: null,
+            aliases: [],
         }));
 
-        // 复用旧标注
+        // 复用旧标注(含别名;旧索引没有 aliases 字段时按空数组处理)
         for (const c of chunks) {
             const old = oldByKey.get(c.key);
             if (old) {
                 c.annotation = old.annotation;
+                c.aliases = Array.isArray(old.aliases) ? old.aliases : [];
                 c.annotatedAt = old.annotatedAt;
                 c.annotationModel = old.annotationModel;
                 stats.reused++;
@@ -206,10 +255,12 @@ async function main() {
                     const annotations = await annotateBatch(aiConfig, texts);
                     batch.forEach((c, j) => {
                         if (annotations[j]) {
-                            c.annotation = annotations[j];
+                            c.annotation = annotations[j].annotation;
+                            c.aliases = annotations[j].aliases;
                             c.annotatedAt = new Date().toISOString();
                             c.annotationModel = aiConfig.model;
                             stats.annotated++;
+                            if (annotations[j].aliases.length) stats.aliased++;
                         }
                     });
                 } catch (e) {
@@ -249,7 +300,7 @@ async function main() {
     );
 
     console.log(
-        `[index] 完成: LLM 调用 ${stats.llmCalls},新标注 ${stats.annotated},复用 ${stats.reused},新鲜跳过 ${stats.skippedFresh} 天`
+        `[index] 完成: LLM 调用 ${stats.llmCalls},新标注 ${stats.annotated}(含别名 ${stats.aliased}),复用 ${stats.reused},新鲜跳过 ${stats.skippedFresh} 天`
     );
 }
 

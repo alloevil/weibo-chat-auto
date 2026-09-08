@@ -334,3 +334,158 @@ test('get_context 仍能按 id 拉到噪音相邻的上下文(id 不因过滤失
     const r = await executeTool('get_context', { messageId: '502' }, msgs, ledger());
     assert.strictEqual(r.found, true, 'get_context 必须走全量语料');
 });
+
+// ─── 索引期别名改写（Chronos arXiv 2603.16862 的设计）────────────────────
+function groupDirWithIndex(date, chunks) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-idx-'));
+    fs.mkdirSync(path.join(dir, 'qa-index'), { recursive: true });
+    return {
+        dir,
+        write: (msgs) => {
+            const dayPath = path.join(dir, `weibo_chat_${date}.json`);
+            fs.writeFileSync(dayPath, JSON.stringify({ messages: msgs }));
+            const st = fs.statSync(dayPath);
+            fs.writeFileSync(
+                path.join(dir, 'qa-index', `chunks_${date}.json`),
+                JSON.stringify({
+                    version: 1,
+                    date,
+                    sourceMtime: st.mtimeMs,
+                    sourceCount: msgs.length,
+                    chunks,
+                })
+            );
+        },
+    };
+}
+
+test('别名让"完全不同词汇"的提问命中原文（不必靠 LLM 精排）', async () => {
+    const msgs = [
+        mkMsg(601, 0, 'tombkeeper', '我把手里的芯片股清了一半', '2026-07-01'),
+        mkMsg(602, 2, 'alice', '这么果断', '2026-07-01'),
+        mkMsg(603, 4, 'tombkeeper', '还没跌到位', '2026-07-01'),
+        // 第二个块（40 分钟断层）——必须 >=2 块，否则走 searchFlat 兜底
+        mkMsg(604, 46, 'carol', '推荐一下冲牙器', '2026-07-01'),
+        mkMsg(605, 48, 'alice', '博皓不错', '2026-07-01'),
+    ];
+    const chunksNoAlias = [
+        { seq: 0, key: 'k0', msgIds: [601, 602, 603], annotation: '话题:股票操作。', aliases: [] },
+        { seq: 1, key: 'k1', msgIds: [604, 605], annotation: '话题:小家电。', aliases: [] },
+    ];
+    const chunksWithAlias = [
+        {
+            seq: 0,
+            key: 'k0',
+            msgIds: [601, 602, 603],
+            annotation: '话题:股票操作。',
+            aliases: ['减持半导体持仓', '调整投资仓位'],
+        },
+        {
+            seq: 1,
+            key: 'k1',
+            msgIds: [604, 605],
+            annotation: '话题:小家电。',
+            aliases: ['口腔清洁设备'],
+        },
+    ];
+
+    // 提问用词与原文零重叠："减持" / "投资" 都不在消息正文里
+    const q = ['减持', '投资'];
+
+    const a = groupDirWithIndex('2026-07-01', chunksNoAlias);
+    a.write(msgs);
+    const without = await executeTool(
+        'search_messages',
+        { keywords: q },
+        msgs,
+        ledger(),
+        null,
+        null,
+        { groupDir: a.dir }
+    );
+
+    const b = groupDirWithIndex('2026-07-01', chunksWithAlias);
+    b.write(msgs);
+    const withAlias = await executeTool(
+        'search_messages',
+        { keywords: q },
+        msgs,
+        ledger(),
+        null,
+        null,
+        { groupDir: b.dir }
+    );
+
+    // 无别名时词面无交集 → 该话题块拿不到分；有别名时命中
+    assert.ok(
+        withAlias.matchCount > 0 && withAlias.snippets.join('\n').includes('芯片股'),
+        `别名应让"减持/投资"命中写着"芯片股"的块（实际 matchCount=${withAlias.matchCount}）`
+    );
+    assert.ok(
+        (without.matchCount || 0) === 0 || !without.snippets.join('\n').includes('芯片股'),
+        '无别名时不该命中（否则本用例证明不了别名的作用）'
+    );
+});
+
+test('别名只进 BM25 打分，不出现在给模型看的片段里', async () => {
+    const msgs = [
+        mkMsg(701, 0, 'tombkeeper', '我把手里的芯片股清了一半', '2026-07-01'),
+        mkMsg(702, 2, 'alice', '嗯', '2026-07-01'),
+        mkMsg(703, 46, 'carol', '推荐一下冲牙器', '2026-07-01'),
+        mkMsg(704, 48, 'alice', '博皓不错', '2026-07-01'),
+    ];
+    const chunks = [
+        {
+            seq: 0,
+            key: 'k0',
+            msgIds: [701, 702],
+            annotation: '话题:股票操作。',
+            aliases: ['减持半导体持仓', 'ALIASLEAKCANARY'],
+        },
+        { seq: 1, key: 'k1', msgIds: [703, 704], annotation: '话题:小家电。', aliases: [] },
+    ];
+    const g = groupDirWithIndex('2026-07-01', chunks);
+    g.write(msgs);
+    const r = await executeTool(
+        'search_messages',
+        { keywords: ['减持'] },
+        msgs,
+        ledger(),
+        null,
+        null,
+        { groupDir: g.dir }
+    );
+    const shown = r.snippets.join('\n');
+    assert.ok(r.matchCount > 0, '别名应命中');
+    assert.ok(
+        !shown.includes('ALIASLEAKCANARY'),
+        '别名泄漏进片段会让模型以为群里有人这么说过，进而编造引文'
+    );
+    assert.ok(shown.includes('芯片股'), '真实原文仍在片段里');
+});
+
+test('旧索引无 aliases 字段时不崩溃（向后兼容）', async () => {
+    const msgs = [
+        mkMsg(801, 0, 'a', '半导体行情', '2026-07-01'),
+        mkMsg(802, 2, 'b', '还没跌到位', '2026-07-01'),
+        mkMsg(803, 46, 'c', '冲牙器推荐', '2026-07-01'),
+        mkMsg(804, 48, 'd', '博皓不错', '2026-07-01'),
+    ];
+    // 注意：故意不写 aliases 字段，模拟本次改动之前生成的索引
+    const chunks = [
+        { seq: 0, key: 'k0', msgIds: [801, 802], annotation: '话题:半导体。' },
+        { seq: 1, key: 'k1', msgIds: [803, 804], annotation: '话题:冲牙器。' },
+    ];
+    const g = groupDirWithIndex('2026-07-01', chunks);
+    g.write(msgs);
+    const r = await executeTool(
+        'search_messages',
+        { keywords: ['半导体'] },
+        msgs,
+        ledger(),
+        null,
+        null,
+        { groupDir: g.dir }
+    );
+    assert.ok(r.matchCount > 0, '旧索引应照常工作');
+});

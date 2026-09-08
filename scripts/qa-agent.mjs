@@ -389,12 +389,15 @@ async function searchByChunks({
     groupDir,
 }) {
     const msgById = new Map(msgs.map((m) => [String(m.id), m]));
-    const toChunk = (msgIds, annotation, endTs) => {
+    const toChunk = (msgIds, annotation, endTs, aliases) => {
         const present = msgIds.map((id) => msgById.get(String(id))).filter(Boolean);
         return present.length
             ? {
                   msgs: present,
                   annotation,
+                  // 别名:索引期生成的「完全不同词汇」改写,只进 BM25 文本,
+                  // 不进展示给模型的 snippet(那会让模型误以为群里有人这么说过)
+                  aliases: Array.isArray(aliases) ? aliases : [],
                   endTs: endTs || present[present.length - 1].timestamp || 0,
               }
             : null;
@@ -414,7 +417,9 @@ async function searchByChunks({
         for (const d of dates) {
             const entry = index.get(d);
             const raw = entry?.chunks?.length
-                ? entry.chunks.map((c) => toChunk(c.msgIds, c.annotation || null, c.endTs))
+                ? entry.chunks.map((c) =>
+                      toChunk(c.msgIds, c.annotation || null, c.endTs, c.aliases)
+                  )
                 : buildChunksForMessages(byDate.get(d)).map((c) =>
                       toChunk(c.msgIds, null, c.endTs)
                   );
@@ -428,8 +433,13 @@ async function searchByChunks({
 
     if (chunks.length < 2) return null; // 语料太小,块级检索无意义
 
+    // BM25 文本 = 标注 + 别名 + 原文。别名是索引期生成的同义改写,让「减持科技股」
+    // 这类提问也能命中写着「清了一半芯片股」的块——不必每次查询都花一轮 LLM 精排。
     const chunkDocs = chunks.map(
-        (c) => (c.annotation ? c.annotation + '\n' : '') + c.msgs.map(msgText).join('\n')
+        (c) =>
+            (c.annotation ? c.annotation + '\n' : '') +
+            (c.aliases.length ? c.aliases.join(' ') + '\n' : '') +
+            c.msgs.map(msgText).join('\n')
     );
     let hits = bm25Search(chunkDocs, query, { limit: 20 });
     if (!hits.length) return null;
