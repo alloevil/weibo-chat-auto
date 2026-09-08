@@ -41,12 +41,12 @@
     "dependencies": {
         "@mariozechner/pi-agent-core": "^0.73.1",
         "@opentelemetry/api": "^1.9.1",
-        "puppeteer": "^25.9.0"
+        "puppeteer": "^25.10.0"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@tauri-apps/cli": "^2.11.4",
-        "eslint": "^10.9.1",
+        "eslint": "^10.10.0",
         "eslint-config-prettier": "^10.1.8",
         "prettier": "^3.9.6"
     }
