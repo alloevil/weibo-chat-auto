@@ -42,3 +42,44 @@ test('search：空查询/空文档返回空', () => {
     assert.deepStrictEqual(search([], '投资'), []);
     assert.deepStrictEqual(search(['abc'], ''), []);
 });
+
+test('含点/连字符的拉丁段既保留整体也拆出各段（域名可检索）', () => {
+    // 修复前：正则把 . 收进词内，github.com 是单一 token，搜 github 匹配不到
+    assert.deepStrictEqual(tokenize('https://github.com/foo/bar'), [
+        'https',
+        'github.com',
+        'github',
+        'com',
+        'foo',
+        'bar',
+    ]);
+    // 保留整体是为了搜完整域名时它作为精确 token 拿到更高 idf
+    assert.ok(tokenize('example.com').includes('example.com'));
+    assert.ok(tokenize('example.com').includes('example'));
+});
+
+test('搜域名片段能命中含 URL 的文档', () => {
+    const docs = ['看这个 https://github.com/foo/bar 库', '别的事', 'arxiv.org/abs/2605 这篇'];
+    assert.deepStrictEqual(
+        search(docs, 'github', { limit: 5 }).map((h) => h.idx),
+        [0]
+    );
+    assert.deepStrictEqual(
+        search(docs, 'arxiv', { limit: 5 }).map((h) => h.idx),
+        [2]
+    );
+    // 完整域名仍然可搜
+    assert.deepStrictEqual(
+        search(docs, 'github.com', { limit: 5 }).map((h) => h.idx),
+        [0]
+    );
+});
+
+test('纯标点段不产生空 token', () => {
+    for (const s of ['...', '--', '.', '-.-']) {
+        assert.ok(
+            tokenize(s).every((t) => t.length > 0),
+            `"${s}" 不该产出空 token`
+        );
+    }
+});
