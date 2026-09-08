@@ -267,11 +267,13 @@ button, select, input { font-family: inherit; }
 .ctx-msg-time { font-size: 11px; color: var(--ink-subtle); }
 .ctx-msg-content { font-size: 14px; line-height: 1.45; color: var(--ink-muted); word-break: break-word; }
 .ctx-jump { font-size: 11px; color: var(--primary-hover); margin-left: auto; }
-/* 消息头部常驻的「上下文」链接 */
-.msg-ctx-link { font-size: 12px; color: var(--primary-hover); cursor: pointer; margin-left: 10px; user-select: none; opacity: .75; }
-.msg-ctx-link:hover { opacity: 1; text-decoration: underline; }
-/* 连续消息（无头部）用 hover 浮现的小标签 */
-.msg-ctx-btn { position: absolute; top: 4px; right: 12px; font-size: 12px; color: var(--primary-hover); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 6px; padding: 2px 8px; cursor: pointer; line-height: 1.3; display: none; z-index: 2; }
+/* 上下文入口:所有行统一用右上角 hover 浮现的小标签。
+
+   原先分两套 —— 普通行在头部内嵌常驻的 .msg-ctx-link,连续行用 hover 的
+   .msg-ctx-btn。常驻那套有两个问题:92 行消息就有 92 个红点,满屏视觉噪音;
+   而且它在定宽头部列里占 34px(visibility:hidden 也照占),把名字挤成
+   「tomb...」。统一成一套后两个问题一起消失,代码也少一条分支。 */
+.msg-ctx-btn { position: absolute; top: 3px; right: 12px; font-size: 12px; color: var(--primary-hover); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 6px; padding: 2px 8px; cursor: pointer; line-height: 1.3; display: none; z-index: 2; }
 .msg-item:hover .msg-ctx-btn { display: block; }
 .msg-ctx-btn:hover { background: var(--primary-tint); border-color: var(--primary); }
 /* 主列表里被聚焦的消息描边 */
@@ -347,7 +349,10 @@ button, select, input { font-family: inherit; }
 .search-nav-btn:hover { background: var(--surface-2); color: var(--ink); }
 
 /* New message badge */
-.msg-new { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--primary); color: var(--on-primary); font-size: 10px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+/* NEW 徽章是 msg-user 的兄弟节点而非子节点:放在里面会被 text-overflow 当作
+   名字的一部分,为它腾地方而把「tombkeeper」截成「tombkeepe...」。
+   margin-left 归 0(改用 header 的 gap),flex-shrink:0 保证不被压扁。 */
+.msg-new { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--primary); color: var(--on-primary); font-size: 10px; font-weight: 600; vertical-align: middle; flex-shrink: 0; }
 
 /* @ 提及 */
 .mention { color: var(--primary-hover); font-weight: 500; }
@@ -371,21 +376,39 @@ button, select, input { font-family: inherit; }
 
 /* Message list */
 .messages { flex: 1; overflow-y: auto; }
+/* 行内头部:名字/时间与气泡排在同一行(grid 两列),而不是各占一行。
+   原先 msg-header 独占一行 + margin-bottom:4px,一条「有道理」要 88px;
+   群聊里过半消息都是三五个字,那行头部就是纯浪费。同排后降到 44px,
+   1440x900 一屏可见消息从 9 条升到 19 条。
+
+   只作用于非 continuation 行:continuation 已经隐藏了 header,
+   给它套 grid 会把隐藏列也算进轨道尺寸(实测行高炸到 543px)。
+
+   列定宽 200px 而非 auto:名字长短不一会让气泡左边缘参差(实测同屏出现
+   547/548/576/599 四种起点),扫视时眼睛要来回找。200px 容得下实测最宽的
+   昵称(111px)+时间(46px)+间隙;更长的昵称走省略号。
+
+   align-items 用 start 而非 baseline:baseline 把头部对齐到气泡「最后一行」的
+   基线,多行长消息里名字被推到 55px 处、头像还在 3px,看着像错行。 */
 .msg-item { padding: 10px 16px 10px 48px; border-bottom: 1px solid var(--hairline); border-left: 3px solid var(--user-accent, transparent); transition: background .1s; position: relative; }
+.msg-item:not(.msg-item-continuation) { padding-top: 3px; padding-bottom: 3px; display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: start; column-gap: 10px; }
+.msg-item:not(.msg-item-continuation) .msg-header { margin-bottom: 0; }
 .msg-item:hover { background: var(--surface-1); }
-.msg-item-continuation { padding-top: 2px; padding-bottom: 2px; border-bottom-color: transparent; }
+.msg-item-continuation { padding-top: 1px; padding-bottom: 1px; border-bottom-color: transparent; }
 .msg-item-continuation .msg-header { display: none; }
-.cont-avatar { position: absolute; left: 12px; top: 10px; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.msg-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; position: absolute; left: 12px; top: 10px; }
+.cont-avatar { position: absolute; left: 12px; top: 2px; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; overflow: hidden; }
+.msg-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; position: absolute; left: 12px; top: 3px; }
 .msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.msg-user { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.35; }
-.msg-time { font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; }
+.msg-user { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 时间紧跟徽章,不用 margin-left:auto 顶到列右端 —— 那样会把名字挤到剩几个字
+   (实测「tombkeeper」被截成「tomb...」)。名字拿走剩余空间,时间与徽章保持自然宽度。 */
+.msg-time { font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .msg-body { min-width: 0; }
 /* 气泡宽度随视口伸缩：硬顶 480px 在 1920 宽屏上会让消息区右侧空掉一千多像素，
    但也不能放到全宽 —— 上千像素的一行中文没法读。46vw 在 1920 下约 880px，
    在 1280 下退回 480px 下限；min(100%) 保证上下文面板展开时自动收窄。 */
-.msg-content { display: inline-block; max-width: min(100%, max(480px, 46vw)); padding: 8px 12px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, var(--hairline-strong)) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.03); font-size: 15px; line-height: 1.5; color: var(--ink); word-break: break-word; overflow-wrap: anywhere; transition: border-color .12s, background .12s; }
+.msg-content { display: inline-block; max-width: min(100%, max(480px, 46vw)); padding: 4px 10px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, var(--hairline-strong)) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.03); font-size: 15px; line-height: 1.5; color: var(--ink); word-break: break-word; overflow-wrap: anywhere; transition: border-color .12s, background .12s; }
 .msg-item:hover .msg-content { background: var(--surface-2); border-color: var(--hairline-strong); }
 .msg-content img { max-width: min(100%, max(300px, 22vw)); max-height: min(60vh, max(200px, 18vw)); border-radius: 12px; margin-top: 8px; vertical-align: middle; }
 .msg-link { color: var(--primary-hover); text-decoration: none; word-break: break-all; }
@@ -2456,15 +2479,14 @@ function renderMessages(msgs) {
         pieces.push(`<div class="msg-item${continuation}" id="msg-${m.id}" data-hour="${new Date(m.timestamp).getHours()}" style="--user-accent:${accent}">
             ${continuation ? contAvatar : avatarEl}
             <div class="msg-header">
-                <span class="msg-user">${userName}${newBadge}</span>
+                <span class="msg-user" title="${escapeHtml(m.user)}">${userName}</span>${newBadge}
                 <span class="msg-time">${time}</span>
-                <span class="msg-ctx-link" onclick="openContext('${m.id}')" title="查看这条消息的上下文">🎯 上下文</span>
             </div>
             <div class="msg-body">
                 <div class="msg-content">${content}</div>
                 ${attach ? '<div class="msg-attach">' + attach + '</div>' : ''}
             </div>
-            ${continuation ? `<span class="msg-ctx-btn" onclick="openContext('${m.id}')">🎯 上下文</span>` : ''}
+            <span class="msg-ctx-btn" onclick="openContext('${m.id}')" title="查看这条消息的上下文">🎯 上下文</span>
         </div>`);
     });
     el.innerHTML = pieces.join('');
