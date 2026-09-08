@@ -258,7 +258,7 @@ Ask questions in the toolbar's Q&A box; natural-language time ("recently", "yest
 
 Retrieval automatically drops red-packet notices and check-in bot spam (same rules as the viewer's "hide noise" toggle) and collapses consecutive reposts, so "what is everyone talking about" isn't skewed by flooding. Asking about "last week" / "recently" / "yesterday" uses dates computed by the tools rather than inferred by the LLM. Shared links, videos and images are searchable too (asking "what links were shared last week" now finds them).
 
-💡 **For better recall, build the offline index once**: `node scripts/build-qa-index.mjs --group <group> --all`. It generates a summary plus a few reworded aliases per topic chunk, so a question phrased "who trimmed positions" can hit a message that says "sold half my chip stocks". It is incremental and resumable, and skips already-completed days on re-runs. Without it things still work — cross-vocabulary questions just lean more on the online rerank.
+Indexing is **automatic**: after each archive run, a background pass annotates the topic chunks that changed, generating a summary plus reworded aliases (only new chunks are annotated; existing ones are reused by content fingerprint, so the steady state is roughly one LLM call per hour). It also works without `ai-config.json` — you just lose that cross-vocabulary recall layer. Only two situations call for running it by hand: backfilling an existing archive, or rebuilding every index — `node scripts/build-qa-index.mjs --group <group> --all` (resumable, and re-runs skip completed days; for a large backlog try `--dry-run` first to gauge the size, or cap it with `--max-llm-calls N`).
 
 <details>
 <summary><b>Technical design</b></summary>
