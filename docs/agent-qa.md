@@ -136,6 +136,11 @@ node scripts/build-qa-index.mjs --group <群名> --all
 
 ## Benchmark 结果
 
+> ⚠️ **下表为 2026-07 的历史记录，已过期且不可复现。** 它早于块级 BM25 检索重写与
+> pi-agent-core 迁移；原始脚本在 `eval/`（agent 工作目录，随 ee2a63d 一起 untrack
+> 移除），测试组是私有归档。保留它是为了记录「为什么 Agent 模式是默认」的判断依据，
+> 不代表当前性能。要拿当前数字，用下面的 `scripts/benchmark-qa.js` 在你自己的归档上跑。
+
 测试组: 茧房建筑师协会 (56天数据)，5 个问题
 
 | 问题 | Agent(ms) | Legacy(ms) | Agent步骤 | 质量差异 |
@@ -147,6 +152,22 @@ node scripts/build-qa-index.mjs --group <群名> --all
 | 最近大家在聊什么话题 | 24790 | 14113 | 5 | Agent浏览多段时间; Legacy只看1天 |
 
 **汇总:** Agent 平均 20.5s / Legacy 平均 10.1s / 均 100% 成功率
+
+延迟一项现在应当更低：新循环不再付固定重试等待，并遵循 `Retry-After`（实测两次 429
+的自愈 3011ms → 1407ms），所以上表偏保守而非偏乐观。
+
+### 自己复现
+
+```bash
+node scripts/viewer-server.js &                             # 先起查看器
+node scripts/benchmark-qa.js --group <群名>                  # 内置 5 个通用问题
+node scripts/benchmark-qa.js --group <群名> --repeat 3       # 多次取中位数
+node scripts/benchmark-qa.js --group <群名> --questions my.json --json
+```
+
+`--questions` 接受字符串数组或 `{ questions: [{ question }] }`。脚本**只测延迟与是否
+成功，不判答案对错**——答案质量要人工核对 golden facts，那属于私有数据，不入库。这也是
+上表「质量差异」一列无法自动复现的原因。
 
 ## 配置
 
@@ -171,6 +192,8 @@ node scripts/build-qa-index.mjs --group <群名> --all
 ```
 scripts/qa-agent.mjs        # 检索层 + 提示词 + tools/model 适配（loop 来自 pi-agent-core）
 scripts/viewer-server.js    # /api/qa 端点，分发 agent/legacy 模式
+scripts/build-qa-index.mjs  # 离线标注回填（qa-index/）
+scripts/benchmark-qa.js     # 延迟基准（agent vs legacy），不依赖私有数据
 ai-config.json              # AI 配置（gitignored）
 ```
 

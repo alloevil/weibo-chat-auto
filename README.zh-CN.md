@@ -250,7 +250,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 详见 [`docs/agent-qa.md`](docs/agent-qa.md)
 
-**Benchmark (Agent vs Legacy):**
+**Benchmark (Agent vs Legacy)** — 2026-07 在单个私有群（56 天历史、5 个问题）上实测：
 
 | 指标 | Agent | Legacy |
 |------|-------|--------|
@@ -259,6 +259,10 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 | 日期推理 | 正确 | 偶尔错误 |
 | 搜索覆盖 | 多轮扩展 | 单次 |
 | 答案质量 | 高 | 中 |
+
+⚠️ **这组数字已过期且不可复现。** 它早于块级 BM25 检索重写与 pi-agent-core 迁移；原始脚本在 `eval/`（agent 工作目录，随 ee2a63d 一起 untrack 移除），且依赖私有归档数据。请把这张表当作「为什么 Agent 模式是默认」的方向性记录，而不是当前实测值。延迟一项现在应当更低：新循环不再付固定重试等待，并遵循 `Retry-After`（实测两次 429 的自愈 3011ms → 1407ms），所以偏保守而非偏乐观。
+
+要拿当前数字，在自己的归档上跑 `node scripts/benchmark-qa.js --group <群名>`（详见 [`docs/agent-qa.md`](docs/agent-qa.md#benchmark-结果)）。
 
 </details>
 

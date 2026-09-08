@@ -263,7 +263,7 @@ Note: the AI proxy must support SSE streaming responses.
 
 See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 
-**Benchmark (Agent vs Legacy):**
+**Benchmark (Agent vs Legacy)** — captured 2026-07 on one private group (56 days of history, 5 questions):
 
 | Metric | Agent | Legacy |
 |------|-------|--------|
@@ -272,6 +272,10 @@ See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 | Date reasoning | Correct | Occasionally wrong |
 | Search coverage | Multi-round expansion | Single pass |
 | Answer quality | High | Medium |
+
+⚠️ **These numbers are stale and not reproducible.** They predate the block-level BM25 retrieval rewrite and the pi-agent-core loop migration; the original harness lived in `eval/` (an agent scratch directory untracked in ee2a63d) and depended on private archive data. Treat the table as a directional record of why Agent mode is the default, not as a current measurement. Latency in particular should now be lower: the loop no longer pays fixed retry backoff and honors `Retry-After` (a 2×429 recovery measured 3011ms → 1407ms), so the figure is conservative rather than optimistic.
+
+For current numbers, run `node scripts/benchmark-qa.js --group <group>` against your own archive (see [`docs/agent-qa.md`](docs/agent-qa.md#benchmark-结果)).
 
 </details>
 
