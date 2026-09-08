@@ -16,11 +16,14 @@ import chunkIndex from '../lib/chunk-index.js';
 import speakerAliases from '../lib/speaker-aliases.js';
 // 噪音判定(红包/签到机器人),与查看器共用同一份规则
 import textUtils from '../lib/text-utils.js';
+// 相对日期表达("上周"/"最近")→ 具体区间;同时提供本地时区的时间锚点
+import relativeDates from '../lib/relative-dates.js';
 
 const { search: bm25Search } = searchBm25;
 const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
 const { loadAliases, resolvePerson, expandPersonTerms } = speakerAliases;
 const { isNoise } = textUtils;
+const { resolveRelativeRange, timeAnchors } = relativeDates;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -135,15 +138,18 @@ const TOOL_SPECS = [
         name: 'get_recent_messages',
         label: '读取时段',
         description:
-            '直接读取某时间段的聊天记录(超过 limit 时均匀采样,保证时间覆盖)。适合"大家在聊什么/总结一下/有什么话题/氛围如何"这类总结归纳型问题——这类问题不要用关键词搜索,直接读记录后归纳。不适合找具体某句话(用 search_messages)。',
+            '直接读取某时间段的聊天记录(超过 limit 时均匀采样,保证时间覆盖)。适合"大家在聊什么/总结一下/有什么话题/氛围如何"这类总结归纳型问题——这类问题不要用关键词搜索,直接读记录后归纳。不适合找具体某句话(用 search_messages)。问题里含"上周/最近/昨天"这类相对表达时可以省略日期,工具会自动解析并在 dateRange 回报实际区间。',
         parameters: {
             type: 'object',
             properties: {
-                dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
+                dateFrom: {
+                    type: 'string',
+                    description:
+                        '起始日期,格式 YYYY-MM-DD。省略则由工具从问题里解析相对表达(解析不出则读全部)',
+                },
                 dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
                 limit: { type: 'number', description: '最多返回条数,默认120,上限200' },
             },
-            required: ['dateFrom', 'dateTo'],
             additionalProperties: false,
         },
     },
@@ -249,6 +255,26 @@ function filterByDate(msgs, dateFrom, dateTo) {
 function dateSpanOf(msgs) {
     if (!msgs.length) return null;
     return { first: msgDate(msgs[0]), last: msgDate(msgs[msgs.length - 1]) };
+}
+
+/**
+ * 决定本次工具调用实际使用的日期区间。
+ *
+ * 模型显式给了 dateFrom/dateTo 就照用(它可能有比问题字面更好的判断,比如
+ * 前几轮已经用 count_messages 探到热点日期)。两个都没给时,才从问题原文里
+ * 解析相对表达——「上周」这类算错就静默搜错范围,交给确定性代码更可靠。
+ *
+ * 返回的 dateNote 会回给模型,让它知道工具实际用了哪个区间(而不是以为搜了全量)。
+ */
+function resolveDateArgs({ dateFrom, dateTo }, question) {
+    if (dateFrom || dateTo) return { dateFrom, dateTo };
+    const r = resolveRelativeRange(question);
+    if (!r) return { dateFrom, dateTo };
+    return {
+        dateFrom: r.dateFrom,
+        dateTo: r.dateTo,
+        dateNote: `问题含"${r.label}",已自动限定到 ${r.dateFrom} ~ ${r.dateTo}。要换范围请显式传 dateFrom/dateTo`,
+    };
 }
 
 /**
@@ -383,6 +409,7 @@ async function searchByChunks({
     question,
     ledger,
     personNote,
+    dateNote,
     dateFrom,
     dateTo,
     person,
@@ -505,6 +532,7 @@ async function searchByChunks({
         hitIds: hitCitations.slice(0, 8),
         snippets,
         ...(personNote ? { personNote } : {}),
+        ...(dateNote ? { dateNote } : {}),
     };
 }
 
@@ -517,6 +545,7 @@ async function searchFlat({
     question,
     ledger,
     personNote,
+    dateNote,
     dateFrom,
     dateTo,
     person,
@@ -531,6 +560,7 @@ async function searchFlat({
             totalInRange: msgs.length,
             hint: ZERO_HIT_HINT(msgs.length),
             ...(personNote ? { personNote } : {}),
+            ...(dateNote ? { dateNote } : {}),
         };
     }
 
@@ -578,6 +608,7 @@ async function searchFlat({
         hitIds: hitCitations,
         snippets,
         ...(personNote ? { personNote } : {}),
+        ...(dateNote ? { dateNote } : {}),
     };
 }
 
@@ -665,10 +696,12 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
     }
 
     if (name === 'search_messages') {
-        const { person, dateFrom, dateTo } = args;
+        const { person } = args;
         const keywords = normalizeKeywords(args.keywords);
         const invalid = validateDateArgs(args);
         if (invalid) return invalid;
+        // 模型没给日期时从问题原文解析相对表达("上周"/"最近"/"昨天")
+        const { dateFrom, dateTo, dateNote } = resolveDateArgs(args, question);
 
         let msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
         const picked = filterByPerson(msgs, person, opts?.groupDir);
@@ -681,6 +714,7 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
             return {
                 matchCount: 0,
                 totalInRange: 0,
+                ...(dateNote ? { dateNote } : {}),
                 hint: `日期范围 ${dateFrom || '?'} ~ ${dateTo || '?'} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}`,
             };
         }
@@ -697,6 +731,7 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
             question,
             ledger,
             personNote,
+            dateNote,
             dateFrom,
             dateTo,
             person,
@@ -712,9 +747,11 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
     }
 
     if (name === 'get_recent_messages') {
-        const { dateFrom, dateTo, limit } = args;
+        const { limit } = args;
         const invalid = validateDateArgs(args);
         if (invalid) return invalid;
+        // schema 要求 dateFrom/dateTo 必填,但模型偶尔会漏;漏了就从问题里解析
+        const { dateFrom, dateTo, dateNote } = resolveDateArgs(args, question);
         const maxCount = Math.min(limit || 120, 200);
         // 总结型问题直接读原文,噪音不剔会让"大家在聊什么"答成红包和签到
         const msgs = dropNoise(filterByDate(allMessages, dateFrom, dateTo));
@@ -723,7 +760,8 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
             return {
                 total: 0,
                 returned: 0,
-                hint: `日期范围 ${dateFrom} ~ ${dateTo} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}`,
+                ...(dateNote ? { dateNote } : {}),
+                hint: `日期范围 ${dateFrom || '?'} ~ ${dateTo || '?'} 内没有任何消息。可用的日期范围是 ${span?.first} ~ ${span?.last}`,
             };
         }
         // 超出上限时均匀采样而非只取尾部，避免总结型问题的时间偏差
@@ -751,6 +789,9 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
             total: msgs.length,
             returned: sample.length,
             sampled: msgs.length > maxCount,
+            // 回报实际用的区间:模型省略日期时它才知道工具替它选了什么
+            dateRange: `${dateFrom || '?'} ~ ${dateTo || '?'}`,
+            ...(dateNote ? { dateNote } : {}),
             messages: sample.map(formatMessage),
         };
     }
@@ -831,8 +872,11 @@ async function conversationLoop(question, allMessages, config, opts) {
     const toolCallLog = [];
     const startedAt = Date.now();
 
-    const today = new Date().toISOString().split('T')[0];
-    const systemPrompt = `你是一个群聊记录问答助手。今天是 ${today}。
+    // 时间锚点全部走本地日期(与归档 time 字段同口径)。原先用 toISOString()
+    // 取的是 UTC 日期,UTC+8 时区在每天 00:00-08:00 之间会把"今天/昨天"整体
+    // 说早一天,模型据此算出的 dateFrom/dateTo 就系统性偏移。
+    const t = timeAnchors();
+    const systemPrompt = `你是一个群聊记录问答助手。今天是 ${t.today}。
 
 先判断问题类型,选对工具:
 
@@ -855,11 +899,17 @@ async function conversationLoop(question, allMessages, config, opts) {
 - 找不到相关信息时明确告知
 - 用中文回答
 
-时间理解:
-- "昨天" = ${new Date(Date.now() - 86400000).toISOString().split('T')[0]}
-- "前天" = ${new Date(Date.now() - 172800000).toISOString().split('T')[0]}
-- "最近" = 最近7天 (${new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]} ~ ${today})
-- "上周" = 上一个完整周(周一到周日)`;
+时间理解(以下日期已按本地时区算好,直接用,不要自己推算):
+- "今天" = ${t.today}
+- "昨天" = ${t.yesterday}
+- "前天" = ${t.dayBeforeYesterday}
+- "最近" = ${t.recentFrom} ~ ${t.today}(含今天共 7 天)
+- "上周" = ${t.lastWeekFrom} ~ ${t.lastWeekTo}(上一个完整周,周一到周日)
+- "本周" = ${t.thisWeekFrom} ~ ${t.today}
+
+工具已内置相对日期解析:问题里出现"上周""最近""昨天"这类表达时,可以省略
+dateFrom/dateTo,工具会自己算好并在 dateRange 字段回报实际用的区间。你也可以
+显式传日期覆盖它。`;
 
     // 预算闸门:每个 turn 对应一次 LLM 调用。达到上限后 runAgentLoop 在
     // turn_end 之后收尾退出,不再发起新调用——这是唯一的成本上限。

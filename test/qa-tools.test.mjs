@@ -489,3 +489,92 @@ test('旧索引无 aliases 字段时不崩溃（向后兼容）', async () => {
     );
     assert.ok(r.matchCount > 0, '旧索引应照常工作');
 });
+
+// ─── 相对日期在工具侧解析（原先靠 LLM 自己算，算错就静默搜错范围）────────
+// 语料：2026-09-01(周二) ~ 2026-09-08(周二)，每天一条可区分的消息
+function dayMsgs() {
+    const out = [];
+    for (let d = 1; d <= 8; d++) {
+        const ts = new Date(2026, 8, d, 10, 0, 0).getTime();
+        out.push({
+            id: String(9000 + d),
+            user: 'alice',
+            content: `第${d}天的话题 链接分享`,
+            timestamp: ts,
+            time: `2026/09/${String(d).padStart(2, '0')} 10:00:00`,
+        });
+    }
+    return out;
+}
+
+test('get_recent_messages 省略日期时，从问题解析「上周」', async () => {
+    // 用真实"今天"无法断言固定区间，所以断言的是「解析发生了」而非具体日期：
+    // dateNote 出现即证明工具替模型限定了范围，dateRange 回报了实际区间
+    const r = await executeTool(
+        'get_recent_messages',
+        {},
+        dayMsgs(),
+        ledger(),
+        null,
+        '上周分享过什么链接'
+    );
+    assert.ok(r.dateNote, '应回报自动限定的说明');
+    assert.match(r.dateNote, /上周/);
+    assert.match(r.dateNote, /\d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}/, '说明里应含具体区间');
+});
+
+test('模型显式给的日期优先于问题里的相对表达', async () => {
+    const r = await executeTool(
+        'get_recent_messages',
+        { dateFrom: '2026-09-03', dateTo: '2026-09-04' },
+        dayMsgs(),
+        ledger(),
+        null,
+        '上周分享过什么链接' // 问题说"上周"，但模型显式给了 9/3-9/4
+    );
+    assert.strictEqual(r.dateRange, '2026-09-03 ~ 2026-09-04');
+    assert.strictEqual(r.dateNote, undefined, '显式传日期时不该自动覆盖');
+    assert.strictEqual(r.total, 2, '应只读到 9/3 与 9/4 两条');
+});
+
+test('问题无相对表达时不限定范围（不猜）', async () => {
+    const r = await executeTool(
+        'get_recent_messages',
+        {},
+        dayMsgs(),
+        ledger(),
+        null,
+        '谁在聊半导体'
+    );
+    assert.strictEqual(r.dateNote, undefined);
+    assert.strictEqual(r.total, 8, '未解析出相对表达时应读全部');
+});
+
+test('search_messages 也走同一套日期解析', async () => {
+    const r = await executeTool(
+        'search_messages',
+        { keywords: ['链接'] },
+        dayMsgs(),
+        ledger(),
+        null,
+        '昨天分享的链接'
+    );
+    // "昨天"必然落在语料外或内，两种都可接受；关键是解析发生并回报
+    assert.ok(r.dateNote, 'search_messages 应同样回报自动限定');
+    assert.match(r.dateNote, /昨天/);
+});
+
+test('count_messages 刻意不自动限定（它的用途是不限日期探测分布）', async () => {
+    // 自动限定会破坏 system prompt 教的"先宽后窄"策略：
+    // 先用 count_messages 探全量分布 → 再把 search_messages 锁到热点日期
+    const r = await executeTool(
+        'count_messages',
+        { keywords: ['话题'] },
+        dayMsgs(),
+        ledger(),
+        null,
+        '上周聊了什么话题'
+    );
+    assert.strictEqual(r.dateNote, undefined, 'count_messages 不该自动限定');
+    assert.strictEqual(r.total, 8, '应统计全部 8 天，而非只统计上周');
+});
