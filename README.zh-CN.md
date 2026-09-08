@@ -244,10 +244,9 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 <details>
 <summary><b>技术方案</b></summary>
 
-采用 Agentic Search 模式，loop 机制参考：
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — IterationBudget + grace call
-- [Pi-Multi-Agent](https://github.com/jwangkun/Pi-Multi-Agent) — state machine + retry with backoff + timeout
-- LedgerAgent 论文 — 结构化状态累积
+采用 Agentic Search 模式。工具循环由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层（bigram BM25 + 话题块索引 + LLM 精排）、提示词与预算闸门（≤7 次 LLM 调用）。结构化状态累积参考 LedgerAgent 论文。
+
+注意：AI 代理需支持 SSE 流式响应。
 
 详见 [`docs/agent-qa.md`](docs/agent-qa.md)
 
@@ -294,7 +293,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 | 必需 | 说明 |
 | --- | --- |
 | 🖥 **macOS / Linux / WSL** | 归档与查看器跨平台运行；定时任务全平台自动安装（launchd / systemd / cron） |
-| 🟢 **Node.js 18+** | [brew install node](https://brew.sh)（macOS）/ `apt install nodejs`（Linux）/ [nodejs.org](https://nodejs.org) |
+| 🟢 **Node.js 20+** | [brew install node](https://brew.sh)（macOS）/ `apt install nodejs`（Linux）/ [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | 归档器用它登录并抓取消息；路径自动探测 |
 | 📱 **微博账号 + 手机 App** | 首次需用 App 扫码登录网页版 |
 | 🦀 **Rust + Bun** | 仅桌面应用需要；`npm run desktop` 会自动安装 |

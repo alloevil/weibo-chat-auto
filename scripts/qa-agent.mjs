@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// 编排(工具循环 / 迭代预算 / 重试 / 超时 / provider 适配)交给 pi-agent-core,
+// 本仓只保留检索层与提示词。原先手写的 IterationBudget / AgentState /
+// withRetry / withTimeout / callLLM 共约 230 行由 runAgentLoop 替代。
+import { runAgentLoop } from '@mariozechner/pi-agent-core';
 // lib/ 是 CJS,这里用静态 ESM import(Node 的 CJS interop 支持解构)。
 // 不要换成 createRequire:bundler(Bun sidecar 编译)无法静态分析 createRequire,
 // 会导致 lib 模块不进 bundle,桌面版运行时报 Cannot find module。
@@ -14,9 +18,16 @@ const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// LLM 调用总上限。前 6 轮用于检索迭代,第 7 轮是收尾轮——预算耗尽时仍让模型
+// 有一次机会把已检索到的内容总结成答案,而不是停在一次工具调用上。
+const MAX_LLM_CALLS = 7;
+
 // LLM 请求超时。没有超时的话，服务端挂住连接就能让一次问答永远悬着：
 // 前端转圈、迭代预算不会推进、Node 也不会自己放弃。
 const LLM_TIMEOUT_MS = 60000;      // 主循环调用（带工具，可能较慢）
+// 重试交给 provider 层的 OpenAI SDK：它只对 429/5xx/网络错误重试并遵循
+// Retry-After，比按 error.message 文本匹配状态码可靠。
+const LLM_MAX_RETRIES = 2;
 const RERANK_TIMEOUT_MS = 20000;   // 重排是纯打分，快得多
 
 function loadAiConfig() {
@@ -34,110 +45,6 @@ function formatMessage(m) {
   return `[${date} ${t}] ${m.user}: ${text}`;
 }
 
-// ─── IterationBudget (adapted from Hermes Agent) ───────────────────────
-// Controls how many LLM calls the agent can make per question.
-// Supports consume/refund/grace-call semantics.
-class IterationBudget {
-  constructor(maxTotal) {
-    this.maxTotal = maxTotal;
-    this._used = 0;
-    this._graceCall = false;
-    this._graceGranted = false;
-  }
-
-  consume() {
-    if (this._used >= this.maxTotal) return false;
-    this._used++;
-    return true;
-  }
-
-  refund() {
-    if (this._used > 0) this._used--;
-  }
-
-  // grace 全程只发放一次。consumeGrace() 会把 _graceCall 复位，若允许反复
-  // enableGrace() 则 shouldContinue 恒为真，主循环（唯一的成本闸门）永不退出。
-  enableGrace() {
-    if (this._graceGranted) return false;
-    this._graceGranted = true;
-    this._graceCall = true;
-    return true;
-  }
-
-  get used() { return this._used; }
-  get remaining() { return Math.max(0, this.maxTotal - this._used); }
-  get shouldContinue() { return this.remaining > 0 || this._graceCall; }
-
-  consumeGrace() {
-    if (this._graceCall) {
-      this._graceCall = false;
-      return true;
-    }
-    return false;
-  }
-}
-
-// ─── AgentState (adapted from Pi-Multi-Agent) ──────────────────────────
-// Tracks lifecycle state + metrics for observability.
-class AgentState {
-  constructor() {
-    this.status = 'idle'; // idle → running → completed | failed
-    this.steps = [];
-    this.startTime = null;
-    this.endTime = null;
-  }
-
-  transition(newStatus) {
-    this.status = newStatus;
-    if (newStatus === 'running') this.startTime = Date.now();
-    if (newStatus === 'completed' || newStatus === 'failed') this.endTime = Date.now();
-  }
-
-  recordStep(step) {
-    this.steps.push({ ...step, timestamp: Date.now() });
-  }
-
-  get executionTime() {
-    if (!this.startTime) return 0;
-    return (this.endTime || Date.now()) - this.startTime;
-  }
-
-  get metrics() {
-    return {
-      status: this.status,
-      totalSteps: this.steps.length,
-      toolCalls: this.steps.filter(s => s.type === 'tool_call').length,
-      llmCalls: this.steps.filter(s => s.type === 'llm_call').length,
-      executionTime: this.executionTime,
-    };
-  }
-}
-
-// ─── Retry with backoff (adapted from Pi-Multi-Agent) ──────────────────
-async function withRetry(fn, { maxRetries = 2, initialDelay = 1000, backoffMultiplier = 2 } = {}) {
-  let lastError;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastError = e;
-      const isRetryable = e.message?.includes('429') || e.message?.includes('500') || e.message?.includes('503');
-      if (!isRetryable || attempt >= maxRetries) throw e;
-      const delay = initialDelay * Math.pow(backoffMultiplier, attempt);
-      await new Promise(r => setTimeout(r, delay));
-    }
-  }
-  throw lastError;
-}
-
-// ─── Timeout (adapted from Pi-Multi-Agent) ─────────────────────────────
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`Agent timeout after ${ms}ms`)), ms)),
-  ]);
-}
-
 // ─── LedgerAgent-style structured state ────────────────────────────────
 function createLedger() {
   return {
@@ -150,74 +57,69 @@ function createLedger() {
   };
 }
 
-// ─── Tool definitions (OpenAI format with Bedrock-required type field) ─
-const TOOLS = [
+// ─── Tool definitions ──────────────────────────────────────────────────
+// 扁平 schema(name/description/parameters),由 buildAgentTools 包成
+// pi-agent-core 的 AgentTool;provider 层负责按各家 API 序列化,
+// 本文件不再手拼 OpenAI 的 { type:'function', function:{...} } 信封。
+const TOOL_SPECS = [
   {
-    type: 'function',
-    function: {
-      name: 'count_messages',
-      description: '统计消息在各日期的分布(直方图),不返回消息内容。这是"先宽后窄"的探测工具:在正式搜索前,先用它了解某话题/某人的发言集中在哪些日期,再把 search_messages 的日期范围锁定到热点日期。计算是本地词面匹配,成本极低,可放心多次调用。不带 keywords 时统计纯消息量(如"某人最近活跃吗")。不要用它获取消息内容——它只给数字。',
-      parameters: {
-        type: 'object',
-        properties: {
-          keywords: { type: 'array', items: { type: 'string' }, description: '统计包含任一关键词的消息(词面包含匹配,大小写不敏感)。省略则统计全部消息' },
-          person: { type: 'string', description: '只统计该发言人的消息(模糊匹配)' },
-          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD,如 2026-07-01' },
-          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
-        },
-        additionalProperties: false,
+    name: 'count_messages',
+    label: '统计分布',
+    description: '统计消息在各日期的分布(直方图),不返回消息内容。这是"先宽后窄"的探测工具:在正式搜索前,先用它了解某话题/某人的发言集中在哪些日期,再把 search_messages 的日期范围锁定到热点日期。计算是本地词面匹配,成本极低,可放心多次调用。不带 keywords 时统计纯消息量(如"某人最近活跃吗")。不要用它获取消息内容——它只给数字。',
+    parameters: {
+      type: 'object',
+      properties: {
+        keywords: { type: 'array', items: { type: 'string' }, description: '统计包含任一关键词的消息(词面包含匹配,大小写不敏感)。省略则统计全部消息' },
+        person: { type: 'string', description: '只统计该发言人的消息(模糊匹配)' },
+        dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD,如 2026-07-01' },
+        dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
       },
+      additionalProperties: false,
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'search_messages',
-      description: '按关键词检索聊天记录(BM25 相关性 + 时间新近度排序),返回相关片段(含对话上下文)和命中消息的 id 列表(hitIds)。适合"某人说了什么/某话题谁提过/关于 X 的讨论"这类事实检索。关键词务必同时给同义词和英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"]),单个关键词建议 2-4 字。零命中时返回的 hint 会告诉你怎么调整。不适合总结归纳型问题(用 get_recent_messages)。',
-      parameters: {
-        type: 'object',
-        properties: {
-          keywords: { type: 'array', items: { type: 'string' }, description: '搜索关键词列表,同时给出同义词/相关词/英文缩写以提高召回' },
-          person: { type: 'string', description: '筛选特定发言人(模糊匹配)。注意:人名记不准时宁可不填,靠关键词兜底' },
-          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
-          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
-        },
-        required: ['keywords'],
-        additionalProperties: false,
+    name: 'search_messages',
+    label: '检索消息',
+    description: '按关键词检索聊天记录(BM25 相关性 + 时间新近度排序),返回相关片段(含对话上下文)和命中消息的 id 列表(hitIds)。适合"某人说了什么/某话题谁提过/关于 X 的讨论"这类事实检索。关键词务必同时给同义词和英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"]),单个关键词建议 2-4 字。零命中时返回的 hint 会告诉你怎么调整。不适合总结归纳型问题(用 get_recent_messages)。',
+    parameters: {
+      type: 'object',
+      properties: {
+        keywords: { type: 'array', items: { type: 'string' }, description: '搜索关键词列表,同时给出同义词/相关词/英文缩写以提高召回' },
+        person: { type: 'string', description: '筛选特定发言人(模糊匹配)。注意:人名记不准时宁可不填,靠关键词兜底' },
+        dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
+        dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
       },
+      required: ['keywords'],
+      additionalProperties: false,
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_context',
-      description: '按消息 id 拉取该消息前后的完整对话(按 30 分钟时间断层自动截断到当前话题)。当 search_messages 的片段不足以回答问题、需要还原某条命中消息的来龙去脉时用。messageId 必须来自 search_messages 返回的 hitIds,不要凭空构造。',
-      parameters: {
-        type: 'object',
-        properties: {
-          messageId: { type: 'string', description: 'search_messages 返回的 hitIds 中的消息 id' },
-          span: { type: 'number', description: '上下文最大条数,默认 24,上限 60' },
-        },
-        required: ['messageId'],
-        additionalProperties: false,
+    name: 'get_context',
+    label: '拉取上下文',
+    description: '按消息 id 拉取该消息前后的完整对话(按 30 分钟时间断层自动截断到当前话题)。当 search_messages 的片段不足以回答问题、需要还原某条命中消息的来龙去脉时用。messageId 必须来自 search_messages 返回的 hitIds,不要凭空构造。',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: { type: 'string', description: 'search_messages 返回的 hitIds 中的消息 id' },
+        span: { type: 'number', description: '上下文最大条数,默认 24,上限 60' },
       },
+      required: ['messageId'],
+      additionalProperties: false,
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_recent_messages',
-      description: '直接读取某时间段的聊天记录(超过 limit 时均匀采样,保证时间覆盖)。适合"大家在聊什么/总结一下/有什么话题/氛围如何"这类总结归纳型问题——这类问题不要用关键词搜索,直接读记录后归纳。不适合找具体某句话(用 search_messages)。',
-      parameters: {
-        type: 'object',
-        properties: {
-          dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
-          dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
-          limit: { type: 'number', description: '最多返回条数,默认120,上限200' },
-        },
-        required: ['dateFrom', 'dateTo'],
-        additionalProperties: false,
+    name: 'get_recent_messages',
+    label: '读取时段',
+    description: '直接读取某时间段的聊天记录(超过 limit 时均匀采样,保证时间覆盖)。适合"大家在聊什么/总结一下/有什么话题/氛围如何"这类总结归纳型问题——这类问题不要用关键词搜索,直接读记录后归纳。不适合找具体某句话(用 search_messages)。',
+    parameters: {
+      type: 'object',
+      properties: {
+        dateFrom: { type: 'string', description: '起始日期,格式 YYYY-MM-DD' },
+        dateTo: { type: 'string', description: '结束日期,格式 YYYY-MM-DD' },
+        limit: { type: 'number', description: '最多返回条数,默认120,上限200' },
       },
+      required: ['dateFrom', 'dateTo'],
+      additionalProperties: false,
     },
   },
 ];
@@ -340,7 +242,8 @@ async function rerankFilter(hits, textOf, config, question) {
   if (!config || !question || hits.length <= 3) return { hits, reranked: false };
   try {
     const candidates = hits.map(h => ({ idx: h.idx, text: textOf(h.idx) }));
-    const order = await withTimeout(rerankByLLM(config, question, candidates), 20000);
+    // 超时由 rerankByLLM 内部的 AbortSignal.timeout(RERANK_TIMEOUT_MS) 兜住
+    const order = await rerankByLLM(config, question, candidates);
     const keep = new Set(order);
     const filtered = hits.filter((_, i) => keep.has(i));
     if (filtered.length) return { hits: filtered, reranked: true };
@@ -676,44 +579,70 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
   return { error: `Unknown tool: ${name}` };
 }
 
-// ─── LLM call ──────────────────────────────────────────────────────────
-async function callLLM(config, messages) {
-  const resp = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
+// ─── pi-agent-core 适配层 ──────────────────────────────────────────────
+// ai-config.json(baseUrl/apiKey/model)→ pi-ai 的 Model 描述。
+// api 固定 'openai-completions':查看器要求代理兼容 /v1/chat/completions。
+// contextWindow/maxTokens 只用于 provider 侧的 max_tokens 计算,给保守值即可。
+function toPiModel(config) {
+  return {
+    id: config.model,
+    name: config.model,
+    api: 'openai-completions',
+    provider: 'openai-compatible',
+    baseUrl: config.baseUrl,
+    reasoning: false,
+    input: ['text'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+    maxTokens: 8192,
+    compat: {
+      // 自建/第三方网关(Bedrock 转发等)常拒绝这些 OpenAI 专有字段,
+      // 而 pi-ai 的自动探测只对已知域名生效,这里显式关掉。
+      supportsStore: false,
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+      supportsStrictMode: false,
+      maxTokensField: 'max_tokens',
     },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      tools: TOOLS,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
-  });
+  };
+}
 
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`LLM API ${resp.status}: ${text.slice(0, 200)}`);
-  }
-
-  const data = await resp.json();
-  return data.choices?.[0]?.message;
+// TOOL_SPECS → AgentTool。execute 返回 { content, details }:
+// content 是给模型看的文本(JSON 串,与替换前的 role:'tool' 内容一致),
+// details 是结构化副本,供 toolCallLog / 前端渲染,不进 LLM 上下文。
+//
+// prepareArguments 在 pi 的 schema 校验之前跑,用来保住既有的 keywords 容错:
+// 模型偶尔把 keywords 传成字符串/数字而非数组(见 normalizeKeywords),原先由
+// 工具内部归一,能照常出结果;若交给 schema 直接拒,会白费一轮往返让模型重试。
+// 归一在此前置,校验只拦真正无法挽救的参数。
+function buildAgentTools(allMessages, ledger, config, question, opts, toolCallLog) {
+  return TOOL_SPECS.map(spec => ({
+    ...spec,
+    prepareArguments: (raw) => {
+      if (!raw || typeof raw !== 'object' || !('keywords' in raw)) return raw;
+      return { ...raw, keywords: normalizeKeywords(raw.keywords) };
+    },
+    execute: async (_toolCallId, args) => {
+      const result = await executeTool(spec.name, args, allMessages, ledger, config, question, opts);
+      toolCallLog.push({
+        tool: spec.name,
+        ...args,
+        matchCount: result.matchCount,
+        returned: result.returned,
+        total: result.total,
+      });
+      return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+    },
+  }));
 }
 
 // ─── Agent conversation loop ───────────────────────────────────────────
-// Architecture references:
-//   - Hermes Agent: IterationBudget + grace call + while-loop with interrupt
-//   - Pi-Multi-Agent: state machine + timeout + retry with backoff
-//   - LedgerAgent: structured state accumulation across iterations
+// 循环体(工具调用分发、参数校验、重试、超时、SSE 解析)由 pi-agent-core 的
+// runAgentLoop 提供;本函数只负责提示词、预算闸门与结果提取。
 async function conversationLoop(question, allMessages, config, opts) {
-  const budget = new IterationBudget(6);
-  const state = new AgentState();
   const ledger = createLedger();
   const toolCallLog = [];
-
-  state.transition('running');
+  const startedAt = Date.now();
 
   const today = new Date().toISOString().split('T')[0];
   const systemPrompt = `你是一个群聊记录问答助手。今天是 ${today}。
@@ -745,70 +674,55 @@ async function conversationLoop(question, allMessages, config, opts) {
 - "最近" = 最近7天 (${new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]} ~ ${today})
 - "上周" = 上一个完整周(周一到周日)`;
 
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: question },
-  ];
+  // 预算闸门:每个 turn 对应一次 LLM 调用。达到上限后 runAgentLoop 在
+  // turn_end 之后收尾退出,不再发起新调用——这是唯一的成本上限。
+  let llmCalls = 0;
+  const tools = buildAgentTools(allMessages, ledger, config, question, opts, toolCallLog);
 
-  // Main loop — modeled after Hermes's while(budget.shouldContinue || graceCall)
-  while (budget.shouldContinue) {
-    // Budget gate (Hermes pattern: consume or break)
-    if (!budget.consume()) {
-      if (!budget.consumeGrace()) {
-        break;
-      }
-    }
+  const messages = await runAgentLoop(
+    [{ role: 'user', content: question, timestamp: Date.now() }],
+    { systemPrompt, messages: [], tools },
+    {
+      model: toPiModel(config),
+      apiKey: config.apiKey,
+      // 本仓的 AgentMessage 就是 LLM 消息,无自定义类型需要转换/过滤
+      convertToLlm: (msgs) => msgs,
+      // 60s:总结型问题携带 200 条消息生成最终回答,30s 会误杀(baseline q15)
+      timeoutMs: LLM_TIMEOUT_MS,
+      maxRetries: LLM_MAX_RETRIES,
+      // 检索工具共享 ledger 的 citations 数组,串行执行避免并发写入交错
+      toolExecution: 'sequential',
+      shouldStopAfterTurn: () => {
+        llmCalls++;
+        return llmCalls >= MAX_LLM_CALLS;
+      },
+    },
+    () => {},
+  );
 
-    // LLM call with retry + timeout (Pi-Multi-Agent pattern)
-    // 60s:总结型问题携带 200 条消息生成最终回答,30s 会误杀(baseline q15)
-    const assistantMsg = await withRetry(
-      () => withTimeout(callLLM(config, messages), 60000),
-      { maxRetries: 2, initialDelay: 1000 }
-    );
+  // 流式失败(网络/鉴权/provider 报错)在消息上以 stopReason 表达而非抛出,
+  // 这里显式转成异常,让 askAgent 走 ok:false 分支而不是返回空答案。
+  const failed = messages.find(m => m.stopReason === 'error' || m.stopReason === 'aborted');
+  if (failed) throw new Error(failed.errorMessage || `LLM ${failed.stopReason}`);
 
-    if (!assistantMsg) throw new Error('Empty LLM response');
+  const answer = messages
+    .filter(m => m.role === 'assistant')
+    .flatMap(m => (Array.isArray(m.content) ? m.content : []))
+    .filter(c => c.type === 'text' && c.text.trim())
+    .map(c => c.text)
+    .pop();
 
-    state.recordStep({ type: 'llm_call', iteration: budget.used });
-    messages.push(assistantMsg);
-
-    // Termination: no tool_calls → final answer
-    if (!assistantMsg.tool_calls?.length) {
-      state.transition('completed');
-      return {
-        answer: assistantMsg.content || '未能生成回答',
-        toolCallLog,
-        ledger,
-        state: state.metrics,
-      };
-    }
-
-    // Execute tool calls
-    for (const tc of assistantMsg.tool_calls) {
-      const args = JSON.parse(tc.function.arguments || '{}');
-      const result = await executeTool(tc.function.name, args, allMessages, ledger, config, question, opts);
-
-      state.recordStep({ type: 'tool_call', tool: tc.function.name, args });
-      toolCallLog.push({ tool: tc.function.name, ...args, matchCount: result.matchCount, returned: result.returned, total: result.total });
-
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: JSON.stringify(result),
-      });
-    }
-
-    // Grace call: 预算刚耗尽时多给一轮让模型收尾（enableGrace 自身保证只发一次）
-    if (budget.remaining === 0) budget.enableGrace();
-  }
-
-  // Budget exhausted — return last assistant content
-  state.transition('completed');
-  const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
   return {
-    answer: lastAssistant?.content || '搜索已完成，但未能生成最终回答。',
+    answer: answer || '搜索已完成，但未能生成最终回答。',
     toolCallLog,
     ledger,
-    state: state.metrics,
+    state: {
+      status: 'completed',
+      totalSteps: llmCalls + toolCallLog.length,
+      toolCalls: toolCallLog.length,
+      llmCalls,
+      executionTime: Date.now() - startedAt,
+    },
   };
 }
 

@@ -257,10 +257,9 @@ Ask questions in the toolbar's Q&A box; natural-language time ("recently", "yest
 <details>
 <summary><b>Technical design</b></summary>
 
-Uses the Agentic Search pattern; the loop mechanics draw on:
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — IterationBudget + grace call
-- [Pi-Multi-Agent](https://github.com/jwangkun/Pi-Multi-Agent) — state machine + retry with backoff + timeout
-- LedgerAgent paper — structured state accumulation
+Uses the Agentic Search pattern. The tool loop comes from [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer (bigram BM25 + topic-chunk index + LLM rerank), the prompts, and the budget gate (≤7 LLM calls). Structured state accumulation follows the LedgerAgent paper.
+
+Note: the AI proxy must support SSE streaming responses.
 
 See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 
@@ -307,7 +306,7 @@ See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 | Required | Notes |
 | --- | --- |
 | 🖥 **macOS / Linux / WSL** | Archiver and viewer run cross-platform; scheduled-job installation is automatic on every platform (launchd / systemd / cron) |
-| 🟢 **Node.js 18+** | [brew install node](https://brew.sh) (macOS) / `apt install nodejs` (Linux) / [nodejs.org](https://nodejs.org) |
+| 🟢 **Node.js 20+** | [brew install node](https://brew.sh) (macOS) / `apt install nodejs` (Linux) / [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | The archiver drives it for login and scraping; path is auto-detected |
 | 📱 **Weibo account + mobile app** | First-time login to the web version requires scanning a QR code with the app |
 | 🦀 **Rust + Bun** | Desktop app only; `npm run desktop` installs them automatically |
