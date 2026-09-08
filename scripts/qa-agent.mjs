@@ -325,8 +325,66 @@ function dropNoise(msgs) {
 // ─── 检索流水线共用件 ──────────────────────────────────────────────────
 const HALF_LIFE_MS = 2 * 86400000;
 
+// 消息的可检索正文(不含发言人名)。除 content 外把媒体字段也纳入,因为
+// 「上周分享过什么链接」「谁发过图」这类问题的线索不在 content 里:
+//   - share.url / link / videoUrl 是 normalize-message 写入的独立字段
+//     (查看器的「链接/视频」筛选器就是靠它们),原先检索侧完全看不到,
+//     实测问「分享过什么链接」matchCount 为 0
+//   - 附上「链接」「图片」「视频」这些中文词,让模型用自然说法就能命中,
+//     不必猜域名。原先 [图片xN] 只在展示层 formatMessage 里加,检索层没有
+function msgBody(m) {
+    const parts = [m.content || '', m.share?.title || ''];
+    const url = m.share?.url || m.link || '';
+    if (url) parts.push(url, '链接');
+    if (m.videoUrl) parts.push(m.videoUrl, '视频');
+    if (m.pics?.length) parts.push('图片');
+    return parts.join(' ');
+}
+
+// BM25 文档文本:带发言人名。相关性打分里人名是有效信号(问"tk 说了什么"时
+// 正文可能不含"tk",人名在文档里能让 BM25 给该消息加分)。
+// count_messages 刻意不用它——计数若匹配人名,「搜张三」会把张三说的所有话
+// 都算进去,与独立的 person 参数职责重叠且让计数含义变模糊。
 function msgText(m) {
-    return (m.user || '') + ' ' + (m.content || '') + ' ' + (m.share?.title || '');
+    return (m.user || '') + ' ' + msgBody(m);
+}
+
+/**
+ * 折叠片段里连续重复的同一句话。
+ *
+ * 群聊里复读/转发极常见。实测 60 条语料检索后,snippets 22 行里只有 9 行是
+ * 不同内容(59% 重复);而 BM25 的 tf 饱和不足以压制它——纯复读块(0.463)会
+ * 排在真正有信息的块(0.250)之前,模型先读到的是同一句话的 N 个副本。
+ *
+ * 刻意只折叠「连续」重复而非全局去重:
+ * - 相隔很远的同一句话可能是不同语境下的独立发言,合并会丢时间线;
+ * - 保留首条与「(重复 N 次)」标记,而不是静默删掉——复读本身有信息量
+ *   (刷屏、附和的强度),模型该知道发生过,只是不必读 N 遍。
+ *
+ * 归一化按发言内容而非发言人:同一句话被不同人复读也算复读。
+ */
+function collapseRepeats(msgs) {
+    const out = [];
+    let run = null; // { msg, key, count }
+    const keyOf = (m) => (m.content || '').replace(/\s+/g, '').trim();
+    for (const m of msgs) {
+        const key = keyOf(m);
+        // 空内容(纯图片/分享消息)不参与折叠:它们的区别在媒体字段上
+        if (key && run && run.key === key) {
+            run.count++;
+            continue;
+        }
+        run = { msg: m, key, count: 1 };
+        out.push(run);
+    }
+    return out;
+}
+
+/** 把 collapseRepeats 的结果渲染成片段文本,复读处标注次数。 */
+function formatRun(runs) {
+    return runs
+        .map((r) => formatMessage(r.msg) + (r.count > 1 ? ` (连续重复 ${r.count} 次)` : ''))
+        .join('\n');
 }
 
 // 时间衰减加权:问"最近"时用户更关心新消息,纯相关性会让几天前的
@@ -508,7 +566,7 @@ async function searchByChunks({
         for (const wm of snippetMsgs) windowCitations.push(makeCitation(wm));
 
         const header = c.annotation ? `【话题标注】${c.annotation}\n` : '';
-        snippets.push(header + snippetMsgs.map(formatMessage).join('\n'));
+        snippets.push(header + formatRun(collapseRepeats(snippetMsgs)));
     }
     ledger.citations.push(...windowCitations);
     ledger.searchHistory.push({
@@ -583,7 +641,7 @@ async function searchFlat({
     }
     const snippets = merged
         .slice(0, 8)
-        .map(([s, e]) => msgs.slice(s, e).map(formatMessage).join('\n'));
+        .map(([s, e]) => formatRun(collapseRepeats(msgs.slice(s, e))));
 
     // 回给模型的 hitIds 只含真正的关键词命中点，供 get_context 精确下钻;
     // ledger.citations 则覆盖整个 snippet 窗口(供最终 sources 精选用)——
@@ -624,11 +682,13 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
         const picked = filterByPerson(msgs, person, opts?.groupDir);
         msgs = picked.msgs;
         const personNote = picked.personNote;
-        // 词面包含匹配(any-of):计数要可预测、可解释,不做相关性打分
+        // 词面包含匹配(any-of):计数要可预测、可解释,不做相关性打分。
+        // 用 msgText 保证与 search_messages 看到的是同一份文本(含链接/图片/视频
+        // 标记),否则「上周分享过什么链接」用 count 探测得 0、用 search 却有命中。
         const kws = keywords.map((k) => String(k).toLowerCase()).filter(Boolean);
         if (kws.length) {
             msgs = msgs.filter((m) => {
-                const text = ((m.content || '') + ' ' + (m.share?.title || '')).toLowerCase();
+                const text = msgBody(m).toLowerCase();
                 return kws.some((k) => text.includes(k));
             });
         }

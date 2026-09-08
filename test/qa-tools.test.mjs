@@ -578,3 +578,91 @@ test('count_messages 刻意不自动限定（它的用途是不限日期探测�
     assert.strictEqual(r.dateNote, undefined, 'count_messages 不该自动限定');
     assert.strictEqual(r.total, 8, '应统计全部 8 天，而非只统计上周');
 });
+
+// ─── 媒体字段进检索 + 复读折叠 ──────────────────────────────────────────
+function mkX(id, offsetMin, user, content, dateStr, extra = {}) {
+    return { ...mkMsg(id, offsetMin, user, content, dateStr), ...extra };
+}
+
+test('链接的三种形态都可检索（share.url / link / videoUrl）', async () => {
+    // 修复前：msgText 只拼 content + share.title，问「分享过什么链接」matchCount=0
+    const msgs = [
+        mkX(1001, 0, 'alice', '这个值得看', '2026-07-01', {
+            share: { title: '台积电三季报', url: 'https://a.com/tsmc' },
+        }),
+        mkX(1002, 2, 'bob', '收到', '2026-07-01'),
+        mkX(1003, 50, 'carol', '分享一下', '2026-07-01', { link: 'https://b.com/article' }),
+        mkX(1004, 52, 'dave', '谢谢', '2026-07-01'),
+        mkX(1005, 100, 'alice', '看视频', '2026-07-01', { videoUrl: 'https://v.com/1.mp4' }),
+        mkX(1006, 102, 'bob', '好', '2026-07-01'),
+    ];
+    const link = await executeTool('search_messages', { keywords: ['链接'] }, msgs, ledger());
+    assert.ok(link.matchCount > 0, '搜「链接」应命中 share.url 与 link 字段的消息');
+
+    const video = await executeTool('search_messages', { keywords: ['视频'] }, msgs, ledger());
+    assert.ok(video.matchCount > 0, '搜「视频」应命中 videoUrl 字段的消息');
+});
+
+test('图片消息可检索（原先 [图片xN] 只在展示层）', async () => {
+    const msgs = [
+        mkX(1101, 0, 'alice', '看图', '2026-07-01', { pics: ['a.jpg', 'b.jpg'] }),
+        mkX(1102, 2, 'bob', '好', '2026-07-01'),
+        mkX(1103, 50, 'carol', '别的事', '2026-07-01'),
+        mkX(1104, 52, 'dave', '嗯', '2026-07-01'),
+    ];
+    const r = await executeTool('search_messages', { keywords: ['图片'] }, msgs, ledger());
+    assert.ok(r.matchCount > 0, '搜「图片」应命中带 pics 的消息');
+});
+
+test('count_messages 与 search_messages 看同一份文本（含媒体字段）', async () => {
+    const msgs = [
+        mkX(1201, 0, 'alice', '看这个', '2026-07-01', {
+            share: { title: 'x', url: 'https://a.com/1' },
+        }),
+        mkX(1202, 2, 'bob', '纯文本', '2026-07-01'),
+    ];
+    const c = await executeTool('count_messages', { keywords: ['链接'] }, msgs, ledger());
+    assert.strictEqual(c.total, 1, 'count 也应看到链接标记，否则先探测后精搜口径不一致');
+});
+
+test('count_messages 的关键词不匹配发言人名（person 参数才做这件事）', async () => {
+    // msgText 含 user 供 BM25 打分用；count 走 msgBody，不含 user
+    const msgs = [
+        mkMsg(1301, 0, 'zhangsan', '今天天气不错', '2026-07-01'),
+        mkMsg(1302, 2, 'lisi', '是的', '2026-07-01'),
+    ];
+    const c = await executeTool('count_messages', { keywords: ['zhangsan'] }, msgs, ledger());
+    assert.strictEqual(c.total, 0, '搜人名不该通过关键词命中该人的所有发言');
+});
+
+test('连续复读被折叠并标注次数，非连续重复保留', async () => {
+    const msgs = [
+        mkMsg(1401, 0, 'a', '半导体还没跌到位', '2026-07-01'),
+        mkMsg(1402, 1, 'b', '半导体还没跌到位', '2026-07-01'), // 连续复读
+        mkMsg(1403, 2, 'c', '半导体还没跌到位', '2026-07-01'), // 连续复读
+        mkMsg(1404, 3, 'd', '我把芯片股清了一半 半导体估值没消化', '2026-07-01'),
+        mkMsg(1405, 4, 'a', '半导体还没跌到位', '2026-07-01'), // 非连续，应保留
+        mkMsg(1406, 60, 'x', '冲牙器推荐', '2026-07-01'),
+        mkMsg(1407, 62, 'y', '博皓不错', '2026-07-01'),
+    ];
+    const r = await executeTool('search_messages', { keywords: ['半导体'] }, msgs, ledger());
+    const text = r.snippets.join('\n');
+    assert.match(text, /连续重复 3 次/, '三连复读应折叠为一行并标注次数');
+    // 折叠后该句仍出现两次：折叠行 + 非连续的那条
+    const occurrences = (text.match(/半导体还没跌到位/g) || []).length;
+    assert.strictEqual(occurrences, 2, '非连续重复不该被合并（可能是不同语境的独立发言）');
+    assert.match(text, /芯片股/, '有信息的消息仍在');
+});
+
+test('空内容消息（纯图片/分享）不参与复读折叠', async () => {
+    // 它们的区别在媒体字段上，按 content 归一会把不同的分享合成一条
+    const msgs = [
+        mkX(1501, 0, 'a', '', '2026-07-01', { share: { title: 'A文', url: 'https://a.com' } }),
+        mkX(1502, 1, 'b', '', '2026-07-01', { share: { title: 'B文', url: 'https://b.com' } }),
+        mkMsg(1503, 50, 'c', '别的话题', '2026-07-01'),
+        mkMsg(1504, 52, 'd', '嗯', '2026-07-01'),
+    ];
+    const r = await executeTool('search_messages', { keywords: ['链接'] }, msgs, ledger());
+    const text = r.snippets.join('\n');
+    assert.doesNotMatch(text, /连续重复/, '空内容消息不该被折叠');
+});
