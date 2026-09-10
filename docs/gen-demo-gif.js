@@ -48,6 +48,16 @@ for (let i = 0; i < 60; i++) {
 }
 fs.writeFileSync(path.join(GROUP_DIR, `weibo_chat_${day}.json`), JSON.stringify(msgs));
 
+// 与 gen-screenshots 同款演示态：state 里有 groupId，发送输入框才不会
+// 降级成「先点同步」提示条；跑完即删，不碰任何真实状态
+const STATE_FILE = path.join(__dirname, '..', 'state', `last-archive-state_${GROUP}.json`);
+fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+fs.writeFileSync(STATE_FILE, JSON.stringify({ groupId: '999999', lastTimestamp: base }));
+const cleanup = () => {
+    try { fs.unlinkSync(STATE_FILE); } catch {}
+    fs.rmSync(TMP, { recursive: true, force: true });
+};
+
 const PORT = 3998;
 const srv = execFile('node', [path.join(__dirname, '..', 'scripts', 'viewer-server.js')], {
     env: { ...process.env, WEIBO_OUTPUT_DIR: TMP, WEIBO_PORT: String(PORT) },
@@ -66,6 +76,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         defaultViewport: { width: 1280, height: 800, deviceScaleFactor: 1 },
     });
     const page = await browser.newPage();
+    // 演示环境没有 cookie：拦截 /api/auth-status 压掉「登录已失效」横幅
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+        if (req.url().includes('/api/auth-status')) {
+            req.respond({
+                contentType: 'application/json',
+                body: JSON.stringify({ ok: true, code: 0, checkedAt: Date.now() }),
+            });
+        } else {
+            req.continue();
+        }
+    });
     await page.goto(`http://localhost:${PORT}`, { waitUntil: 'networkidle2', timeout: 30000 });
     await page.waitForSelector('.msg-item', { timeout: 15000 });
     await sleep(1200);
@@ -84,7 +106,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     }
     await hold(3);
     // 场景3：打开上下文面板
-    await page.evaluate(() => { document.querySelector('.msg-ctx-link')?.click(); });
+    // 入口在 ecbd97a 从常驻 .msg-ctx-link 改成 hover 的 .msg-ctx-btn，
+    // 只点旧 selector 会让这个场景静默跳过
+    await page.evaluate(() => {
+        document.querySelector('.msg-ctx-btn')?.click();
+    });
     await sleep(350);
     await hold(8);
     // 关闭上下文
@@ -112,8 +138,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         '-o', out, path.join(FRAMES, 'f*.png'),
     ], { stdio: 'inherit', shell: true });
 
-    fs.rmSync(TMP, { recursive: true, force: true });
+    cleanup();
     const kb = (fs.statSync(out).size / 1024).toFixed(0);
     console.log(`[gif] done: ${out} (${kb} KB)`);
     process.exit(0);
-})().catch(e => { console.error(e); srv.kill(); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(1); });
+})().catch(e => { console.error(e); srv.kill(); cleanup(); process.exit(1); });

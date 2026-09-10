@@ -63,6 +63,17 @@ for (let i = 0; i < 48; i++) {
 fs.writeFileSync(path.join(GROUP_DIR, `weibo_chat_${day}.json`), JSON.stringify(msgs, null, 2));
 console.log('[demo] wrote', msgs.length, 'fake messages to', GROUP_DIR);
 
+// 演示环境需要"看起来已归档过"的状态文件：resolveLiveGroups 要求 state 里有
+// groupId，否则发送输入框会降级成「先点同步」提示条（README 截图不该有它）。
+// state 目录固定在仓库根，文件名含演示群名，跑完即删，不碰任何真实状态。
+const STATE_FILE = path.join(__dirname, '..', 'state', `last-archive-state_${GROUP}.json`);
+fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+fs.writeFileSync(STATE_FILE, JSON.stringify({ groupId: '999999', lastTimestamp: base }));
+const cleanup = () => {
+    try { fs.unlinkSync(STATE_FILE); } catch {}
+    fs.rmSync(TMP, { recursive: true, force: true });
+};
+
 // 启动一个临时服务器实例（独立端口 + 指向假数据目录）
 const PORT = 3999;
 const srv = execFile('node', [path.join(__dirname, '..', 'scripts', 'viewer-server.js')], {
@@ -82,6 +93,19 @@ srv.stderr.on('data', d => process.stderr.write('[srv:err] ' + d));
         defaultViewport: { width: 1440, height: 960, deviceScaleFactor: 2 },
     });
     const page = await browser.newPage();
+    // 演示环境没有 cookie，/api/auth-status 会回 ok:false → 顶部出红色
+    // 「登录已失效」横幅。只在截图进程内拦截该请求回 ok:true，不动产品代码。
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+        if (req.url().includes('/api/auth-status')) {
+            req.respond({
+                contentType: 'application/json',
+                body: JSON.stringify({ ok: true, code: 0, checkedAt: Date.now() }),
+            });
+        } else {
+            req.continue();
+        }
+    });
     const url = `http://localhost:${PORT}`;
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     await page.waitForSelector('.msg-item', { timeout: 15000 });
@@ -110,7 +134,7 @@ srv.stderr.on('data', d => process.stderr.write('[srv:err] ' + d));
 
     await browser.close();
     srv.kill();
-    fs.rmSync(TMP, { recursive: true, force: true });
+    cleanup();
     console.log('[demo] cleaned up', TMP);
     process.exit(0);
-})().catch(e => { console.error(e); srv.kill(); fs.rmSync(TMP, { recursive: true, force: true }); process.exit(1); });
+})().catch(e => { console.error(e); srv.kill(); cleanup(); process.exit(1); });
