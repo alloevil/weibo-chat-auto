@@ -378,36 +378,30 @@ button, select, input { font-family: inherit; }
 @keyframes msgFlash { 0% { background: var(--primary-tint-strong); } 100% { background: transparent; } }
 .msg-flash { animation: msgFlash 1.6s ease-out; }
 
-/* Message list */
-.messages { flex: 1; overflow-y: auto; }
-/* 行内头部:名字/时间与气泡排在同一行(grid 两列),而不是各占一行。
-   原先 msg-header 独占一行 + margin-bottom:4px,一条「有道理」要 88px;
-   群聊里过半消息都是三五个字,那行头部就是纯浪费。同排后降到 44px,
-   1440x900 一屏可见消息从 9 条升到 19 条。
-
-   只作用于非 continuation 行:continuation 已经隐藏了 header,
-   给它套 grid 会把隐藏列也算进轨道尺寸(实测行高炸到 543px)。
-
-   列定宽 200px 而非 auto:名字长短不一会让气泡左边缘参差(实测同屏出现
-   547/548/576/599 四种起点),扫视时眼睛要来回找。200px 容得下实测最宽的
-   昵称(111px)+时间(46px)+间隙;更长的昵称走省略号。
-
-   align-items 用 start 而非 baseline:baseline 把头部对齐到气泡「最后一行」的
-   基线,多行长消息里名字被推到 55px 处、头像还在 3px,看着像错行。 */
-.msg-item { padding: 10px 16px 10px 48px; border-bottom: 1px solid var(--hairline); border-left: 3px solid var(--user-accent, transparent); transition: background .1s; position: relative; }
-.msg-item:not(.msg-item-continuation) { padding-top: 3px; padding-bottom: 3px; display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: start; column-gap: 10px; }
-.msg-item:not(.msg-item-continuation) .msg-header { margin-bottom: 0; }
+/* Message list —— 主流 IM 群聊式布局（微信/QQ/Discord/Telegram）：
+   头像列在左，右侧上行是「名字+时间」小字、下行是气泡。
+   此前的 200px 横排头部（名字列与气泡并排）不是任何主流 IM 的做法，
+   视线横向来回跳、留白怪异——这是本次重排的根因。
+   消息列在剩余空间内居中（上限 920px），气泡行宽收敛到 640px。 */
+.messages {
+    flex: 1;
+    overflow-y: auto;
+    padding-left: max(16px, calc((100% - 920px) / 2));
+    padding-right: max(16px, calc((100% - 920px) / 2));
+}
+.msg-item { padding: 2px 16px 2px 56px; position: relative; transition: background .1s; }
+.msg-item:not(.msg-item-continuation) { padding-top: 8px; padding-bottom: 8px; }
+.msg-item-continuation { padding-top: 1px; padding-bottom: 1px; }
 .msg-item:hover { background: var(--surface-1); }
-/* continuation 行的气泡要和普通行对齐:普通行的气泡被 200px 头部列推到
-   左边距 48+200,而 continuation 没有那一列,气泡会跳回 51px —— 同一个人
-   连续两条消息左边缘差 210px,看着像换了层级。用 padding-left 补上。 */
-.msg-item-continuation { padding-top: 1px; padding-bottom: 1px; padding-left: 258px; border-bottom-color: transparent; }
+.msg-item:not(.msg-item-continuation) .msg-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; overflow: hidden; }
 .msg-item-continuation .msg-header { display: none; }
+/* 大间隙时间胶囊（微信式）：断开 30 分钟以上时居中插一行 HH:MM，
+   兼顾时间方位感——流内原只有凌晨/上午/下午/晚上四个粗粒度锚点 */
+.gap-time { text-align: center; font-size: 11px; color: var(--ink-subtle); margin: 10px 0 2px; font-variant-numeric: tabular-nums; }
 /* ── 紧凑模式（日志式单行，默认关，导航「⚡ 紧凑」切换）──────────────────
-   气泡+头像优化的是"在场感"；扫读历史时它是拖累：发言人一换就占 200px
-   头部列，短消息一行 44px 里一半给了装饰。参考 Slack「Compact」与 IRC
-   客户端：时间沟槽 + 着色昵称 + 纯文本行，行高压到 ~22px。
-   与气泡视图共用同一 DOM，纯 CSS 重排，数据层零改动。 */
+   主流气泡布局优化的是"在场感"；扫读长历史时它是拖累。参考
+   Slack「Compact」与 IRC 客户端：时间沟槽 + 着色昵称 + 纯文本行，
+   行高压到 ~22px。与气泡视图共用同一 DOM，纯 CSS 重排，数据层零改动。 */
 html.compact .msg-item,
 html.compact .msg-item:not(.msg-item-continuation) {
     display: flex;
@@ -448,42 +442,21 @@ html.compact .share-card,
 html.compact .msg-video,
 html.compact .msg-link-attach,
 html.compact .msg-file { margin-top: 4px; }
-/* ── 滚动时间吸附 pill ────────────────────────────────────────────────
-   流内没有日期/小时分隔符，滚深了会丢失时间方位。悬浮在消息区顶部
-   中央，实时显示视口首条消息的日期与时段；列表不满一屏时不打扰。 */
-.scroll-pill {
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 3px 12px;
-    border: 1px solid var(--hairline-strong);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-2) 92%, transparent);
-    color: var(--ink-subtle);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity .15s;
-    z-index: 5;
-    backdrop-filter: blur(4px);
-}
-.scroll-pill.on { opacity: 1; }
 .cont-avatar { position: absolute; left: 12px; top: 2px; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; overflow: hidden; }
-.msg-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; position: absolute; left: 12px; top: 3px; }
+.msg-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; overflow: hidden; }
+/* 头像 36px 与「名字+时间」行等高对齐（Discord/微信的常规尺寸） */
+.msg-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; position: absolute; left: 12px; top: 8px; }
 .msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.msg-user { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 名字着色（Discord 式）：用户色只落在名字上，气泡保持中性 */
+.msg-user { font-size: 13px; font-weight: 600; color: var(--user-accent, var(--ink)); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 时间紧跟徽章,不用 margin-left:auto 顶到列右端 —— 那样会把名字挤到剩几个字
    (实测「tombkeeper」被截成「tomb...」)。名字拿走剩余空间,时间与徽章保持自然宽度。 */
 .msg-time { font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .msg-body { min-width: 0; }
-/* 气泡宽度随视口伸缩：硬顶 480px 在 1920 宽屏上会让消息区右侧空掉一千多像素，
-   但也不能放到全宽 —— 上千像素的一行中文没法读。46vw 在 1920 下约 880px，
-   在 1280 下退回 480px 下限；min(100%) 保证上下文面板展开时自动收窄。 */
-.msg-content { display: inline-block; max-width: min(100%, max(480px, 46vw)); padding: 4px 10px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--user-accent, var(--hairline-strong)) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.03); font-size: 15px; line-height: 1.5; color: var(--ink); word-break: break-word; overflow-wrap: anywhere; transition: border-color .12s, background .12s; }
-.msg-item:hover .msg-content { background: var(--surface-2); border-color: var(--hairline-strong); }
+/* 主流 IM 气泡：中性底、无描边无彩条（用户色已落在名字上），行宽上限
+   640px —— 上千像素一行中文没法读；min(100%) 保证上下文面板展开时收窄。 */
+.msg-content { display: inline-block; max-width: min(100%, 640px); padding: 5px 12px; border: none; border-radius: 12px; background: var(--surface-2); font-size: 15px; line-height: 1.5; color: var(--ink); word-break: break-word; overflow-wrap: anywhere; transition: background .12s; }
+.msg-item:hover .msg-content { background: var(--surface-3); }
 .msg-content img { max-width: min(100%, max(300px, 22vw)); max-height: min(60vh, max(200px, 18vw)); border-radius: 12px; margin-top: 8px; vertical-align: middle; }
 .msg-link { color: var(--primary-hover); text-decoration: none; word-break: break-all; }
 .msg-link:hover { text-decoration: underline; }
@@ -527,9 +500,10 @@ html.compact .msg-file { margin-top: 4px; }
 .forward-reply { margin-top: 2px; }
 
 @media (max-width: 760px) {
-    .msg-item { padding-left: 40px; }
-    .msg-avatar { width: 24px; height: 24px; font-size: 10px; }
+    .msg-item { padding-left: 44px; padding-right: 8px; }
+    .msg-avatar { width: 28px; height: 28px; font-size: 11px; left: 8px; top: 6px; }
     .msg-header { gap: 4px; }
+    .messages { padding-left: 0; padding-right: 0; }
 }
 
 /* Empty state */
@@ -1020,7 +994,6 @@ try { if (localStorage.getItem('viewer-compact') === '1') document.documentEleme
             <div class="qa-answer show" id="qaAnswer"></div>
         </div>
         <div class="messages" id="messages"></div>
-        <div class="scroll-pill" id="scrollPill"></div>
         <div class="stats-panel" id="statsPanel"></div>
         <div class="composer-hint" id="composerHint"></div>
         <div class="emoji-picker" id="emojiPicker"></div>
@@ -1102,7 +1075,6 @@ let availableGroups = [];
 let userColorMap = {};
 let calendarOpen = false;
 let statsView = false;
-let pillNodes = []; // 滚动 pill 二分查找用的消息节点缓存（renderMessages 时刷新）
 let lastVisitTimestamp = parseInt(localStorage.getItem('lastVisitTimestamp') || '0');
 
 const AVATARS = 10;
@@ -2493,6 +2465,10 @@ function renderMessages(msgs) {
 
         const sameUser = !brokeFlow && prev && prev.user === m.user && currentTime - prevTime <= 5 * 60 * 1000;
         const time = m.time.split(' ')[1] || '';
+        // 大间隙时间胶囊（微信式）：断开 30 分钟以上给一个 HH:MM 锚点
+        if (prev && currentTime - prevTime > 30 * 60 * 1000) {
+            pieces.push(`<div class="gap-time">${time.slice(0, 5)}</div>`);
+        }
         const accent = getUserAccent(m.user);
         const continuation = sameUser ? ' msg-item-continuation' : '';
         let content = processForward(m.content);
@@ -2577,10 +2553,6 @@ function renderMessages(msgs) {
         </div>`);
     });
     el.innerHTML = pieces.join('');
-    // 滚动 pill 用的节点缓存：滚动回调里二分查 offsetTop，
-    // 每次 scroll 都 querySelectorAll 会白费一遍 DOM 查询
-    pillNodes = el.querySelectorAll('.msg-item');
-    updateScrollPill();
 }
 
 
@@ -2686,7 +2658,6 @@ function toggleStats() {
         statsEl.classList.remove('show');
     }
     updateComposer();   // 统计视图下隐藏输入框
-    updateScrollPill(); // 消息区被整体替换/恢复,pill 须随之显隐
 }
 
 // 导出下拉：链接指向 /api/export（当前群 + 当天），打开时现算 href
@@ -2767,7 +2738,6 @@ function toggleCompact() {
             ? localStorage.setItem('viewer-compact', '1')
             : localStorage.removeItem('viewer-compact');
     } catch { /* 隐私模式 */ }
-    updateScrollPill(); // 行高剧变,重算吸附位置
 }
 function restoreCompactState() {
     if (document.documentElement.classList.contains('compact')) {
@@ -2775,46 +2745,6 @@ function restoreCompactState() {
     }
 }
 restoreCompactState();
-
-// ── 滚动时间吸附 pill ──────────────────────────────────────────────────
-// 流内没有日期/小时分隔符,滚深了只能靠拖日历定位。pill 悬浮在消息区
-// 顶部中央,显示视口首条消息的日期与时段;列表不满一屏时不打扰。
-const messagesEl = document.getElementById('messages');
-const scrollPillEl = document.getElementById('scrollPill');
-let pillRaf = 0;
-function updateScrollPill() {
-    pillRaf = 0;
-    if (
-        statsView ||
-        pillNodes.length === 0 ||
-        messagesEl.scrollHeight <= messagesEl.clientHeight + 4
-    ) {
-        scrollPillEl.classList.remove('on');
-        return;
-    }
-    // 二分:节点按文档序排列,offsetTop 单调递增
-    const y = messagesEl.scrollTop + 8;
-    let lo = 0;
-    let hi = pillNodes.length - 1;
-    let pick = 0;
-    while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (pillNodes[mid].offsetTop <= y) {
-            pick = mid;
-            lo = mid + 1;
-        } else hi = mid - 1;
-    }
-    const hour = pillNodes[pick].dataset.hour;
-    scrollPillEl.textContent = `${selectedDate} · ${String(hour).padStart(2, '0')}时`;
-    scrollPillEl.classList.add('on');
-}
-messagesEl.addEventListener(
-    'scroll',
-    () => {
-        if (!pillRaf) pillRaf = requestAnimationFrame(updateScrollPill);
-    },
-    { passive: true }
-);
 
 restoreToolsState();
 
