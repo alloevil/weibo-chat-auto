@@ -251,7 +251,7 @@ button, select, input { font-family: inherit; }
 .user-clear button:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
 
 /* Content area */
-.content { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--hairline); }
+.content { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--hairline); position: relative; }
 
 /* 上下文聚焦面板（右侧滑入第三栏）*/
 .context-panel { width: 0; flex-shrink: 0; display: flex; flex-direction: column; background: var(--canvas); border-left: 1px solid var(--hairline); overflow: hidden; transition: width .2s ease; }
@@ -403,6 +403,73 @@ button, select, input { font-family: inherit; }
    连续两条消息左边缘差 210px,看着像换了层级。用 padding-left 补上。 */
 .msg-item-continuation { padding-top: 1px; padding-bottom: 1px; padding-left: 258px; border-bottom-color: transparent; }
 .msg-item-continuation .msg-header { display: none; }
+/* ── 紧凑模式（日志式单行，默认关，导航「⚡ 紧凑」切换）──────────────────
+   气泡+头像优化的是"在场感"；扫读历史时它是拖累：发言人一换就占 200px
+   头部列，短消息一行 44px 里一半给了装饰。参考 Slack「Compact」与 IRC
+   客户端：时间沟槽 + 着色昵称 + 纯文本行，行高压到 ~22px。
+   与气泡视图共用同一 DOM，纯 CSS 重排，数据层零改动。 */
+html.compact .msg-item,
+html.compact .msg-item:not(.msg-item-continuation) {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 1px 16px 1px 12px;
+    border-bottom: none;
+    border-left: none;
+    min-height: 22px;
+}
+html.compact .msg-header,
+html.compact .msg-item-continuation .msg-header {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-shrink: 0;
+    margin: 0;
+}
+html.compact .msg-avatar,
+html.compact .cont-avatar { display: none; }
+/* 时间是扫读的第一锚点，放最左成列；名字限宽防止挤掉正文 */
+html.compact .msg-time { order: -1; width: 42px; flex-shrink: 0; font-size: 11px; }
+html.compact .msg-user { max-width: 140px; font-size: 13px; }
+html.compact .msg-body { flex: 1; min-width: 0; }
+html.compact .msg-content {
+    display: inline;
+    border: none;
+    background: none;
+    box-shadow: none;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: none;
+}
+/* 附件（图片/分享卡/文件）仍是块级，挂在文本行下方 */
+html.compact .msg-pics,
+html.compact .share-card,
+html.compact .msg-video,
+html.compact .msg-link-attach,
+html.compact .msg-file { margin-top: 4px; }
+/* ── 滚动时间吸附 pill ────────────────────────────────────────────────
+   流内没有日期/小时分隔符，滚深了会丢失时间方位。悬浮在消息区顶部
+   中央，实时显示视口首条消息的日期与时段；列表不满一屏时不打扰。 */
+.scroll-pill {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 3px 12px;
+    border: 1px solid var(--hairline-strong);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+    color: var(--ink-subtle);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+}
+.scroll-pill.on { opacity: 1; }
 .cont-avatar { position: absolute; left: 12px; top: 2px; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; overflow: hidden; }
 .msg-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--user-accent, var(--ink-tertiary)); color: #fff; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; position: absolute; left: 12px; top: 3px; }
@@ -738,8 +805,9 @@ html[data-theme="qq2012"] * { scrollbar-width: thin; scrollbar-color: #c5dcee #f
 html[data-theme="qq2012"] ::selection { background: #1e9fe4; color: #fff; }
 </style>
 <script>
-// 皮肤须在首帧前生效，避免闪一下深色（切换逻辑在页尾 applyTheme）
+// 皮肤与紧凑模式须在首帧前生效，避免闪一下默认态（切换逻辑在页尾）
 try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* 隐私模式无 localStorage */ }
+try { if (localStorage.getItem('viewer-compact') === '1') document.documentElement.classList.add('compact'); } catch { /* 隐私模式 */ }
 </script>
 </head>
 <body>
@@ -782,6 +850,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             </div>
         </div>
         <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠/展开成员栏">👥 成员</button>
+        <button class="tools-toggle" id="compactToggle" onclick="toggleCompact()" title="紧凑排版：日志式单行，适合扫读历史">⚡ 紧凑</button>
         <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
         <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none">@我</button>
         <div class="nav-stats" id="stats"></div>
@@ -951,6 +1020,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             <div class="qa-answer show" id="qaAnswer"></div>
         </div>
         <div class="messages" id="messages"></div>
+        <div class="scroll-pill" id="scrollPill"></div>
         <div class="stats-panel" id="statsPanel"></div>
         <div class="composer-hint" id="composerHint"></div>
         <div class="emoji-picker" id="emojiPicker"></div>
@@ -1032,6 +1102,7 @@ let availableGroups = [];
 let userColorMap = {};
 let calendarOpen = false;
 let statsView = false;
+let pillNodes = []; // 滚动 pill 二分查找用的消息节点缓存（renderMessages 时刷新）
 let lastVisitTimestamp = parseInt(localStorage.getItem('lastVisitTimestamp') || '0');
 
 const AVATARS = 10;
@@ -2506,6 +2577,10 @@ function renderMessages(msgs) {
         </div>`);
     });
     el.innerHTML = pieces.join('');
+    // 滚动 pill 用的节点缓存：滚动回调里二分查 offsetTop，
+    // 每次 scroll 都 querySelectorAll 会白费一遍 DOM 查询
+    pillNodes = el.querySelectorAll('.msg-item');
+    updateScrollPill();
 }
 
 
@@ -2611,6 +2686,7 @@ function toggleStats() {
         statsEl.classList.remove('show');
     }
     updateComposer();   // 统计视图下隐藏输入框
+    updateScrollPill(); // 消息区被整体替换/恢复,pill 须随之显隐
 }
 
 // 导出下拉：链接指向 /api/export（当前群 + 当天），打开时现算 href
@@ -2680,6 +2756,66 @@ restoreSidebarState();
 function updateSidebarIndicator(hasUserFilter) {
     document.getElementById('sidebarToggle').classList.toggle('filtered', !!hasUserFilter);
 }
+
+// ── 紧凑模式（日志式排版；样式见 <style> 的 html.compact 段）───────────
+function toggleCompact() {
+    const on = !document.documentElement.classList.contains('compact');
+    document.documentElement.classList.toggle('compact', on);
+    document.getElementById('compactToggle').classList.toggle('open', on);
+    try {
+        on
+            ? localStorage.setItem('viewer-compact', '1')
+            : localStorage.removeItem('viewer-compact');
+    } catch { /* 隐私模式 */ }
+    updateScrollPill(); // 行高剧变,重算吸附位置
+}
+function restoreCompactState() {
+    if (document.documentElement.classList.contains('compact')) {
+        document.getElementById('compactToggle').classList.add('open');
+    }
+}
+restoreCompactState();
+
+// ── 滚动时间吸附 pill ──────────────────────────────────────────────────
+// 流内没有日期/小时分隔符,滚深了只能靠拖日历定位。pill 悬浮在消息区
+// 顶部中央,显示视口首条消息的日期与时段;列表不满一屏时不打扰。
+const messagesEl = document.getElementById('messages');
+const scrollPillEl = document.getElementById('scrollPill');
+let pillRaf = 0;
+function updateScrollPill() {
+    pillRaf = 0;
+    if (
+        statsView ||
+        pillNodes.length === 0 ||
+        messagesEl.scrollHeight <= messagesEl.clientHeight + 4
+    ) {
+        scrollPillEl.classList.remove('on');
+        return;
+    }
+    // 二分:节点按文档序排列,offsetTop 单调递增
+    const y = messagesEl.scrollTop + 8;
+    let lo = 0;
+    let hi = pillNodes.length - 1;
+    let pick = 0;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (pillNodes[mid].offsetTop <= y) {
+            pick = mid;
+            lo = mid + 1;
+        } else hi = mid - 1;
+    }
+    const hour = pillNodes[pick].dataset.hour;
+    scrollPillEl.textContent = `${selectedDate} · ${String(hour).padStart(2, '0')}时`;
+    scrollPillEl.classList.add('on');
+}
+messagesEl.addEventListener(
+    'scroll',
+    () => {
+        if (!pillRaf) pillRaf = requestAnimationFrame(updateScrollPill);
+    },
+    { passive: true }
+);
+
 restoreToolsState();
 
 function renderStats() {

@@ -89,7 +89,17 @@ function buildSandbox() {
             createElement() {
                 return makeEl();
             },
-            documentElement: { dataset: {} },
+            documentElement: {
+                dataset: {},
+                classList: {
+                    add() {},
+                    remove() {},
+                    toggle() {},
+                    contains() {
+                        return false;
+                    },
+                },
+            },
             body: makeEl(),
             title: '',
         },
