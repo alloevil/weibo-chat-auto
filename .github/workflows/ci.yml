@@ -93,6 +93,13 @@ jobs:
               with:
                   workspaces: src-tauri
 
+            # tauri 的 build.rs 会校验 externalBin 资源路径存在；cargo check
+            # 只查路径不读内容，占位空文件即可（真正的编译验证在 sidecar-check）
+            - name: Placeholder sidecar binary for cargo check
+              run: |
+                  mkdir -p src-tauri/binaries
+                  touch "src-tauri/binaries/viewer-server-$(rustc --print host-tuple)"
+
             - name: cargo check
               run: cargo check --manifest-path src-tauri/Cargo.toml --locked
 
@@ -104,6 +111,16 @@ jobs:
             - uses: actions/checkout@v7
 
             - uses: oven-sh/setup-bun@v2
+
+            # bun build 要解析 node_modules（pi-agent-core 等运行时依赖）
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci --no-audit --no-fund
 
             # sidecar/build.mjs 用 `rustc --print host-tuple` 推目标三元组
             - name: Setup Rust
