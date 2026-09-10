@@ -46,7 +46,7 @@ Automatically archive message history from Weibo web group chats — as a **nati
 | 🖥 Native desktop app (in-app QR-code login) | 💬 **Send messages to the group**: text / emoticons / images |
 | 🍪 Automatic cookie persistence + session keep-alive | 🎨 Switchable themes: Linear dark / QQ 2000 / 2008 / 2012 |
 | 📡 Full history via paginated API fetch | 🔀 Group switching + 📅 calendar picker |
-| ➕ Incremental archiving (resumable) | 🔍 In-place highlight for the day + search across all dates |
+| ➕ Incremental archiving (resumable; interrupted paginations persist a resume cursor and exit non-zero instead of silently "succeeding") | 🔍 In-place highlight for the day + search across all dates |
 | 📆 Per-day JSON export | 📊 Statistics panel (daily activity / rankings / hours / word frequency) |
 | ⏰ Scheduled jobs + manual Sync Now | 🧹 Red-packet / noise message filtering |
 | | 🎯 Context-focus panel (trace a message's full story) |
@@ -263,7 +263,7 @@ Indexing is **automatic**: after each archive run, a background pass annotates t
 <details>
 <summary><b>Technical design</b></summary>
 
-Uses the Agentic Search pattern. The tool loop comes from [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 LLM calls). Structured state accumulation follows the LedgerAgent paper.
+Uses the Agentic Search pattern. The tool loop comes from [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 retrieval turns + one no-tools summarization turn when the budget runs out mid-tool-call; LLM rerank capped at 4 calls; 150s wall-clock ceiling over the whole request). Structured state accumulation follows the LedgerAgent paper.
 
 Retrieval layer: topic-chunk splitting (30-minute gaps) → bigram BM25 → time decay (2-day half-life) → LLM rerank → in-chunk hit location. Plus three preprocessing passes: noise removal, speaker-alias resolution, and relative-date resolution ("last week" is computed into a concrete range by the tools rather than inferred by the LLM). An optional offline annotation layer also generates a summary and 2–4 reworded aliases per chunk, so a question phrased "who trimmed positions" can hit a chunk that says "sold half my chip stocks".
 

@@ -6,16 +6,26 @@ on:
     pull_request:
         branches: [main]
 
+# 同一分支新 push 作废旧 run，省 runner 也缩短反馈
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
 jobs:
     check:
         runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                # package.json engines 是 >=20，两个版本都要验（只测 22 时
+                # Node 20 专属的兼容问题要到用户机器上才暴露）
+                node: [20, 22]
         steps:
             - uses: actions/checkout@v7
 
             - name: Setup Node.js
               uses: actions/setup-node@v7
               with:
-                  node-version: 22
+                  node-version: ${{ matrix.node }}
                   cache: npm
 
             - name: Install dependencies
@@ -23,7 +33,7 @@ jobs:
 
             - name: Syntax-check all JS files
               run: |
-                  for f in *.js lib/*.js scripts/*.js test/*.js; do
+                  for f in *.js lib/*.js scripts/*.js scripts/*.mjs sidecar/*.mjs test/*.js test/*.mjs; do
                     [ -e "$f" ] || continue
                     echo "checking $f"
                     node --check "$f"
@@ -45,6 +55,9 @@ jobs:
             - name: Lint
               run: npm run lint
 
+            - name: Check formatting
+              run: npm run format:check
+
             - name: Unit tests
               run: npm test
 
@@ -53,5 +66,48 @@ jobs:
                   node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json OK')"
                   node -e "JSON.parse(require('fs').readFileSync('config.example.json','utf8')); console.log('config.example.json OK')"
 
-            - name: Shellcheck setup.sh
-              run: shellcheck -S warning scripts/setup.sh || true
+            # 本地（shellcheck 0.10.0）四个脚本在 -S warning 全绿；不加 || true，
+            # 检出的新 warning 直接拦 PR（此前只有 setup.sh 被检查且永不失败）
+            - name: Shellcheck shell scripts
+              run: shellcheck -S warning scripts/setup.sh scripts/schedule.sh scripts/run-desktop.sh scripts/start-chrome.sh
+
+    # Rust 侧此前完全没有 CI：PR 弄坏 src-tauri/src/lib.rs 或 Cargo.toml
+    # 只会在下一次 release 构建时才炸。cargo check 不需要 sidecar 二进制。
+    tauri-check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - name: Install Tauri system dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y build-essential pkg-config libssl-dev \
+                    libdbus-1-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+                    libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Rust cache
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: src-tauri
+
+            - name: cargo check
+              run: cargo check --manifest-path src-tauri/Cargo.toml --locked
+
+    # sidecar 编译（bun build --compile）此前只在 tauri build 时才被走到，
+    # bun/node API 漂移要到 release 才暴露
+    sidecar-check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+
+            # sidecar/build.mjs 用 `rustc --print host-tuple` 推目标三元组
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Build sidecar binary
+              run: node sidecar/build.mjs

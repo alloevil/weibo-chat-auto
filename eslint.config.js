@@ -46,7 +46,11 @@ module.exports = [
             },
         },
         rules: {
-            'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+            // ignoreRestSiblings：允许 `const { _omit, ...rest } = m` 的"解构省略"写法
+            'no-unused-vars': [
+                'warn',
+                { argsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true },
+            ],
             'no-undef': 'error',
             'no-empty': ['error', { allowEmptyCatch: true }],
             // 表情匹配正则有意包含 surrogate pair / 组合字符，关闭该规则
@@ -75,7 +79,10 @@ module.exports = [
             },
         },
         rules: {
-            'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+            'no-unused-vars': [
+                'warn',
+                { argsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true },
+            ],
             'no-undef': 'error',
             'no-empty': ['error', { allowEmptyCatch: true }],
             'no-misleading-character-class': 'off',

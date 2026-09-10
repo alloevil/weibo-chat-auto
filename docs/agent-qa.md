@@ -32,7 +32,8 @@ Q&A 功能采用 **Agentic Search** 模式：LLM 在迭代循环中自主决定�
 
 | 职责 | 归属 | 说明 |
 |------|------|------|
-| 预算闸门 | 本仓 | `shouldStopAfterTurn` 计数，`MAX_LLM_CALLS = 7`（6 轮检索 + 1 轮收尾）。这是唯一的成本上限 |
+| 预算闸门 | 本仓 | `shouldStopAfterTurn` 计数，`MAX_LLM_CALLS = 7`（检索迭代）。预算耗尽且末轮停在工具调用上时，追加一次**无工具**收尾调用（+1，有界），强制把已检索记录总结成回答 |
+| 成本上限 | 本仓 | 主循环 ≤8 次 LLM 调用 + LLM 精排 `MAX_RERANK_CALLS = 4`（超额自动降级为 BM25 序）+ 墙钟上限 `QA_GLOBAL_TIMEOUT_MS = 150s`（`AbortSignal` 贯穿整个 runAgentLoop，超时转 `stopReason: 'aborted'`）|
 | 重试 | pi-ai provider | OpenAI SDK 的 `maxRetries: 2`，只对 429/5xx/网络错误重试并遵循 `Retry-After`（旧实现按 `error.message` 文本匹配状态码，不可靠） |
 | 超时 | pi-ai provider | `timeoutMs: 60000` 传给 SDK client；总结型问题携带 200 条消息生成回答，30s 会误杀 |
 | 工具分发 | pi-agent-core | 含 JSON Schema 参数校验：参数不合法时把校验错误作为 toolResult 回灌给模型，模型可自行纠正 |

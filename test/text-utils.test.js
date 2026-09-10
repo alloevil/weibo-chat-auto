@@ -13,6 +13,22 @@ test('escapeAttr 额外转义单引号', () => {
     assert.strictEqual(t.escapeAttr("it's <b>"), 'it&#39;s &lt;b&gt;');
 });
 
+test('safeAttrUrl scheme 白名单 + 属性转义（XSS 回归）', () => {
+    // http(s) 与站内相对路径放行，& 等属性字符被转义
+    assert.strictEqual(
+        t.safeAttrUrl('https://wx1.sinaimg.cn/a.jpg'),
+        'https://wx1.sinaimg.cn/a.jpg'
+    );
+    assert.strictEqual(t.safeAttrUrl('/api/image?fid=1'), '/api/image?fid=1');
+    assert.strictEqual(t.safeAttrUrl('https://x.com/a?b=1&c=2'), 'https://x.com/a?b=1&amp;c=2');
+    // javascript:/data: 与属性逃逸一律不许进 src/href
+    assert.strictEqual(t.safeAttrUrl('javascript:alert(1)'), '');
+    assert.strictEqual(t.safeAttrUrl('data:text/html,<script>'), '');
+    assert.strictEqual(t.safeAttrUrl(' " onmouseover="alert(1)'), '');
+    assert.strictEqual(t.safeAttrUrl(''), '');
+    assert.strictEqual(t.safeAttrUrl(null), '');
+});
+
 test('processEmoji 已知表情转 Unicode，未知保留为标签', () => {
     assert.strictEqual(t.processEmoji('[doge]'), '<span class="emoji">🐶</span>');
     assert.strictEqual(

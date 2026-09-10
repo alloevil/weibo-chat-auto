@@ -154,6 +154,9 @@ async function main() {
     // 被跳过的群 —— 归档器必须以非 0 退出码收场，否则 launchd/cron 看不出
     // 它已经连着好几天什么都没抓到（历史上就这么静默失效过 3 天）。
     const skippedGroups = [];
+    // 分页残缺（消息有、但没走到截止时间）的群：已存续传游标、下轮自动续传，
+    // 但本轮归档是不完整的，同样必须让调度器看得见（不能 exit 0 装成功）。
+    const partialGroups = [];
     try {
         // 确保任何异常都能关闭浏览器，防止僵尸 Chrome 进程
         page = await browser.newPage();
@@ -164,12 +167,17 @@ async function main() {
         });
         page.on('pageerror', (err) => console.log('[页面错误]', err.message));
 
-        // Puppeteer 网络层消息捕获
-        let networkMessages = [];
+        // Puppeteer 网络层消息捕获。
+        // sink 必须在 response 事件触发时同步快照：处理函数 await 之后共享变量
+        // 可能已被下一个群（或重试轮）改写，A 组迟到的响应就会算进 B 组（串档），
+        // 或在 `networkMessages = []` 重置后写进一个被丢弃的数组（丢消息）。
+        // 事件触发是同步的，当场捕获的 sink 无论 await 多久都归属当时的群。
+        let networkSink = { msgs: [] };
         const capturedApiUrls = []; // 完整捕获消息 API URL
 
         page.on('response', async (response) => {
             const url = response.url();
+            const sink = networkSink; // 同步快照，await 后也不串群
 
             // 捕获完整的 query_messages API URL
             if (/query_messages\.json/.test(url)) {
@@ -177,6 +185,11 @@ async function main() {
             }
 
             if (/\/webim\/.*message|query_messages|groupchat.*message/i.test(url)) {
+                // 群消息响应的 URL 带会话 id：切群后旧会话的迟到响应还会陆续到达
+                // （页面不会撤销已发出的请求），merge 时按它校验归属，防止上一个群
+                // 的消息算进当前群
+                const gidMatch = url.match(/[?&]id=(\d+)/);
+                const respGid = gidMatch ? gidMatch[1] : null;
                 try {
                     const data = await response.json();
                     const msgs = data.messages || data.data?.messages || data.data || [];
@@ -191,11 +204,10 @@ async function main() {
                             // 直接产出与其它两条来源同构的记录（含 timestamp）：
                             // 缺 timestamp 会让下游 sort 得 NaN、按天分文件错位，
                             // 并可能把 state 的 lastTimestamp 推成 Date.now()。
-                            const ts =
-                                typeof m.time === 'number' && m.time > 0
-                                    ? m.time * 1000
-                                    : Date.now();
-                            networkMessages.push({
+                            // 兜底时间戳打 tsEstimated（与 lib/normalize-message 同约定）。
+                            const hasRealTime = typeof m.time === 'number' && m.time > 0;
+                            const ts = hasRealTime ? m.time * 1000 : Date.now();
+                            sink.msgs.push({
                                 id,
                                 from_uid: m.from_uid || m.from_user?.id || null,
                                 user:
@@ -210,6 +222,8 @@ async function main() {
                                     .replace(/[\r\n]+/g, ' ')
                                     .trim(),
                                 type: m.type || m.msg_type || 'text',
+                                ...(hasRealTime ? {} : { tsEstimated: true }),
+                                ...(respGid ? { _respGid: respGid } : {}),
                             });
                         }
                     }
@@ -365,7 +379,7 @@ async function main() {
                         );
                         await delay(GROUP_RETRY_DELAY_MS);
                     }
-                    networkMessages = []; // 每个群独立，不累积上一个群的网络层消息
+                    networkSink = { msgs: [] }; // 每个群独立，不累积上一个群的网络层消息
                     const groupDir = getGroupOutputDir(currentGroupName);
                     const stateFile = getGroupStateFile(currentGroupName);
                     if (!fs.existsSync(groupDir)) fs.mkdirSync(groupDir, { recursive: true });
@@ -566,6 +580,15 @@ async function main() {
                     }
                     console.log(`截止时间戳: ${stopTimestamp}`);
 
+                    // 续传游标：上一轮分页被 MAX_PAGES/限流打断时记下的边界，
+                    // 从它继续往下翻（而不是每轮都从最新一页重来 —— 积压超过
+                    // maxPages×pageSize 条时那样永远走不完，state 永不推进）。
+                    let resumeMaxMid = null;
+                    if (lastState && lastState.cursor && lastState.cursor.maxMid) {
+                        resumeMaxMid = String(lastState.cursor.maxMid);
+                        console.log(`续传游标: 从 mid ${resumeMaxMid} 继续往下翻`);
+                    }
+
                     // 从浏览器获取 cookies，用于 Node.js 端 HTTP 请求
                     const browserCookies = cookieStore.filterWeiboCookies(await browser.cookies());
                     const cookieHeader = cookieStore.cookieHeader(browserCookies);
@@ -637,9 +660,11 @@ async function main() {
                         messages: allApiMessages,
                         paginationComplete,
                         paginationNote,
+                        cursorMaxMid,
                     } = await paginateMessages({
                         groupId,
                         stopTimestamp,
+                        startMaxMid: resumeMaxMid,
                         fetchPage,
                         normalize: normalizeMessage,
                         sleep: delay,
@@ -661,7 +686,7 @@ async function main() {
                         () => window.__ARCHIVER_STATE__?.getMessages() || []
                     );
                     console.log(`脚本层消息: ${scriptMessages.length} 条`);
-                    console.log(`网络层消息: ${networkMessages.length} 条`);
+                    console.log(`网络层消息: ${networkSink.msgs.length} 条`);
 
                     // 合并去重：API 分页 + 脚本层 + 网络层。
                     // 三条来源已经是同构记录，整条存入即可 —— 旧版对脚本层显式重建对象、
@@ -672,8 +697,11 @@ async function main() {
                     for (const m of scriptMessages) {
                         if (!allMessages.has(String(m.id))) allMessages.set(String(m.id), m);
                     }
-                    for (const m of networkMessages) {
-                        if (!allMessages.has(String(m.id))) allMessages.set(String(m.id), m);
+                    for (const m of networkSink.msgs) {
+                        // 迟到的他群响应（_respGid 与当前解析出的 groupId 不符）丢弃
+                        if (m._respGid && String(m._respGid) !== String(groupId)) continue;
+                        const { _respGid, ...rec } = m;
+                        if (!allMessages.has(String(rec.id))) allMessages.set(String(rec.id), rec);
                     }
 
                     const messages = [...allMessages.values()].sort(
@@ -703,23 +731,56 @@ async function main() {
                         // 保存归档状态：记录最新消息的时间戳，下次从这里继续。
                         // 只有分页真正走完才推进 —— 否则断点与上次截止时间之间的消息会被
                         // 永久跳过（下次运行的 stopTimestamp 已经越过它们了）。
-                        const newestTs = messages[messages.length - 1]?.timestamp;
+                        //
+                        // 推进值只从 API 分页来源取，且排除 tsEstimated 记录：
+                        //  · 脚本层/网络层的兜底时间戳是 Date.now()（捕获时刻），比任何
+                        //    真实消息都新，会把 lastTimestamp 推到 now → 分页起点与它
+                        //    之间未拉到的消息被永久跳过；
+                        //  · 页面加载抓到的是"最近 N 条"，可能新于分页起点，同样不能作数。
+                        const newestApiTs = allApiMessages.reduce(
+                            (max, m) =>
+                                !m.tsEstimated && Number.isFinite(m.timestamp) && m.timestamp > max
+                                    ? m.timestamp
+                                    : max,
+                            -Infinity
+                        );
+                        // 只进不退：续传轮的 API 消息都在游标之下（更旧），推进值
+                        // 取 与上次截止 的较大者，避免 stopTimestamp 回退重翻整段
+                        const prevTs = Number(lastState?.lastTimestamp) || 0;
                         if (!paginationComplete) {
                             console.warn(
-                                `⚠ 分页未走完(${paginationNote})，保留原有归档状态，下次运行会重新补齐这段区间`
+                                `⚠ 分页未走完(${paginationNote})，保留原有归档状态，下次运行会自动续传这段区间`
                             );
-                        } else if (!Number.isFinite(newestTs)) {
+                            partialGroups.push(currentGroupName);
+                            // 续传游标随状态落盘（覆盖写回 lastState 其余字段）。
+                            // 没有它，每轮都从最新一页重来：积压超过 maxPages×pageSize
+                            // 条时永远走不完、state 永不推进，而退出码还是 0。
+                            if (cursorMaxMid) {
+                                writeJsonAtomic(stateFile, {
+                                    ...(lastState && typeof lastState === 'object'
+                                        ? lastState
+                                        : {}),
+                                    lastRun: new Date().toISOString(),
+                                    // groupId 供查看器的实时同步用：它没有浏览器可点，只能靠归档器
+                                    // 把切群时解析到的会话 id 记下来（缺失时实时同步对该群自动关闭）
+                                    groupId: String(groupId),
+                                    cursor: { maxMid: String(cursorMaxMid) },
+                                });
+                                console.log(`已保存续传游标 mid=${cursorMaxMid}`);
+                            }
+                        } else if (!Number.isFinite(newestApiTs)) {
                             console.warn(
-                                '⚠ 最新消息缺少有效 timestamp，保留原有归档状态（不用 Date.now() 兜底，否则会跳过整段区间）'
+                                '⚠ API 消息缺少有效 timestamp，保留原有归档状态（不用 Date.now() 兜底，否则会跳过整段区间）'
                             );
                         } else {
                             const newState = {
                                 lastRun: new Date().toISOString(),
                                 lastMessageCount: messages.length,
-                                lastTimestamp: newestTs,
+                                lastTimestamp: Math.max(prevTs, newestApiTs),
                                 // groupId 供查看器的实时同步用：它没有浏览器可点，只能靠归档器
                                 // 把切群时解析到的会话 id 记下来（缺失时实时同步对该群自动关闭）
                                 groupId: String(groupId),
+                                // 分页走完：续传游标使命结束，清掉（不再写 cursor 即清除）
                             };
                             writeJsonAtomic(stateFile, newState);
                             console.log(
@@ -797,6 +858,17 @@ async function main() {
         // 重跑只会把成功的群再抓一遍、再等 30 秒。
         const e = new Error(
             `${skippedGroups.length}/${GROUPS.length} 个群未归档: ${skippedGroups.join('、')}`
+        );
+        e.alreadyRetried = true;
+        throw e;
+    }
+
+    if (partialGroups.length > 0) {
+        // 消息有、分页没走完：续传游标已落盘，下轮自动接着翻。
+        // 立即重跑没有意义（MAX_PAGES/限流不会因为重跑就消失），但退出码必须非 0，
+        // 否则积压期间调度器日志里天天是"成功"。
+        const e = new Error(
+            `分页未走完（已存续传游标，下次运行自动续传）: ${partialGroups.join('、')}`
         );
         e.alreadyRetried = true;
         throw e;

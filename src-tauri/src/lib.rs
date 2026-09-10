@@ -220,7 +220,8 @@ async fn do_extract_cookies(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn find_cookie_path(_app: &tauri::AppHandle) -> PathBuf {
+fn find_cookie_path(app: &tauri::AppHandle) -> PathBuf {
+    // 开发形态：从可执行文件向上找仓库根（scripts/viewer-server.js 为标记）
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
         loop {
@@ -243,6 +244,14 @@ fn find_cookie_path(_app: &tauri::AppHandle) -> PathBuf {
             break;
         }
     }
+    // 打包后的 .app 不含 scripts/，而 Finder 启动的进程 cwd 是 "/"，
+    // 落到 cwd/cookies.json 会 EACCES、登录后静默写盘失败。
+    // 收敛到应用数据目录；同一路径通过 WEIBO_COOKIE_FILE 传给 sidecar，
+    // 保证 Rust 写的与 Node 读的是同一个文件。
+    if let Ok(dir) = app.path().app_data_dir() {
+        std::fs::create_dir_all(&dir).ok();
+        return dir.join("cookies.json");
+    }
     cwd.join("cookies.json")
 }
 
@@ -252,14 +261,43 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![open_login_window])
         .setup(|app| {
-            let sidecar_command = app
+            // 端口预占探测：同时挡两种情况 —— ①第二个实例（无 single-instance
+            // 插件时必然抢端口）；②端口被其它本地进程占用。被占就不启动 sidecar
+            // 直接退出，否则窗口会永远空白（sidecar 起不来）。
+            // 探测后立刻释放给 sidecar，中间有极小竞态窗口，可接受。
+            if std::net::TcpListener::bind(("127.0.0.1", 3456)).is_err() {
+                eprintln!(
+                    "[tauri] 端口 3456 已被占用（可能「微博群聊」已在运行），本次退出。\
+                     浏览器访问 http://localhost:3456 即可"
+                );
+                std::process::exit(1);
+            }
+
+            // cookies.json 的唯一约定路径：与 Rust 侧 find_cookie_path 一致，
+            // 通过环境变量交给 sidecar（打包形态下两边都落在应用数据目录）
+            let cookie_path = find_cookie_path(app.handle());
+            let sidecar_command = match app
                 .shell()
                 .sidecar("viewer-server")
-                .expect("failed to create sidecar command");
+            {
+                Ok(cmd) => cmd
+                    .env("WEIBO_COOKIE_FILE", cookie_path.to_string_lossy().as_ref())
+                    // 端口固定：Rust 轮询器按 3456 连接，不允许宿主环境的
+                    // WEIBO_PORT 泄漏进来让两边各说各话
+                    .env("WEIBO_PORT", "3456"),
+                Err(e) => {
+                    eprintln!("[tauri] 找不到 sidecar 可执行文件: {}", e);
+                    std::process::exit(1);
+                }
+            };
 
-            let (mut rx, child) = sidecar_command
-                .spawn()
-                .expect("Failed to spawn sidecar");
+            let (mut rx, child) = match sidecar_command.spawn() {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("[tauri] sidecar 启动失败: {}", e);
+                    std::process::exit(1);
+                }
+            };
 
             app.manage(SidecarChild(Mutex::new(Some(child))));
 
@@ -272,12 +310,24 @@ pub fn run() {
                         CommandEvent::Stdout(line) => {
                             let text = String::from_utf8_lossy(&line);
                             eprintln!("[sidecar] {}", text.trim());
-                            if text.contains("3456") && !server_ready {
-                                server_ready = true;
-                                eprintln!("[tauri] Server ready, navigating...");
-                                if let Some(win) = app_handle.get_webview_window("main") {
-                                    let url: url::Url = "http://127.0.0.1:3456".parse().unwrap();
-                                    let _ = win.navigate(url);
+                            // 就绪判据必须是哨兵行本身：旧的"stdout 含 3456"会被
+                            // 端口占用提示命中，把主窗口导航到不相干的本地进程
+                            //（该 origin 还持有 core/shell 能力，等于把原生壳交给别人）。
+                            // 按行匹配：stdout 事件是按读取块到达的，哨兵行未必在块首。
+                            if !server_ready {
+                                if let Some(port) = text.lines().find_map(|l| {
+                                    l.trim()
+                                        .strip_prefix("SIDECAR_READY ")
+                                        .and_then(|p| p.trim().parse::<u16>().ok())
+                                }) {
+                                    server_ready = true;
+                                    eprintln!("[tauri] Server ready, navigating...");
+                                    if let Some(win) = app_handle.get_webview_window("main") {
+                                        let url: url::Url = format!("http://127.0.0.1:{port}")
+                                            .parse()
+                                            .unwrap();
+                                        let _ = win.navigate(url);
+                                    }
                                 }
                             }
                         }
@@ -286,12 +336,17 @@ pub fn run() {
                             eprintln!("[sidecar:err] {}", text.trim());
                         }
                         CommandEvent::Terminated(payload) => {
-                            eprintln!("[sidecar] terminated: {:?}", payload);
-                            break;
+                            // sidecar 挂掉 = 应用只剩空白窗口。明确退出（非 0），
+                            // 而不是留一个僵尸窗口；用户重开即恢复。
+                            eprintln!("[sidecar] terminated unexpectedly: {:?}", payload);
+                            std::process::exit(1);
                         }
                         _ => {}
                     }
                 }
+                // 输出流结束也算 sidecar 消亡
+                eprintln!("[sidecar] output stream closed, exiting");
+                std::process::exit(1);
             });
 
             // Poll for pending actions from the frontend

@@ -1481,7 +1481,7 @@ async function loadWeiboGroups() {
         list.innerHTML = d.groups.map(g => `
             <label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:14px">
                 <input type="checkbox" class="group-pick" value="${escapeHtml(g.name)}"${configured.has(g.name) ? ' checked' : ''}>
-                ${g.avatar ? `<img src="${escapeHtml(avatarSrc(g.avatar))}" style="width:22px;height:22px;border-radius:50%;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+                ${g.avatar ? `<img src="${avatarSrc(g.avatar)}" style="width:22px;height:22px;border-radius:50%;flex-shrink:0" onerror="this.style.display='none'">` : ''}
                 <span style="flex:1">${escapeHtml(g.name)}</span>
                 ${g.memberCount ? `<span style="font-size:12px;color:var(--ink-tertiary)">${g.memberCount} 人</span>` : ''}
             </label>`).join('');
@@ -1524,7 +1524,7 @@ async function loadVersionInfo() {
         document.getElementById('appVersion').textContent = 'v' + (d.version || '-');
         const hint = document.getElementById('updateHint');
         if (d.updateAvailable) {
-            hint.innerHTML = `🆕 新版本 ${escapeHtml(d.latestTag)} 已发布 — <a href="${escapeHtml(d.url)}" target="_blank" rel="noopener">前往下载</a>`;
+            hint.innerHTML = `🆕 新版本 ${escapeHtml(d.latestTag)} 已发布 — <a href="${safeAttrUrl(d.url)}" target="_blank" rel="noopener">前往下载</a>`;
             hint.style.display = '';
         } else {
             hint.style.display = 'none';
@@ -1691,7 +1691,7 @@ async function askQuestion() {
         });
         const data = await resp.json();
         if (!data.ok) {
-            answerDiv.innerHTML = `<div style="color:#f4212e">错误：${data.error}</div>`;
+            answerDiv.innerHTML = `<div style="color:#f4212e">错误：${escapeHtml(data.error)}</div>`;
             return;
         }
         let html = renderMarkdown(data.answer);
@@ -1711,7 +1711,7 @@ async function askQuestion() {
         }
         answerDiv.innerHTML = html;
     } catch (e) {
-        answerDiv.innerHTML = `<div style="color:#f4212e">请求失败：${e.message}</div>`;
+        answerDiv.innerHTML = `<div style="color:#f4212e">请求失败：${escapeHtml(e.message)}</div>`;
     } finally {
         btn.disabled = false;
         btn.textContent = '提问';
@@ -1758,7 +1758,12 @@ function renderMarkdown(md) {
         .replace(/^- (.+)$/gm, '<li>$1</li>')
         .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+        // 摘要/QA 回答由 LLM 生成、上下文是群聊内容：链接目标必须 scheme 白名单
+        // + 属性转义，否则 `[x](" onmouseover="…)` / `[x](javascript:…)` 即 XSS
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, href) => {
+            const url = safeAttrUrl(href.replace(/&amp;/g, '&'));
+            return url ? `<a href="${url}" target="_blank" rel="noopener">${label}</a>` : label;
+        })
         .replace(/\n{2,}/g, '<br>')
         .replace(/\n/g, '');
 }
@@ -2331,8 +2336,11 @@ function getFiltered() {
 }
 
 function avatarSrc(url) {
-    if (!url || !url.includes('sinaimg.cn')) return url || '';
-    return '/api/sinaimg?url=' + encodeURIComponent(url);
+    // 头像 URL 来自远端归档数据，统一过 safeAttrUrl（scheme 白名单 + 属性转义），
+    // 所有 src="${avatarSrc(...)}" 插值点即随之安全
+    const u = String(url || '');
+    if (!u || !u.includes('sinaimg.cn')) return safeAttrUrl(u);
+    return safeAttrUrl('/api/sinaimg?url=' + encodeURIComponent(u));
 }
 
 // 渲染用户列表
@@ -2351,8 +2359,8 @@ function renderUserList() {
     el.innerHTML = sorted.map(([user, count], idx) => {
         const active = selectedUsers.has(user) ? 'active' : '';
         const av = 'av-' + getUserColor(user);
-        const initial = user.charAt(0);
-        const avatarImg = userAvatars[user] ? `<img src="${avatarSrc(userAvatars[user])}" onerror="this.parentElement.innerHTML='${initial}'">` : initial;
+        const initial = escapeHtml(user.charAt(0));
+        const avatarImg = userAvatars[user] ? `<img src="${avatarSrc(userAvatars[user])}" data-fb="${initial}" onerror="this.parentElement.textContent=this.dataset.fb">` : initial;
         const rank = idx < 3 ? `<span class="user-rank r${idx + 1}">${idx + 1}</span>` : '';
         const pct = Math.max(6, Math.round((count / maxCount) * 100));
         return `<div class="user-item ${active}" onclick="toggleUser(this.dataset.user)" data-user="${escapeAttr(user)}">
@@ -2434,12 +2442,12 @@ function renderMessages(msgs) {
                     <span class="msg-file-icon">${icon}</span>
                     <div class="msg-file-info">
                         <div class="msg-file-name">${fileName}</div>
-                        <a class="msg-file-download" href="${fileUrl}" download="${fileName}">下载</a>
+                        <a class="msg-file-download" href="${safeAttrUrl(fileUrl)}" download="${fileName}">下载</a>
                     </div>
                 </div>`;
             } else {
                 // 普通图片消息
-                attach += '<div class="msg-pics">' + m.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>';
+                attach += '<div class="msg-pics">' + m.pics.map(u => `<img src="${safeAttrUrl(u)}" loading="lazy" onclick="openLightbox(this.src)">`).join('') + '</div>';
             }
         }
         // 附件：分享的帖子（转发引用场景跳过，避免与引用块重复）
@@ -2449,18 +2457,18 @@ function renderMessages(msgs) {
             const author = s.author ? `<div class="share-author">${escapeHtml(s.author)}</div>` : '';
             const text = (s.text && s.text !== s.title) ? `<div class="share-text">${processEmoji(escapeHtml(s.text), resolveEmoji)}</div>` : '';
             const desc = s.description ? `<div class="share-desc">${escapeHtml(s.description)}</div>` : '';
-            const picsHtml = s.pics && s.pics.length > 0 ? '<div class="msg-pics">' + s.pics.map(u => `<img src="${u}" loading="lazy" onclick="openLightbox('${u}')">`).join('') + '</div>' : '';
+            const picsHtml = s.pics && s.pics.length > 0 ? '<div class="msg-pics">' + s.pics.map(u => `<img src="${safeAttrUrl(u)}" loading="lazy" onclick="openLightbox(this.src)">`).join('') + '</div>' : '';
             const stats = (s.reposts || s.comments || s.likes) ? `<div class="share-stats">${s.reposts ? '转发 ' + s.reposts : ''} ${s.comments ? '评论 ' + s.comments : ''} ${s.likes ? '赞 ' + s.likes : ''}</div>` : '';
-            const link = s.url ? `<a class="share-link" href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>` : '';
+            const link = s.url ? `<a class="share-link" href="${safeAttrUrl(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>` : '';
             attach += `<div class="share-card">${author}${title ? '<div class="share-title">' + title + '</div>' : ''}${text}${desc}${picsHtml}${stats}${link}</div>`;
         }
         // 附件：视频链接（已有分享卡片时跳过，避免重复）
         if (m.videoUrl && !m.share) {
-            attach += `<div class="msg-video"><a href="${m.videoUrl}" target="_blank" rel="noopener" class="msg-link">▶ Watch Video</a></div>`;
+            attach += `<div class="msg-video"><a href="${safeAttrUrl(m.videoUrl)}" target="_blank" rel="noopener" class="msg-link">▶ Watch Video</a></div>`;
         }
         // 附件：普通链接
         if (m.link && !m.share) {
-            attach += `<div class="msg-link-attach"><a href="${m.link}" target="_blank" rel="noopener" class="msg-link">${escapeHtml(m.link)}</a></div>`;
+            attach += `<div class="msg-link-attach"><a href="${safeAttrUrl(m.link)}" target="_blank" rel="noopener" class="msg-link">${escapeHtml(m.link)}</a></div>`;
         }
         // 分享内容与正文重复时，用简短指示替代正文（保留格式结构）
         if (m.share && m.content && !m.content.includes(' - - - - - - - - - - - - - - - ')) {
@@ -2468,7 +2476,7 @@ function renderMessages(msgs) {
             const raw = (m.content || '').replace(/[\s​]+/g, '');
             const title = (s.title || '').replace(/[\s​]+/g, '');
             if (title.length >= 8 && raw.includes(title.substring(0, Math.min(20, title.length)))) {
-                const link = s.url ? `<a class="msg-link" href="${s.url}" target="_blank">${escapeHtml(s.url)}</a>` : '';
+                const link = s.url ? `<a class="msg-link" href="${safeAttrUrl(s.url)}" target="_blank">${escapeHtml(s.url)}</a>` : '';
                 content = `<span style="color:var(--ink-subtle);font-size:13px">↗ ${escapeHtml((s.author || '') + ' ' + title.substring(0, 25))}${title.length > 25 ? '...' : ''}</span> ${link}`;
             }
         }
@@ -2479,7 +2487,7 @@ function renderMessages(msgs) {
         const isNew = lastVisitTimestamp > 0 && m.timestamp > lastVisitTimestamp;
         const newBadge = isNew ? '<span class="msg-new">NEW</span>' : '';
         const avatarEl = m.avatar
-            ? `<div class="msg-avatar"><img src="${avatarSrc(m.avatar)}" onerror="this.parentElement.textContent='${userInitial}'"></div>`
+            ? `<div class="msg-avatar"><img src="${avatarSrc(m.avatar)}" data-fb="${userInitial}" onerror="this.parentElement.textContent=this.dataset.fb"></div>`
             : `<div class="msg-avatar">${userInitial}</div>`;
         const contAvatar = continuation
             ? (m.avatar ? `<img class="cont-avatar" src="${avatarSrc(m.avatar)}" onerror="this.remove()">` : `<span class="cont-avatar">${userInitial}</span>`)
@@ -2949,7 +2957,7 @@ function toggleEmojiPicker() {
         const entries = Object.entries(emojiMap);
         if (!entries.length) { showToast('表情清单还没加载好，稍后再试', 'error', 3000); return; }
         el.innerHTML = entries.map(([tag, url]) =>
-            `<img src="${url}" alt="${tag}" title="${tag}" loading="lazy" onclick="insertEmoji('${tag.replace(/'/g, "\\'")}')">`
+            `<img src="${safeAttrUrl(url)}" alt="${escapeAttr(tag)}" title="${escapeAttr(tag)}" loading="lazy" data-tag="${escapeAttr(tag)}" onclick="insertEmoji(this.dataset.tag)">`
         ).join('');
         el.dataset.built = '1';
     }

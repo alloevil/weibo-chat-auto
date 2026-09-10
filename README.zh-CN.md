@@ -46,7 +46,7 @@
 | 🖥 原生桌面应用（应用内扫码登录） | 💬 **群内发言**：文字 / 表情 / 图片 |
 | 🍪 Cookie 自动保持登录 + 会话保活 | 🎨 可切换皮肤：Linear 深色 / QQ 2000 / 2008 / 2012 |
 | 📡 API 分页拉取全部历史 | 🔀 多群切换 + 📅 日历选择 |
-| ➕ 增量归档（断点续传） | 🔍 当天就地高亮 + 跨全部日期检索 |
+| ➕ 增量归档（断点续传；分页被中断时落盘续传游标并以非 0 退出码结束，不静默"成功"） | 🔍 当天就地高亮 + 跨全部日期检索 |
 | 📆 按日期导出 JSON | 📊 统计面板（日活 / 排行 / 时段 / 词频） |
 | ⏰ 定时任务 + 手动 Sync Now | 🧹 红包 / 噪声消息过滤 |
 | | 🎯 上下文聚焦面板（追一条消息的来龙去脉） |
@@ -250,7 +250,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 <details>
 <summary><b>技术方案</b></summary>
 
-采用 Agentic Search 模式。工具循环由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层、提示词与预算闸门（≤7 次 LLM 调用）。结构化状态累积参考 LedgerAgent 论文。
+采用 Agentic Search 模式。工具循环由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层、提示词与预算闸门（≤7 轮检索；预算耗尽且停在工具调用上时追加一次无工具收尾轮；LLM 精排单独封顶 4 次；整个请求 150 秒墙钟上限）。结构化状态累积参考 LedgerAgent 论文。
 
 检索层：话题块切分（30 分钟断层）→ bigram BM25 → 时间衰减（半衰期 2 天）→ LLM 精排 → 块内定位命中点。外加三道预处理：噪音剔除、发言人别名解析、相对日期解析（「上周」在工具侧算成具体区间，不让 LLM 自己推）。可选的离线标注层还会为每个话题块生成摘要与 2–4 条同义改写，让「减持」这类提问也能命中写着「清了一半芯片股」的块。
 

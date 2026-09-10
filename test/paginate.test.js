@@ -185,3 +185,44 @@ test('onPage 落盘回调：每页收到本页新增（去重后）的消息', a
         { pageNum: 1, ids: [10] }, // 30 已见过，不重复交给落盘
     ]);
 });
+
+test('startMaxMid 续传：从上轮游标继续往下翻，不重翻已取过的最新页', async () => {
+    // 上轮撞 MAX_PAGES 时翻到 30 为止；续传从 max_mid=30 直接往下走
+    const pages = [[raw(30, 3000), raw(40, 4000)], [raw(10, 1000), raw(20, 2000)], []];
+    const { fetchPage, calls } = fakeFetch(pages);
+    const r = await paginateMessages({
+        groupId: '123',
+        stopTimestamp: 500 * 1000,
+        startMaxMid: 30,
+        fetchPage,
+        normalize: normalizeMessage,
+        sleep: noSleep,
+        log: quiet,
+    });
+    assert.match(calls[0], /max_mid=30/, '第一请求必须从续传游标出发');
+    assert.strictEqual(r.paginationComplete, true);
+    assert.deepStrictEqual(
+        r.messages.map((m) => m.id).sort((a, b) => a - b),
+        [10, 20],
+        '游标之上的页不得重翻'
+    );
+});
+
+test('MAX_PAGES 截断：回传 cursorMaxMid 供归档器落盘续传', async () => {
+    const pages = [
+        [raw(30, 3000), raw(40, 4000)],
+        [raw(10, 1000), raw(20, 2000)],
+    ];
+    const { fetchPage } = fakeFetch(pages);
+    const r = await paginateMessages({
+        groupId: '123',
+        stopTimestamp: 1,
+        fetchPage,
+        normalize: normalizeMessage,
+        sleep: noSleep,
+        log: quiet,
+        maxPages: 1,
+    });
+    assert.strictEqual(r.paginationComplete, false);
+    assert.strictEqual(String(r.cursorMaxMid), '30', '游标 = 已翻到的最老一页边界');
+});

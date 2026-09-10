@@ -14,6 +14,20 @@ jobs:
         steps:
             - uses: actions/checkout@v7
 
+            # tag 与三处版本号必须一致，否则 ship 出去的应用版本号还是旧的，
+            # 应用内更新检查（lib/version-check.js）也随之失效
+            - name: Verify tag matches version files
+              run: |
+                  tag="${GITHUB_REF_NAME#v}"
+                  pkg="$(node -p "require('./package.json').version")"
+                  tauri="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+                  cargo="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
+                  echo "tag=$tag package.json=$pkg tauri.conf.json=$tauri Cargo.toml=$cargo"
+                  test "$tag" = "$pkg" && test "$tag" = "$tauri" && test "$tag" = "$cargo" || {
+                    echo "::error::tag 与 package.json / tauri.conf.json / Cargo.toml 版本不一致，请先同步版本号再打 tag"
+                    exit 1
+                  }
+
             - name: Setup Node.js
               uses: actions/setup-node@v7
               with:
@@ -35,9 +49,10 @@ jobs:
               run: npm ci --no-audit --no-fund
 
             - name: Build app (tauri build)
-              # .app 打包完成即够用；.dmg 打包脚本在 CI 的无头环境同样可能失败，
-              # 所以只要 .app 存在就继续（与本地行为一致）
-              run: npx tauri build || test -d "src-tauri/target/release/bundle/macos/微博群聊.app"
+              # 只要 .app：dmg 打包在无头环境易失败，直接不请求它（--bundles app）。
+              # 旧写法 `tauri build || test -d .app` 会把真实构建失败掩盖成成功
+              #（残留的半成品 .app 也会让 test -d 通过）
+              run: npx tauri build --bundles app
 
             - name: Zip .app
               run: |
@@ -48,6 +63,10 @@ jobs:
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
+                  # gh release upload 不会自建 Release：只有 tag 没有 Release 时
+                  # 直接失败。先确保存在（沿用 tag 的自动 notes）
+                  gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+                    gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
                   gh release upload "$GITHUB_REF_NAME" \
                     "src-tauri/target/release/bundle/macos/weibo-chat_${GITHUB_REF_NAME}_aarch64.app.zip" \
                     --clobber

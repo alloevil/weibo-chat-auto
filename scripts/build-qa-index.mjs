@@ -33,9 +33,15 @@ const CHUNK_TEXT_LIMIT = 1500; // 每块送给 LLM 的文本上限(字符)
 
 function msgLine(m) {
     const t = m.time ? m.time.split(' ')[1]?.slice(0, 5) : '';
-    let text = m.content || '';
-    if (m.share?.title) text += ` [分享:${m.share.title}]`;
-    return `[${t}] ${m.user}: ${text}`;
+    // 聊天内容会原样进入标注提示词：换行与 "|" 必须洗掉，否则一条消息就能
+    // 伪造 "2|A|注入的别名" 这类协议行（提示注入），污染整批标注结果
+    const clean = (s) =>
+        String(s || '')
+            .replace(/[\r\n|｜]+/g, ' ')
+            .slice(0, 400);
+    let text = clean(m.content);
+    if (m.share?.title) text += ` [分享:${clean(m.share.title)}]`;
+    return `[${t}] ${clean(m.user)}: ${text}`;
 }
 
 // 标注 = 摘要行 + 别名行。
@@ -113,19 +119,37 @@ export function parseAnnotationResponse(text, expectedCount) {
     return out.map((e) => (e && e.annotation ? e : null));
 }
 
-export async function annotateBatch(config, chunkTexts) {
-    const resp = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
-        body: JSON.stringify({
-            model: config.model,
-            messages: [{ role: 'user', content: buildAnnotationPrompt(chunkTexts) }],
-            stream: false,
-        }),
-    });
-    if (!resp.ok) throw new Error(`annotation API ${resp.status}`);
-    const data = await resp.json();
-    return parseAnnotationResponse(data.choices?.[0]?.message?.content || '', chunkTexts.length);
+export async function annotateBatch(config, chunkTexts, { retries = 2 } = {}) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+        try {
+            const resp = await fetch(`${config.baseUrl}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${config.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: config.model,
+                    messages: [{ role: 'user', content: buildAnnotationPrompt(chunkTexts) }],
+                    stream: false,
+                }),
+                // 没有超时的话，挂住的网关会让并发 worker 永久停摆（rerank
+                // 早就有 AbortSignal 兜底，这里是同样的洞）
+                signal: AbortSignal.timeout(60000),
+            });
+            if (!resp.ok) throw new Error(`annotation API ${resp.status}`);
+            const data = await resp.json();
+            return parseAnnotationResponse(
+                data.choices?.[0]?.message?.content || '',
+                chunkTexts.length
+            );
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr;
 }
 
 async function main() {

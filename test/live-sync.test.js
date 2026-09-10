@@ -269,6 +269,33 @@ test('createLiveSync: 开关关闭时一个请求都不发（保住原生客户�
     live.stop();
 });
 
+test('createLiveSync: 归档器持锁时跳过整轮（不打接口、不写盘）', async () => {
+    const dir = tmpdir();
+    let calls = 0;
+    let locked = true;
+    const live = ls.createLiveSync({
+        resolveGroups: () => [{ name: 'G', groupId: '123', dir }],
+        cookieHeader: () => 'x',
+        emit: () => {},
+        intervalMs: 60000,
+        isLocked: () => locked,
+        fetchImpl: async () => {
+            calls++;
+            return { json: async () => ({ messages: [raw(1, T0)] }) };
+        },
+    });
+
+    live.addSubscriber();
+    await live.tick();
+    assert.strictEqual(calls, 0, '归档器运行期间不得发起任何请求');
+
+    // 锁释放后下一轮自然恢复，无需重启
+    locked = false;
+    await live.tick();
+    assert.ok(calls > 0, '锁释放后应正常轮询');
+    live.stop();
+});
+
 test('createLiveSync: 关闭时即使有订阅者也不启动轮询', () => {
     const live = ls.createLiveSync({
         resolveGroups: () => [{ name: 'G', groupId: '1', dir: tmpdir() }],

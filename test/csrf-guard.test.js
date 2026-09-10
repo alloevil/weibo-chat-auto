@@ -27,11 +27,12 @@ test('外站 Origin 拦截 —— 这正是实测可利用的那条路径', () =
     }
 });
 
-test('畸形或 null Origin：畸形按跨站处理，"null" 按无 Origin 处理', () => {
+test('畸形或 null Origin 一律按跨站处理', () => {
     assert.strictEqual(isCrossSiteRequest({ origin: 'not a url' }), true);
-    // Origin: null 来自 sandbox iframe / file://，浏览器不会给它跨站 form POST
-    // 的能力去伪造本机来源，按无 Origin 放行（否则会误伤桌面壳的边缘场景）
-    assert.strictEqual(isCrossSiteRequest({ origin: 'null' }), false);
+    // Origin: null 是攻击者能主动制造的来源（<iframe sandbox="allow-forms">
+    // 提交表单就发它），且旧 Safari/Firefox 无 Sec-Fetch-Site 兜底 → 拦截。
+    // 无 Origin（curl / Tauri Rust 侧）才放行，见上面的用例。
+    assert.strictEqual(isCrossSiteRequest({ origin: 'null' }), true);
 });
 
 test('Sec-Fetch-Site 优先：浏览器自打的标记，攻击页改不了', () => {

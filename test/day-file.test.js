@@ -76,6 +76,28 @@ test('mergeIntoDayFile: 与既有消息按 id 去重合并', () => {
     );
 });
 
+test('mergeIntoDayFile: 降级记录不得覆盖富记录，缺失字段仍可补齐', () => {
+    // 网络层来源的记录只有 8 个基础字段；页面加载的 query_messages 流量会把
+    // 上轮已归档的富记录"降级"重捕一遍，无条件覆盖会让 pics/share 凭空消失
+    const dir = tmpdir();
+    const f = path.join(dir, 'weibo_chat_2026-07-03.json');
+    const rich = {
+        ...msg(1, 1000),
+        pics: ['https://upload.api.weibo.com/2/mss/msget?fid=1'],
+        share: { url: 'http://weibo.com/x', title: 't' },
+    };
+    df.writeJsonAtomic(f, [rich]);
+
+    // 降级记录（无 pics/share）+ 补齐型新字段（avatar 原本缺失）
+    const degraded = { ...msg(1, 1000), avatar: 'https://h.jpg' };
+    df.mergeIntoDayFile(f, [degraded]);
+
+    const [merged] = JSON.parse(fs.readFileSync(f, 'utf-8'));
+    assert.deepStrictEqual(merged.pics, rich.pics, '既有 pics 不得被降级记录抹掉');
+    assert.deepStrictEqual(merged.share, rich.share, '既有 share 不得被降级记录抹掉');
+    assert.strictEqual(merged.avatar, 'https://h.jpg', '缺失字段应从新记录补齐');
+});
+
 test('mergeIntoDayFile: 兼容 {messages:[...]} 包装格式', () => {
     const dir = tmpdir();
     const f = path.join(dir, 'weibo_chat_2026-07-03.json');

@@ -46,7 +46,9 @@ const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('../li
 // 发消息（写操作）统一走 lib/send-message：微博失败也回 HTTP 200，必须解析 body
 const { sendGroupMessage, sendGroupImage } = require('../lib/send-message');
 // 跨站写操作拦截（CSRF）：只绑 127.0.0.1 不足以防护，见 lib/csrf-guard
-const { isCrossSiteRequest } = require('../lib/csrf-guard');
+const { isCrossSiteRequest, LOCAL_HOSTS } = require('../lib/csrf-guard');
+// 本地时区日期（legacy QA 的"今天"锚点，不能用 toISOString 的 UTC 切片）
+const { formatLocalDate } = require('../lib/day-file');
 // 图片缓存治理：cache/images 是纯优化（内容可再取），此前无淘汰策略涨到 688MB
 const { evictCache, isCacheable } = require('../lib/cache-store');
 // 定时归档任务的发现/解析（按程序路径认领，不硬编码 label）见 lib/launch-agents
@@ -220,6 +222,8 @@ const liveSync = createLiveSync({
     resolveGroups: resolveLiveGroups,
     cookieHeader: loadCookies,
     isEnabled: () => liveEnabled,
+    // 归档器运行期间不轮询：两边对同一日文件做读-合并-写，跨进程无互斥
+    isLocked: () => !isSyncLockFree(),
     log: (m) => console.log(m),
     emit: (event) => {
         if (event.type === 'messages') {
@@ -449,7 +453,9 @@ function serveImage(res, filePath, contentType) {
 }
 
 function qaLegacy(question, allMessages, reply) {
-    const today = new Date().toISOString().split('T')[0];
+    // 本地时区的今天：toISOString 切片是 UTC 日期，UTC+8 每天 00:00-08:00
+    // 会把「今天」说早一天（agent 路径已修，这里曾是漏网之鱼）
+    const today = formatLocalDate(Date.now());
     const extractPrompt = [
         {
             role: 'system',
@@ -656,6 +662,16 @@ function qaLegacy(question, allMessages, reply) {
 
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
+
+    // DNS rebinding 防护：攻击页把自有域名 rebind 到 127.0.0.1 后与本服务同源，
+    // GET 路由（/api/messages 全量历史、/api/search、/api/export…）将全部可读，
+    // 而 GET 不走下面的跨站拦截。Host 白名单把这类请求挡在门口。
+    const hostNoPort = (req.headers.host || '').replace(/^(.*):\d+$/, '$1');
+    if (!LOCAL_HOSTS.has(hostNoPort)) {
+        res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: '拒绝非法 Host' }));
+        return;
+    }
 
     // 跨站写操作一律拒绝。只绑 127.0.0.1 挡不住 CSRF：用户浏览的任意网页都能
     // 用 text/plain 的跨站表单打这些端点（实测可利用），从而以用户身份发消息、
@@ -1423,9 +1439,12 @@ const server = http.createServer((req, res) => {
     // Image proxy: /api/image?fid=xxx (with disk cache)
     if (url.pathname === '/api/image') {
         const fid = url.searchParams.get('fid');
-        if (!fid) {
+        // fid 必须是纯数字（微博 fid 规则，rewrite-image-urls 也按 \d+ 提取）。
+        // 不校验则 `fid=../../config` 经 path.join 穿越出 cache/images：命中即
+        // 任意读，未命中还会把微博返回体写到攻击者指定的路径。
+        if (!fid || !/^\d+$/.test(fid)) {
             res.writeHead(400);
-            res.end('Missing fid');
+            res.end('Bad fid');
             return;
         }
 
@@ -1777,7 +1796,11 @@ const server = http.createServer((req, res) => {
                         let fid = null;
                         if (picUrl.startsWith('/api/image?fid=')) {
                             fid = picUrl.split('fid=')[1];
-                            imgUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
+                            // 日文件内容可被伪造，fid 同样按白名单校验，防止
+                            // path.join 穿越出 cache/images
+                            if (!/^\d+$/.test(fid)) fid = null;
+                            else
+                                imgUrl = `https://upload.api.weibo.com/2/mss/msget?source=209678993&fid=${fid}`;
                         } else {
                             const fidMatch = picUrl.match(/fid=(\d+)/);
                             if (fidMatch) fid = fidMatch[1];
@@ -2099,6 +2122,10 @@ server.on('error', (err) => {
 server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`Weibo Group Chat Viewer: ${url}`);
+    // 桌面壳就绪哨兵：唯一、且只在 listen 成功之后打印。Rust 侧等这一行才把
+    // 主窗口导航过来 —— 旧判据（stdout 含 "3456"）会被上面 EADDRINUSE 的提示行
+    // 命中，导致窗口被导航到占用端口的那个不相干进程。
+    console.log(`SIDECAR_READY ${PORT}`);
     keepAliveTick('启动');
     // 图片缓存淘汰：启动时一次 + 每 6 小时一次。缓存内容都能从 CDN 再取，
     // 所以淘汰是安全的；不做则只增不减（实测涨到 688MB）。

@@ -8,9 +8,9 @@
 //
 // 用法:
 //   node scripts/viewer-server.js &                       # 先起查看器
-//   node scripts/benchmark-qa.mjs --group <群名>           # 用内置通用问题
-//   node scripts/benchmark-qa.mjs --group <群名> --questions my.json
-//   node scripts/benchmark-qa.mjs --group <群名> --modes agent --repeat 3
+//   node scripts/benchmark-qa.js --group <群名>           # 用内置通用问题
+//   node scripts/benchmark-qa.js --group <群名> --questions my.json
+//   node scripts/benchmark-qa.js --group <群名> --modes agent --repeat 3
 //
 // --questions 指向一个 JSON 文件,可以是字符串数组,也可以是
 // { questions: [{ question: "..." }, ...] }(与旧 eval/questions.json 兼容)。
@@ -65,6 +65,9 @@ async function runQuery(base, group, question, mode) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ group, question, mode }),
+            // 查看器的 QA 有全局墙钟上限,这里再兜一层:请求彻底挂死时
+            // 基准自己也不能无限等
+            signal: AbortSignal.timeout(180000),
         });
         const data = await resp.json();
         return { ...data, elapsed: Date.now() - start, mode };
@@ -101,12 +104,17 @@ async function main() {
                     process.stderr.write(`  [${mode}] ${question.slice(0, 16)} → ${status}\n`);
                 }
             }
+            // 中位数只统计成功轮:失败轮的 elapsed 往往很短(立即报错),
+            // 混进去会把延迟中位数系统性拉低。全部失败时退回全量,数字只作占位。
+            const okRuns = runs.filter((r) => r.ok);
+            const statRuns = okRuns.length ? okRuns : runs;
+            const firstOk = okRuns[0] || runs[0];
             row.byMode[mode] = {
                 ok: runs.every((r) => r.ok),
                 // repeat > 1 时取中位数,单次网络抖动不主导结果
-                elapsed: median(runs.map((r) => r.elapsed)),
-                steps: runs[0].steps,
-                toolCalls: (runs[0].toolCalls || []).map((t) => t.tool),
+                elapsed: median(statRuns.map((r) => r.elapsed)),
+                steps: firstOk.steps,
+                toolCalls: (firstOk.toolCalls || []).map((t) => t.tool),
                 error: runs.find((r) => !r.ok)?.error,
             };
         }
