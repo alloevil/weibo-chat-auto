@@ -13,7 +13,8 @@
         "start-chrome": "./scripts/start-chrome.sh",
         "view": "node scripts/viewer-server.js",
         "test": "node --test",
-        "lint": "eslint .",
+        "lint": "eslint . --max-warnings=0",
+        "check": "npm run lint && npm test",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },
