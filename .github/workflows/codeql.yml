@@ -1,0 +1,33 @@
+name: CodeQL
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+    # push/PR 之外每周兜一次：CodeQL 规则库更新后，存量代码的新命中靠它浮出来
+    schedule:
+        - cron: '30 4 * * 1'
+
+concurrency:
+    group: codeql-${{ github.ref }}
+    cancel-in-progress: true
+
+# SAST：语义分析 JS/TS（含 viewer.html 内联脚本被 codeql 提取的部分）。
+# 高信号命中的处理约定：确认是真问题就修；确认误报就用 alert 的 dismiss
+# + 写明理由，不要在代码里加无理由的 no-op 绕过。
+jobs:
+    analyze:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            security-events: write # 上传 SARIF 到 repo Security tab 必需
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: github/codeql-action/init@v3
+              with:
+                  languages: javascript-typescript
+                  queries: security-extended
+
+            - uses: github/codeql-action/analyze@v3

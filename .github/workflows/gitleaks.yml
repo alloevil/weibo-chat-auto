@@ -1,0 +1,26 @@
+name: Gitleaks
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+concurrency:
+    group: gitleaks-${{ github.ref }}
+    cancel-in-progress: true
+
+# 密钥扫描：历史提交 + 当前树都要扫。personal public repo 用 gitleaks-action
+# 免费；组织仓库需要 Gitleaks 许可证（见 action README）。
+jobs:
+    scan:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+              with:
+                  # 浅克隆只拿到一个 commit，旧提交里的密钥会漏扫
+                  fetch-depth: 0
+
+            - uses: gitleaks/gitleaks-action@v2
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
