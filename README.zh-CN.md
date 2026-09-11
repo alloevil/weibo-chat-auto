@@ -32,7 +32,7 @@
 
 ## 🎬 演示
 
-![演示](docs/demo.gif)
+![演示](docs/demo.gif?v=20260910)
 
 > 演示中的用户名、群名与头像均为脱敏示例。
 
@@ -283,15 +283,15 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 **消息视图** — 时段热力图、引用气泡（标原作者）、@提及高亮、每条「🎯 上下文」入口
 
-![消息视图](docs/screenshot-messages.png)
+![消息视图](docs/screenshot-messages.png?v=20260910)
 
 **上下文聚焦** — 点 🎯 弹出右侧面板：被回复的原消息 + 前后邻域 + 后续回复
 
-![上下文面板](docs/screenshot-context.png)
+![上下文面板](docs/screenshot-context.png?v=20260910)
 
 **统计面板** — 每日消息量、活跃用户排行
 
-![统计面板](docs/screenshot-stats.png)
+![统计面板](docs/screenshot-stats.png?v=20260910)
 
 > 截图中的用户名、群名与头像均为脱敏示例。
 

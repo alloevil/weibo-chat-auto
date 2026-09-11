@@ -32,7 +32,7 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 ## 🎬 Demo
 
-![Demo](docs/demo.gif)
+![Demo](docs/demo.gif?v=20260910)
 
 > Usernames, group names, and avatars in the demo are anonymized samples.
 
@@ -61,7 +61,7 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 ### 🖥 Download the app (recommended, macOS Apple Silicon)
 
-1. Download `weibo-chat_*_aarch64.app.zip` from the [**latest release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) and unzip it.
+1. Download `weibo-chat_*_aarch64.app.zip` from the \[**latest release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) and unzip it.
 2. First launch: the app is not code-signed yet, so macOS Gatekeeper will block a normal double-click. **Right-click the .app → Open → Open** (only needed once).
 3. Click 🔑 Login, scan the QR code with the Weibo app, then pick your groups under ⚙️ Settings → 归档群聊 — done.
 
@@ -125,7 +125,7 @@ cp config.example.json config.json
 ```json
 {
     "chromePath": "",
-    "groups": ["Group Name A", "Group Name B"]
+    "groups": \["Group Name A", "Group Name B"]
 }
 ```
 
@@ -221,9 +221,9 @@ Two more trade-offs:
 - **No polling when nobody's watching**: once all pages are closed, polling stops immediately — no idle hammering of Weibo's API in the background.
 - **No local echo of your own messages**: after a successful send, one live-sync round is nudged; your messages take exactly the same ingestion path as everyone else's, so the two sources can never conflict.
 - **Desktop notifications**: by default only when **you are mentioned** (click to jump to the message). Settings let you add keyword subscriptions or enable "digest notification for every batch of new messages" (max 3 per round). Rules are evaluated server-side (`lib/notify-rules.js`) and noise is never notified — otherwise 93% of pushes would be the check-in bot. Permission is requested only once a rule is actually enabled.
-- **Emoticons & images**: pick emoticons to the left of the input box (reuses the 340-entry official list used for rendering, inserts `[label]`), and send images too — file picker or paste, up to 20MB.
+- **Emoticons & images**: pick emoticons to the left of the input box (reuses the 340-entry official list used for rendering, inserts `\[label]`), and send images too — file picker or paste, up to 20MB.
 
-> The image upload endpoint (`/webim/uploadx.json`) was reverse-engineered from the webim frontend bundle and is **not yet verified against the real API** (once you really send one, there's no undo). If image sending fails, check the `[send]` line in `logs/` first.
+> The image upload endpoint (`/webim/uploadx.json`) was reverse-engineered from the webim frontend bundle and is **not yet verified against the real API** (once you really send one, there's no undo). If image sending fails, check the `\[send]` line in `logs/` first.
 
 ⚠️ Sending messages is a write operation, and the viewer's API has no authentication (it only binds to `127.0.0.1`) — any program on your machine could post through it. Never expose the port to the internet.
 
@@ -254,7 +254,7 @@ Ask questions in the toolbar's Q&A box; natural-language time ("recently", "yest
 
 **Agent mode** (default): the LLM searches iteratively, choosing keywords and scope on its own, running multiple rounds until it has enough information.
 
-💡 **If people go by nicknames, add an alias table**: create `output/<group>/aliases.json` with e.g. `{"tombkeeper": ["tk", "TK"]}` (keys are the real display names as archived). Asking "what did tk say recently" then filters straight to that person instead of making the LLM guess. The file is optional; without it behavior is unchanged.
+💡 **If people go by nicknames, add an alias table**: create `output/<group>/aliases.json` with e.g. `{"tombkeeper": \["tk", "TK"]}` (keys are the real display names as archived). Asking "what did tk say recently" then filters straight to that person instead of making the LLM guess. The file is optional; without it behavior is unchanged.
 
 Retrieval automatically drops red-packet notices and check-in bot spam (same rules as the viewer's "hide noise" toggle) and collapses consecutive reposts, so "what is everyone talking about" isn't skewed by flooding. Asking about "last week" / "recently" / "yesterday" uses dates computed by the tools rather than inferred by the LLM. Shared links, videos and images are searchable too (asking "what links were shared last week" now finds them).
 
@@ -263,13 +263,13 @@ Indexing is **automatic**: after each archive run, a background pass annotates t
 <details>
 <summary><b>Technical design</b></summary>
 
-Uses the Agentic Search pattern. The tool loop comes from [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 retrieval turns + one no-tools summarization turn when the budget runs out mid-tool-call; LLM rerank capped at 4 calls; 150s wall-clock ceiling over the whole request). Structured state accumulation follows the LedgerAgent paper.
+Uses the Agentic Search pattern. The tool loop comes from \[`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 retrieval turns + one no-tools summarization turn when the budget runs out mid-tool-call; LLM rerank capped at 4 calls; 150s wall-clock ceiling over the whole request). Structured state accumulation follows the LedgerAgent paper.
 
 Retrieval layer: topic-chunk splitting (30-minute gaps) → bigram BM25 → time decay (2-day half-life) → LLM rerank → in-chunk hit location. Plus three preprocessing passes: noise removal, speaker-alias resolution, and relative-date resolution ("last week" is computed into a concrete range by the tools rather than inferred by the LLM). An optional offline annotation layer also generates a summary and 2–4 reworded aliases per chunk, so a question phrased "who trimmed positions" can hit a chunk that says "sold half my chip stocks".
 
 Note: the AI proxy must support SSE streaming responses.
 
-See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
+See \[`docs/agent-qa.md`](docs/agent-qa.md) for details.
 
 **Benchmark (Agent vs Legacy)** — captured 2026-07 on one private group (56 days of history, 5 questions):
 
@@ -283,7 +283,7 @@ See [`docs/agent-qa.md`](docs/agent-qa.md) for details.
 
 ⚠️ **These numbers are stale and not reproducible.** They predate the block-level BM25 retrieval rewrite and the pi-agent-core loop migration; the original harness lived in `eval/` (an agent scratch directory untracked in ee2a63d) and depended on private archive data. Treat the table as a directional record of why Agent mode is the default, not as a current measurement. Latency in particular should now be lower: the loop no longer pays fixed retry backoff (a 2×429 recovery measured 3011ms → 1407ms — the SDK's default jittered backoff versus the old fixed 1s+2s), so the figure is conservative rather than optimistic.
 
-For current numbers, run `node scripts/benchmark-qa.js --group <group>` against your own archive (see [`docs/agent-qa.md`](docs/agent-qa.md#benchmark-结果)).
+For current numbers, run `node scripts/benchmark-qa.js --group <group>` against your own archive (see \[`docs/agent-qa.md`](docs/agent-qa.md#benchmark-结果)).
 
 </details>
 
@@ -296,15 +296,15 @@ For current numbers, run `node scripts/benchmark-qa.js --group <group>` against 
 
 **Message view** — hourly heatmap, quote bubbles (with original author), @mention highlighting, per-message 🎯 context entry
 
-![Message view](docs/screenshot-messages.png)
+![Message view](docs/screenshot-messages.png?v=20260910)
 
 **Context focus** — click 🎯 to open the right-side panel: the quoted original + surrounding messages + follow-up replies
 
-![Context panel](docs/screenshot-context.png)
+![Context panel](docs/screenshot-context.png?v=20260910)
 
 **Statistics panel** — daily message volume, active-user rankings
 
-![Statistics panel](docs/screenshot-stats.png)
+![Statistics panel](docs/screenshot-stats.png?v=20260910)
 
 > Usernames, group names, and avatars in the screenshots are anonymized samples.
 
@@ -318,12 +318,12 @@ For current numbers, run `node scripts/benchmark-qa.js --group <group>` against 
 | Required | Notes |
 | --- | --- |
 | 🖥 **macOS / Linux / WSL** | Archiver and viewer run cross-platform; scheduled-job installation is automatic on every platform (launchd / systemd / cron) |
-| 🟢 **Node.js 20+** | [brew install node](https://brew.sh) (macOS) / `apt install nodejs` (Linux) / [nodejs.org](https://nodejs.org) |
+| 🟢 **Node.js 20+** | \[brew install node](https://brew.sh) (macOS) / `apt install nodejs` (Linux) / [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | The archiver drives it for login and scraping; path is auto-detected (or set `chromePath` in `config.json`). The project only ever uses your installed Chrome, so `package.json` sets `puppeteer.skipDownload` and `npm install` no longer pulls a ~650 MB bundled Chromium; if you do want the bundled one, install with `PUPPETEER_SKIP_DOWNLOAD=0 npm install` |
 | 📱 **Weibo account + mobile app** | First-time login to the web version requires scanning a QR code with the app |
 | 🦀 **Rust + Bun** | Desktop app only; `npm run desktop` installs them automatically |
 
-> Windows users, please use [WSL](https://learn.microsoft.com/windows/wsl/install); the desktop app has only been verified on macOS so far.
+> Windows users, please use \[WSL](https://learn.microsoft.com/windows/wsl/install); the desktop app has only been verified on macOS so far.
 
 </details>
 
@@ -398,12 +398,12 @@ Each message:
     "date": "2026-05-11",
     "content": "message content",
     "type": 321,
-    "pics": ["https://upload.api.weibo.com/2/mss/msget?source=...&fid=..."],
+    "pics": \["https://upload.api.weibo.com/2/mss/msget?source=...&fid=..."],
     "share": {
         "url": "http://weibo.com/...",
         "title": "...",
         "author": "...",
-        "pics": ["https://wx1.sinaimg.cn/large/..."],
+        "pics": \["https://wx1.sinaimg.cn/large/..."],
         "reposts": 100,
         "comments": 50,
         "likes": 200
@@ -466,7 +466,7 @@ Images are proxied through the local server (which requires valid cookies), so t
 
 ## 📄 License
 
-[MIT](LICENSE)
+\[MIT](LICENSE)
 
 ---
 
