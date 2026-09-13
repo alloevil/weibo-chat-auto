@@ -1,7 +1,7 @@
 {
-    "$comment": "收据:本仓库哪些数字可复现、哪些明确不可复现。核对于 2026-09-13。规则:凡对外宣称的量化结论,要么在这里给出可跑的命令,要么明确标注不可复现——不允许既不标来源也不标不可复现。每条 claim 的 check 由 .github/workflows/claims.yml 每周跑一次。",
+    "$comment": "收据:本仓库哪些数字可复现、哪些明确不可复现。核对于 2026-09-14。规则:凡对外宣称的量化结论,要么在这里给出可跑的命令,要么明确标注不可复现——不允许既不标来源也不标不可复现。每条 claim 的 check 由 .github/workflows/claims.yml 每周跑一次。",
     "project": "weibo-chat-auto",
-    "updated": "2026-09-13",
+    "updated": "2026-09-14",
     "claims": [
         {
             "id": "tests-green",
@@ -34,15 +34,15 @@
         },
         {
             "id": "agent-qa-benchmark-not-reproducible",
-            "claim": "The Agent-vs-Legacy Q&A benchmark table in README.md / docs/agent-qa.md is a directional historical record and is NOT reproducible.",
-            "value": "1",
-            "metric": "both documents carry the staleness warning (counts, one per file)",
-            "method": "Both documents already carry the warning: the harness lived in an untracked eval/ directory and used private archive data, and the numbers predate the block-level BM25 rewrite. No number in that table is asserted as current.",
-            "repro": "grep -c '已过期且不可复现' docs/agent-qa.md && grep -c 'stale and not reproducible' README.md",
-            "evidence": "docs/agent-qa.md#benchmark-结果",
-            "as_of": "2026-09-13",
+            "claim": "The Agent-vs-Legacy benchmark table (20.5s / 10.1s / 100% success, one private group, 56 days, 5 questions), the 93% check-in-bot share of @me hits, and the 3011ms → 1407ms figure for the 2×429 retry recovery in the same warning paragraph — in README.md / README.zh-CN.md / docs/agent-qa.md — are directional historical records and are NOT reproducible.",
+            "value": "20.5s / 10.1s / 100% · 93%",
+            "metric": "the published figures as stated: the benchmark table's summary rows, plus the 93% noise share, which is restated 2× in README.md, 2× in README.zh-CN.md and 1× in docs/agent-qa.md",
+            "method": "All three documents label the table stale; the 93% share is published as 实测/measured with no committed harness or dataset behind it. No figure in that family is asserted as current, in either language.",
+            "repro": "grep -c '已过期且不可复现' docs/agent-qa.md README.zh-CN.md; grep -c 'stale and not reproducible' README.md; grep -c '93%' README.md README.zh-CN.md docs/agent-qa.md",
+            "evidence": "docs/agent-qa.md#benchmark-结果; README.md (AI Features → Benchmark); README.zh-CN.md (AI 功能 → Benchmark)",
+            "as_of": "2026-09-14",
             "check": {
-                "manual": "no committed artifact can recompute 20.5s / 10.1s: the harness that produced them lived in eval/, an agent scratch directory removed as untracked in ee2a63d, and it ran against a private Weibo group archive (56 days of one group, not in the repo). The numbers also predate the block-level BM25 retrieval rewrite and the pi-agent-core loop migration, so re-running anything today would measure different code — that is why README.md and docs/agent-qa.md both label the table stale, and why current numbers must come from scripts/benchmark-qa.js instead."
+                "manual": "no committed artifact recomputes any of these: the harness that produced 20.5s / 10.1s / 100% lived in eval/, an agent scratch directory untracked in ee2a63d (git ls-files eval/ is empty and the directory is gone from the tree), and it ran against a private Weibo group archive (one group, 56 days, 5 questions — not in the repo). The 93% share is the same shape of number: a measured proportion (the check-in bot's share of @me hits) with no committed dataset or script behind it, now restated in three documents (README.md ×2, README.zh-CN.md ×2, docs/agent-qa.md ×1), so it belongs to this entry instead of a second one. The 2×429 recovery figure in the same warning paragraph (3011ms → 1407ms) is likewise a live-API measurement made during the pi-agent-core migration, not a repository fact. All of it predates the block-level BM25 retrieval rewrite and the pi-agent-core loop migration, so re-running anything today would measure different code — that is why README.md, README.zh-CN.md and docs/agent-qa.md all label the table stale, and why current numbers must come from scripts/benchmark-qa.js instead."
             }
         },
         {
@@ -57,6 +57,47 @@
             "check": {
                 "cmd": "node -e \"const s=require('fs').readFileSync('scripts/benchmark-qa.js','utf8');const f=['--group','--repeat','--questions','--json'].filter(x=>s.includes(x));console.log('present with '+f.length+' documented flags')\"",
                 "expect": { "equals": "present with 4 documented flags" }
+            }
+        },
+        {
+            "id": "image-upload-limit-20mb",
+            "claim": "Sending an image from the group input box is capped at 20MB (README.md “up to 20MB”; README.zh-CN.md “上限 20MB”).",
+            "value": "20MB",
+            "metric": "MAX_IMAGE_BYTES = 20 * 1024 * 1024, enforced by sendGroupImage before it uploads anything",
+            "method": "lib/send-message.js compares the buffer against the cap and refuses with the cap in the message; the check feeds 21MiB (must be refused) and exactly 20MiB (must pass the gate) through a stubbed fetch, so no network is touched.",
+            "repro": "node -e \"const s=require('./lib/send-message.js');const stub=async()=>({json:async()=>({error_code:21301})});(async()=>{const over=await s.sendGroupImage({groupId:'1',buffer:Buffer.alloc(21*1024*1024),fetchImpl:stub});const at=await s.sendGroupImage({groupId:'1',buffer:Buffer.alloc(20*1024*1024),fetchImpl:stub});console.log((over.ok===false&&over.error.includes('20MB')?'21.0MB refused (>20MB)':'UNEXPECTED: '+JSON.stringify(over))+' · '+(at.needLogin===true?'20.0MB accepted':'NOT ACCEPTED: '+JSON.stringify(at)))})()\"",
+            "evidence": "lib/send-message.js#MAX_IMAGE_BYTES",
+            "as_of": "2026-09-14",
+            "check": {
+                "cmd": "node -e \"const s=require('./lib/send-message.js');const stub=async()=>({json:async()=>({error_code:21301})});(async()=>{const over=await s.sendGroupImage({groupId:'1',buffer:Buffer.alloc(21*1024*1024),fetchImpl:stub});const at=await s.sendGroupImage({groupId:'1',buffer:Buffer.alloc(20*1024*1024),fetchImpl:stub});console.log((over.ok===false&&over.error.includes('20MB')?'21.0MB refused (>20MB)':'UNEXPECTED: '+JSON.stringify(over))+' · '+(at.needLogin===true?'20.0MB accepted':'NOT ACCEPTED: '+JSON.stringify(at)))})()\"",
+                "expect": { "equals": "21.0MB refused (>20MB) · 20.0MB accepted" },
+                "timeout": 60
+            }
+        },
+        {
+            "id": "emoticon-list-size-not-in-repo",
+            "claim": "The emoticon picker and the tag renderer reuse Weibo's official 340-entry emoticon list (README.md “the 340-entry official list”; README.zh-CN.md “340 条官方清单”).",
+            "value": "340",
+            "metric": "entries of Weibo's official list (https://api.weibo.com/webim/emotions.json) that lib/emotions.js accepts",
+            "method": "lib/emotions.js commits no list: it fetches the official JSON at runtime (SOURCE_URL) and keeps the entries whose phrase is [label] with an http(s) url. The 340 figure is restated in prose only (lib/emotions.js header comment, lib/text-utils.js JSDoc) and in both READMEs — nothing committed contains the entries themselves.",
+            "repro": "curl -s 'https://api.weibo.com/webim/emotions.json?source=209678993' | node -e \"let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(Object.keys(require('./lib/emotions.js').toPhraseMap(JSON.parse(d))).length))\"   # needs a logged-in Weibo cookie",
+            "evidence": "lib/emotions.js#SOURCE_URL",
+            "as_of": "2026-09-14",
+            "check": {
+                "manual": "340 cannot be recomputed inside the repository: no committed copy of the list exists, lib/emotions.js only knows its URL, and the runtime cache (cache/emotions.json) is gitignored. The endpoint is not readable without a Weibo session either — an unauthenticated GET returns {\"error_code\":21301,\"error\":\"auth by Null spi!\"} — so a weekly gate could not fetch it even with network access. What would make this checkable: a committed snapshot of that JSON (or of the cache file) with the entry count asserted against it, plus its own date, since Weibo keeps adding emoticons and the count is a moving target."
+            }
+        },
+        {
+            "id": "sidecar-size-not-reproducible",
+            "claim": "The Tauri sidecar is a ~60MB standalone binary (README.md / README.zh-CN.md, desktop architecture).",
+            "value": "~60MB",
+            "metric": "size of the binary sidecar/build.mjs writes to src-tauri/binaries/viewer-server-<target-triple>",
+            "method": "sidecar/build.mjs runs `bun build scripts/viewer-server.js --compile` and prints the result as (bytes/1024/1024).toFixed(1) MB. Both destinations it writes to (sidecar/dist/, src-tauri/binaries/) are gitignored, so no built artifact is committed to measure.",
+            "repro": "node sidecar/build.mjs   # prints \"[sidecar] Size: NN.N MB\"",
+            "evidence": "sidecar/build.mjs",
+            "as_of": "2026-09-14",
+            "check": {
+                "manual": "the number is an output of an artifact-producing build, not a read of committed data: src-tauri/binaries/ and sidecar/dist/ are in .gitignore and no binary is in the tree. Reproducing it means running `bun build --compile` over scripts/viewer-server.js (with the npm dependencies installed) plus `rustc --print host-tuple`, in a gate that has neither bun nor Rust installed — and the result would track the pinned Bun version and dependency tree rather than the commit, so a freshly built size would drift from the sentence without anything having gone wrong. What would make it checkable: a committed size manifest, or a CI step that builds the sidecar and compares the printed size."
             }
         }
     ]
