@@ -1,44 +1,44 @@
 {
-  "$comment": "收据:本仓库哪些数字可复现、哪些明确不可复现。核对于 2026-09-11。规则:凡对外宣称的量化结论,要么在这里给出可跑的命令,要么明确标注不可复现——不允许既不标来源也不标不可复现。",
-  "project": "weibo-chat-auto",
-  "checked_on": "2026-09-11",
-  "claims": [
-    {
-      "id": "tests-green",
-      "claim": "The test suite passes on a clean checkout.",
-      "value": "289",
-      "metric": "passing node:test cases (# fail 0)",
-      "method": "node --test over the repo's test files (package.json scripts.test).",
-      "repro": "npm test 2>&1 | grep -E '^# (pass|fail)'",
-      "verified": "2026-09-11"
-    },
-    {
-      "id": "lint-zero-warnings",
-      "claim": "Lint is a hard gate: ESLint runs with --max-warnings=0, so a single warning fails.",
-      "value": "0 warnings",
-      "metric": "ESLint exit status and warning count",
-      "method": "package.json scripts.lint = 'eslint . --max-warnings=0'; scripts.check runs lint then test.",
-      "repro": "npm run lint >/dev/null 2>&1 && echo '0 warnings (eslint --max-warnings=0 passed)'",
-      "verified": "2026-09-11"
-    },
-    {
-      "id": "agent-qa-benchmark-not-reproducible",
-      "claim": "The Agent-vs-Legacy Q&A benchmark table in README.md / docs/agent-qa.md is a directional historical record and is NOT reproducible.",
-      "value": "1",
-      "metric": "both documents carry the staleness warning (counts, one per file)",
-      "method": "Both documents already carry the warning: the harness lived in an untracked eval/ directory and used private archive data, and the numbers predate the block-level BM25 rewrite. No number in that table is asserted as current.",
-      "repro": "grep -c '已过期且不可复现' docs/agent-qa.md && grep -c 'stale and not reproducible' README.md",
-      "evidence": "docs/agent-qa.md#benchmark-结果",
-      "verified": "2026-09-11"
-    },
-    {
-      "id": "current-benchmark-is-runnable",
-      "claim": "Current latency numbers can be produced locally by the shipped script instead of being quoted from the stale table.",
-      "value": "present with 4 documented flags",
-      "metric": "script exists and is documented with flags",
-      "method": "docs/agent-qa.md documents --group / --repeat / --questions / --json; README points at it for current numbers.",
-      "repro": "node -e \"const s=require('fs').readFileSync('scripts/benchmark-qa.js','utf8');const f=['--group','--repeat','--questions','--json'].filter(x=>s.includes(x));console.log('present with '+f.length+' documented flags')\"",
-      "verified": "2026-09-11"
-    }
-  ]
+    "$comment": "收据:本仓库哪些数字可复现、哪些明确不可复现。核对于 2026-09-11。规则:凡对外宣称的量化结论,要么在这里给出可跑的命令,要么明确标注不可复现——不允许既不标来源也不标不可复现。",
+    "project": "weibo-chat-auto",
+    "checked_on": "2026-09-11",
+    "claims": [
+        {
+            "id": "tests-green",
+            "claim": "The test suite passes on a clean checkout.",
+            "value": "289",
+            "metric": "passing node:test cases (# fail 0)",
+            "method": "node --test over the repo's test files (package.json scripts.test).",
+            "repro": "npm test 2>&1 | grep -E '^# (pass|fail)'",
+            "verified": "2026-09-11"
+        },
+        {
+            "id": "lint-zero-warnings",
+            "claim": "Lint is a hard gate: ESLint runs with --max-warnings=0, so a single warning fails.",
+            "value": "0 warnings",
+            "metric": "ESLint exit status and warning count",
+            "method": "package.json scripts.lint = 'eslint . --max-warnings=0'; scripts.check runs lint then test.",
+            "repro": "npm run lint >/dev/null 2>&1 && echo '0 warnings (eslint --max-warnings=0 passed)'",
+            "verified": "2026-09-11"
+        },
+        {
+            "id": "agent-qa-benchmark-not-reproducible",
+            "claim": "The Agent-vs-Legacy Q&A benchmark table in README.md / docs/agent-qa.md is a directional historical record and is NOT reproducible.",
+            "value": "1",
+            "metric": "both documents carry the staleness warning (counts, one per file)",
+            "method": "Both documents already carry the warning: the harness lived in an untracked eval/ directory and used private archive data, and the numbers predate the block-level BM25 rewrite. No number in that table is asserted as current.",
+            "repro": "grep -c '已过期且不可复现' docs/agent-qa.md && grep -c 'stale and not reproducible' README.md",
+            "evidence": "docs/agent-qa.md#benchmark-结果",
+            "verified": "2026-09-11"
+        },
+        {
+            "id": "current-benchmark-is-runnable",
+            "claim": "Current latency numbers can be produced locally by the shipped script instead of being quoted from the stale table.",
+            "value": "present with 4 documented flags",
+            "metric": "script exists and is documented with flags",
+            "method": "docs/agent-qa.md documents --group / --repeat / --questions / --json; README points at it for current numbers.",
+            "repro": "node -e \"const s=require('fs').readFileSync('scripts/benchmark-qa.js','utf8');const f=['--group','--repeat','--questions','--json'].filter(x=>s.includes(x));console.log('present with '+f.length+' documented flags')\"",
+            "verified": "2026-09-11"
+        }
+    ]
 }
