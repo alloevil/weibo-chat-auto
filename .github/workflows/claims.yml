@@ -1,0 +1,32 @@
+name: claims
+
+# Runs the receipts behind claims.json: every published number must still be printed by the
+# command next to it. Weekly as well as on push, because data moves without anyone committing.
+on:
+    push:
+    pull_request:
+    schedule:
+        - cron: '17 6 * * 1'
+
+permissions:
+    contents: read
+
+jobs:
+    verify:
+        name: published numbers still reproduce
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            # 与 ci.yml 同一个理由：tests-green 的收据真的去跑 npm test，而 test/qa-tools.test.mjs
+            # 会 import scripts/qa-agent.mjs → @mariozechner/pi-agent-core。裸 checkout 里这行 import
+            # 失败，跑出来是 257 pass / 1 fail，不是声称的 289 / 0。所以先装依赖。
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci --no-audit --no-fund
+
+            - uses: alloevil/verify-claims@v0.1.0
