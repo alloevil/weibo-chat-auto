@@ -12,9 +12,7 @@ jobs:
     build-macos:
         runs-on: macos-latest
         steps:
-            - uses: actions/checkout@v7
-
-            # tag 与三处版本号必须一致，否则 ship 出去的应用版本号还是旧的，
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7  # tag 与三处版本号必须一致，否则 ship 出去的应用版本号还是旧的，
             # 应用内更新检查（lib/version-check.js）也随之失效
             - name: Verify tag matches version files
               run: |
@@ -29,19 +27,17 @@ jobs:
                   }
 
             - name: Setup Node.js
-              uses: actions/setup-node@v7
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
               with:
                   node-version: 22
                   cache: npm
 
             - name: Setup Rust
-              uses: dtolnay/rust-toolchain@stable
-
+              uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
             - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
-
+              uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
             - name: Rust cache
-              uses: swatinem/rust-cache@v2
+              uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
               with:
                   workspaces: src-tauri
 
