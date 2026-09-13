@@ -58,8 +58,19 @@ jobs:
             - name: Check formatting
               run: npm run format:check
 
+            # 失败也要留下证据（11 章）：把测试输出落成文件，失败时上传
             - name: Unit tests
-              run: npm test
+              run: |
+                  set -o pipefail
+                  npm test 2>&1 | tee "/tmp/npm-test-node${{ matrix.node }}.log"
+
+            - name: Upload test log
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: npm-test-log-node${{ matrix.node }}
+                  path: /tmp/npm-test-node${{ matrix.node }}.log
+                  if-no-files-found: ignore
 
             - name: Validate JSON files
               run: |
@@ -70,6 +81,11 @@ jobs:
             # 检出的新 warning 直接拦 PR（此前只有 setup.sh 被检查且永不失败）
             - name: Shellcheck shell scripts
               run: shellcheck -S warning scripts/setup.sh scripts/schedule.sh scripts/run-desktop.sh scripts/start-chrome.sh
+
+            # 棘轮：`.unwrap()` / `.expect(` 只许减少，预算写在 src-tauri/unwrap-budget.txt。
+            # Rust 侧 panic 对桌面应用等于用户看到进程消失；纯 grep，不需要编译。
+            - name: Rust panic-site budget
+              run: ./scripts/check-unwrap-budget.sh
 
     # Rust 侧此前完全没有 CI：PR 弄坏 src-tauri/src/lib.rs 或 Cargo.toml
     # 只会在下一次 release 构建时才炸。cargo check 不需要 sidecar 二进制。
