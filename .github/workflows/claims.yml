@@ -27,4 +27,4 @@ jobs:
             - name: Install dependencies
               run: npm ci --no-audit --no-fund
 
-            - uses: alloevil/verify-claims@47598a8c3dcdde8cd435e21fe2f6489b967ae588 # v0.1.0
+            - uses: alloevil/verify-claims@v0.1.1
