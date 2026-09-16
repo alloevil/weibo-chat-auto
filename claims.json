@@ -14,12 +14,7 @@
             "as_of": "2026-09-13",
             "check": {
                 "cmd": "npm test 2>&1 | grep -E '^# (pass|fail)'",
-                "expect": {
-                    "contains": [
-                        "# pass 289",
-                        "# fail 0"
-                    ]
-                },
+                "expect": { "contains": ["# pass 289", "# fail 0"] },
                 "timeout": 60
             }
         },
@@ -34,9 +29,7 @@
             "as_of": "2026-09-13",
             "check": {
                 "cmd": "node -p \"require('./package.json').scripts.lint\"",
-                "expect": {
-                    "equals": "eslint . --max-warnings=0"
-                }
+                "expect": { "equals": "eslint . --max-warnings=0" }
             }
         },
         {
@@ -63,9 +56,7 @@
             "as_of": "2026-09-13",
             "check": {
                 "cmd": "node -e \"const s=require('fs').readFileSync('scripts/benchmark-qa.js','utf8');const f=['--group','--repeat','--questions','--json'].filter(x=>s.includes(x));console.log('present with '+f.length+' documented flags')\"",
-                "expect": {
-                    "equals": "present with 4 documented flags"
-                }
+                "expect": { "equals": "present with 4 documented flags" }
             }
         },
         {
@@ -79,9 +70,7 @@
             "as_of": "2026-09-14",
             "check": {
                 "cmd": "node -e \"const s=require('./lib/send-message.js');const stub=async()=>({json:async()=>({error_code:21301})});(async()=>{const over=await s.sendGroupImage({groupId:'1',buffer:Buffer.alloc(21*1024*1024),fetchImpl:stub});const at=await s.sendGroupImage({groupId:'1',buffer:Buffer.alloc(20*1024*1024),fetchImpl:stub});console.log((over.ok===false&&over.error.includes('20MB')?'21.0MB refused (>20MB)':'UNEXPECTED: '+JSON.stringify(over))+' · '+(at.needLogin===true?'20.0MB accepted':'NOT ACCEPTED: '+JSON.stringify(at)))})()\"",
-                "expect": {
-                    "equals": "21.0MB refused (>20MB) · 20.0MB accepted"
-                },
+                "expect": { "equals": "21.0MB refused (>20MB) · 20.0MB accepted" },
                 "timeout": 60
             }
         },
@@ -111,22 +100,17 @@
                 "manual": "the number is an output of an artifact-producing build, not a read of committed data: src-tauri/binaries/ and sidecar/dist/ are in .gitignore and no binary is in the tree. Reproducing it means running `bun build --compile` over scripts/viewer-server.js (with the npm dependencies installed) plus `rustc --print host-tuple`, in a gate that has neither bun nor Rust installed — and the result would track the pinned Bun version and dependency tree rather than the commit, so a freshly built size would drift from the sentence without anything having gone wrong. What would make it checkable: a committed size manifest, or a CI step that builds the sidecar and compares the printed size."
             }
         },
+
         {
             "id": "animated-pages-respect-reduced-motion",
             "claim": "Every page in this repository that animates — through CSS animations or transitions, cross-document view transitions, SMIL, requestAnimationFrame or the Web Animations API — also handles prefers-reduced-motion, so a reader who asked their system for less motion gets none.",
             "value": "every animated page carries the reduced-motion branch",
             "metric": "HTML pages containing a motion primitive vs those containing prefers-reduced-motion",
             "method": "The detector enumerates ways a page can move (animation:, @keyframes, <animate, requestAnimationFrame, .animate(, transition:, @view-transition); a page matching any of them must also contain prefers-reduced-motion. It also asserts that at least one page matched, so it cannot pass vacuously on a tree with no animation at all.",
-            "repro": "python3 -c \"import re, pathlib; m=re.compile(r'animation\\s*:|@keyframes|transition\\s*:|@view-transition'); print([str(p) for p in pathlib.Path('.').rglob('*.html') if m.search(p.read_text(encoding='utf-8', errors='replace'))][:5])\"",
-            "evidence": "the committed HTML pages",
+            "repro": "python3 -c \"import re,pathlib;m=re.compile(r'transition\\s*:|@keyframes');print([str(p) for p in pathlib.Path('.').rglob('*.html') if m.search(p.read_text(encoding='utf-8',errors='replace'))])\"",
+            "evidence": "viewer.html",
             "as_of": "2026-09-16",
-            "check": {
-                "cmd": "python3 -c \"import re, pathlib\nskip = {'.git','node_modules','dist','build','coverage','.venv','__pycache__','.pytest_cache'}\nmoves = re.compile(r'animation\\s*:|@keyframes|<animate\\b|requestAnimationFrame|\\.animate\\(|transition\\s*:|@view-transition')\nfiles = [p for p in sorted(pathlib.Path('.').rglob('*.html')) if not (set(p.parts) & skip)]\nanimated = [p for p in files if moves.search(p.read_text(encoding='utf-8', errors='replace'))]\nmissing = [str(p) for p in animated if 'prefers-reduced-motion' not in p.read_text(encoding='utf-8', errors='replace')]\nassert animated, 'no animated page found: this receipt would pass vacuously'\nassert not missing, missing\nprint('files %d animated %d missing %s' % (len(files), len(animated), missing))\"",
-                "expect": {
-                    "regex": "missing \\[\\]$"
-                },
-                "timeout": 120
-            }
+            "check": { "cmd": "python3 -c \"import re, pathlib\nskip = {'.git','node_modules','dist','build','coverage'}\nmoves = re.compile(r'animation\\s*:|@keyframes|<animate\\b|requestAnimationFrame|\\.animate\\(|transition\\s*:|@view-transition')\nfiles = [p for p in sorted(pathlib.Path('.').rglob('*.html')) if not (set(p.parts) & skip)]\nanimated = [p for p in files if moves.search(p.read_text(encoding='utf-8', errors='replace'))]\nmissing = [str(p) for p in animated if 'prefers-reduced-motion' not in p.read_text(encoding='utf-8', errors='replace')]\nassert animated, 'no animated page found: this receipt would pass vacuously'\nassert not missing, missing\nprint('files %d animated %d missing %s' % (len(files), len(animated), missing))\"", "expect": {"regex": "missing \\[\\]$"} }
         }
     ]
 }
