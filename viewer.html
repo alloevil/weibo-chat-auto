@@ -465,6 +465,20 @@ button, select, input { font-family: inherit; }
     .msg-header { gap: 4px; }
 }
 
+/* 无障碍：系统开启「减弱动态效果」时，把动效压到近乎瞬时而不是直接禁用。
+   本页的动画都只是装饰（实时圆点呼吸、跳转消息的高亮闪一下），信息都不依赖动画：
+   toast / 筛选栏 / 统计面板 / 灯箱都靠类名切换显隐，去掉过渡后直接落到终态，内容一个不少。
+   这里只中和时长与延迟，动画的终态（opacity、height 等）仍会生效，避免出现「动画没了、元素也没了」。 */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-delay: 0s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
 /* Empty state */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: var(--ink-subtle); font-size: 14px; padding: 40px; gap: 10px; }
 .empty::before { content: '◌'; font-size: 34px; color: var(--ink-tertiary); line-height: 1; }
