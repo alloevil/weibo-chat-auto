@@ -1,4 +1,4 @@
-// 录制脱敏演示 GIF（Linear 深色主题）。所有数据、配置与状态都在临时目录。
+// 录制脱敏演示 GIF（QQ 2012 轻白主题）。所有数据、配置与状态都在临时目录。
 // 用法：node docs/gen-demo-gif.js            录制 docs/demo.gif（依赖 Chrome + gifski）
 //       node docs/gen-demo-gif.js --preview  只启动隔离演示站，Ctrl+C 清理
 'use strict';
@@ -166,6 +166,10 @@ async function main() {
             defaultViewport: { width: 1280, height: 800, deviceScaleFactor: 1 },
         });
         const page = await browser.newPage();
+        // 皮肤预加载脚本会在首帧读取 localStorage；必须在导航前写入，避免先闪过默认深色。
+        await page.evaluateOnNewDocument(() => {
+            localStorage.setItem('viewer-theme', 'qq2012');
+        });
         await page.setRequestInterception(true);
         page.on('request', (request) => {
             const requestUrl = request.url();
