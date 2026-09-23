@@ -97,3 +97,18 @@ test('isCacheable: 拒绝超大条目（视频被当图片缓存过，单个 75M
     assert.strictEqual(cs.isCacheable(0), false);
     assert.strictEqual(cs.isCacheable(NaN), false);
 });
+
+test('createBoundedBuffer: 限额内合并，超过上限立即释放已缓存块', () => {
+    const within = cs.createBoundedBuffer(5);
+    assert.strictEqual(within.push(Buffer.from('ab')), true);
+    assert.strictEqual(within.push(Buffer.from('cde')), true);
+    assert.strictEqual(within.toBuffer().toString(), 'abcde');
+
+    const over = cs.createBoundedBuffer(5);
+    assert.strictEqual(over.push(Buffer.from('abcd')), true);
+    assert.strictEqual(over.bufferedBytes, 4);
+    assert.strictEqual(over.push(Buffer.from('ef')), false);
+    assert.strictEqual(over.toBuffer(), null);
+    assert.strictEqual(over.bufferedBytes, 0, '超限后不得继续保留前面的块');
+    assert.strictEqual(over.push(Buffer.from('g')), false);
+});

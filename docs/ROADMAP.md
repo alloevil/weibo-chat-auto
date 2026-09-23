@@ -14,7 +14,8 @@
 
 - [x] **更多导出格式** — 目前只有按天 JSON;计划支持 Markdown / 自包含 HTML 导出,方便存档和分享(#11)
 - [x] **Linux 定时任务自动安装** — 目前 `npm run archive` 的定时任务只在 macOS 上自动安装(launchd),Linux 用户需要手动配 cron;计划提供 systemd timer / cron 的一键安装(#12)
-- [ ] **Windows 原生支持** — 目前 Windows 走 WSL;Tauri 本身跨平台,主要工作量在 Chrome 探测、路径处理和 sidecar 构建
+- [x] **Windows Git Bash 网页版核心流程** — setup 使用相对 Node 路径、读取 config 的 Chrome 配置、探测用户级/Program Files 安装，并在 windows-latest 跑非交互安装 smoke
+- [ ] **Windows 桌面版与自动计划任务** — Tauri 安装包、Windows sidecar 发布和 Task Scheduler 自动配置尚未实现；目前原生 Windows 使用网页版并手工配置计划任务
 - [ ] **图片发送端点验证** — `/webim/uploadx.json` 是从 webim 前端 bundle 逆向出来的,尚未对真实 API 验证(README 已如实标注);需要真实验证 + 失败时的清晰错误提示
 - [ ] **多账号支持** — 目前单账号单 cookie;多账号需要 cookie 隔离和群归属区分
 
@@ -40,7 +41,6 @@
 - 绕过微博风控的任何手段 — 保活机制只做正常的会话续期
 
 带编号的项已建对应 issue;没编号的先在这里讨论。
-
 
 
 

@@ -136,6 +136,11 @@ for (const group of groups) {
                 sandbox,
                 { filename: 'text-utils.js' }
             );
+            vm.runInContext(
+                fs.readFileSync(path.join(ROOT, 'lib/viewer-filters.js'), 'utf-8'),
+                sandbox,
+                { filename: 'viewer-filters.js' }
+            );
             vm.runInContext(m[1], sandbox, { filename: 'viewer-inline.js' });
             // 注意:内联脚本的 let 声明是词法绑定,不能用 sandbox.xxx= 注入,必须在上下文内赋值
             const msgs = ms.loadMessagesByDate(path.join(ROOT, 'output'), group, date);

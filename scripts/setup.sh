@@ -46,8 +46,9 @@ echo "${BOLD}══════════════════════�
 # ── 1. 检查运行环境 ──────────────────────────────
 step "[1/5] 检查运行环境"
 
-# 识别系统（不再因非 macOS 退出；定时任务仅 macOS 支持，其余步骤通用）
+# 识别系统；Windows Git Bash 支持核心安装，但定时任务交给 Windows 任务计划程序。
 OS="$(uname -s)"
+WINDOWS_NATIVE=0
 case "$OS" in
     Darwin) ok "系统：macOS" ;;
     Linux)
@@ -56,6 +57,10 @@ case "$OS" in
         else
             ok "系统：Linux"
         fi
+        ;;
+    MINGW*|MSYS*|CYGWIN*)
+        WINDOWS_NATIVE=1
+        ok "系统：Windows (Git Bash)"
         ;;
     *) warn "系统：$OS（未充分测试，归档与查看器可尝试运行）" ;;
 esac
@@ -69,18 +74,12 @@ if [ -z "$NODE_BIN" ]; then
     echo "      或从官网下载：https://nodejs.org （选 LTS 版）"
     exit 1
 fi
-ok "Node.js $(node --version)  ${DIM}($NODE_BIN)${RESET}"
-
-# Google Chrome（puppeteer 驱动它登录/抓取）——跨平台探测，复用 lib/chrome-path.js
-if node -e "require('$ROOT_DIR/lib/chrome-path').resolveChromePath('')" >/dev/null 2>&1; then
-    CHROME_FOUND="$(node -e "process.stdout.write(require('$ROOT_DIR/lib/chrome-path').resolveChromePath(''))" 2>/dev/null)"
-    ok "Google Chrome：${DIM}${CHROME_FOUND}${RESET}"
-else
-    warn "未找到 Google Chrome（必需）"
-    echo "    请先安装：https://www.google.com/chrome/"
-    echo "    若装在非默认位置，在 ${DIM}config.json${RESET} 的 chromePath 指定。"
+if ! NODE_VERSION_ERROR="$(node scripts/check-node-version.js 2>&1)"; then
+    warn "$NODE_VERSION_ERROR"
+    echo "    请从 https://nodejs.org 安装受支持的 LTS 版本。"
     exit 1
 fi
+ok "Node.js $(node --version)  ${DIM}($NODE_BIN)${RESET}"
 
 # 2. 安装依赖
 step "[2/5] 安装依赖"
@@ -116,6 +115,29 @@ else
     fi
 fi
 
+# 配置已存在/创建后再检查 Chrome。Node 从当前工作目录使用相对 require，避免
+# Git Bash 的 /d/... MSYS 路径被原生 Windows Node 误解。
+if CHROME_FOUND="$(node -e '
+    const fs = require("fs");
+    let configured = "";
+    try { configured = require("./config.json").chromePath || ""; } catch {}
+    try {
+        const found = require("./lib/chrome-path").resolveChromePath(configured);
+        if (!fs.existsSync(found)) throw new Error(`Chrome 路径不存在：${found}`);
+        process.stdout.write(found);
+    } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+    }
+' 2>&1)"; then
+    ok "Google Chrome：${DIM}${CHROME_FOUND}${RESET}"
+else
+    warn "未找到可用的 Google Chrome（必需）"
+    echo "    $CHROME_FOUND"
+    echo "    请安装 Chrome，或修改 ${DIM}config.json${RESET} 的 chromePath 后重试。"
+    exit 1
+fi
+
 # ── 4. 登录（保存 Cookie）────────────────────────
 step "[4/5] 登录微博"
 if [ -f "$ROOT_DIR/cookies.json" ]; then
@@ -136,7 +158,9 @@ fi
 # ── 5. 定时任务（可选）───────────────────────────
 step "[5/5] 定时自动归档（可选）"
 # 平台分支（launchd / systemd / cron）统一在 scripts/schedule.sh
-if [ "$INTERACTIVE" -eq 1 ]; then
+if [ "$WINDOWS_NATIVE" -eq 1 ]; then
+    info "Windows 原生环境暂不自动配置计划任务；可使用 Windows 任务计划程序运行 npm run archive。"
+elif [ "$INTERACTIVE" -eq 1 ]; then
     printf "启用定时自动归档（每小时一次，保持 Cookie 不过期）？[y/N] "
     read -r ANS
     if [[ "$ANS" =~ ^[Yy] ]]; then
@@ -158,11 +182,13 @@ echo "${BOLD}下一步：${RESET}"
 echo "  ${BLUE}npm run archive${RESET}   手动归档一次"
 echo "  ${BLUE}npm run view${RESET}      启动查看器 → http://localhost:3456"
 echo
-echo "${BOLD}定时任务管理：${RESET}"
-echo "  ${DIM}./scripts/schedule.sh status${RESET}      查看状态"
-echo "  ${DIM}./scripts/schedule.sh install${RESET}     安装 / 启用"
-echo "  ${DIM}./scripts/schedule.sh uninstall${RESET}   卸载"
-echo
+if [ "$WINDOWS_NATIVE" -eq 0 ]; then
+    echo "${BOLD}定时任务管理：${RESET}"
+    echo "  ${DIM}./scripts/schedule.sh status${RESET}      查看状态"
+    echo "  ${DIM}./scripts/schedule.sh install${RESET}     安装 / 启用"
+    echo "  ${DIM}./scripts/schedule.sh uninstall${RESET}   卸载"
+    echo
+fi
 
 # ── 首次归档 + 打开查看器（交互式引导）──────────────
 # 检测 config 是否仍是占位群名

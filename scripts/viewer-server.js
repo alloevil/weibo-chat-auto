@@ -7,16 +7,11 @@ const { exec } = require('child_process');
 const PORT = process.env.WEIBO_PORT ? Number(process.env.WEIBO_PORT) : 3456;
 // 仓库根目录（本脚本在 scripts/ 下,运行时数据仍存根目录）
 const ROOT = path.join(__dirname, '..');
+// 测试/演示可把所有可变数据隔离到临时目录；生产缺省仍是仓库根。
+const DATA_ROOT = process.env.WEIBO_DATA_ROOT ? path.resolve(process.env.WEIBO_DATA_ROOT) : ROOT;
 const OUTPUT_DIR = process.env.WEIBO_OUTPUT_DIR
     ? path.resolve(process.env.WEIBO_OUTPUT_DIR)
-    : path.join(ROOT, 'output');
-
-process.on('uncaughtException', (err) => {
-    console.error('[uncaughtException]', err.message);
-});
-process.on('unhandledRejection', (err) => {
-    console.error('[unhandledRejection]', err);
-});
+    : path.join(DATA_ROOT, 'output');
 
 function loadCookies() {
     // cookie-store 是 cookies.json 的唯一读写入口（fs/path 依赖，Bun 可打包）
@@ -43,6 +38,7 @@ const syncReport = require('../lib/sync-report');
 // 实时同步（lib/live-sync）：查看器常驻期间轮询 webim，把新消息并入日文件并
 // 通过 SSE 推给页面。只在有订阅者时轮询，没人看不打接口。
 const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('../lib/live-sync');
+const { DEFAULT_MAX_BYTES: JSON_BODY_MAX_BYTES, readJsonBody } = require('../lib/json-body');
 // 发消息（写操作）统一走 lib/send-message：微博失败也回 HTTP 200，必须解析 body
 const { sendGroupMessage, sendGroupImage } = require('../lib/send-message');
 // 跨站写操作拦截（CSRF）：只绑 127.0.0.1 不足以防护，见 lib/csrf-guard
@@ -50,7 +46,7 @@ const { isCrossSiteRequest, LOCAL_HOSTS } = require('../lib/csrf-guard');
 // 本地时区日期（legacy QA 的"今天"锚点，不能用 toISOString 的 UTC 切片）
 const { formatLocalDate } = require('../lib/day-file');
 // 图片缓存治理：cache/images 是纯优化（内容可再取），此前无淘汰策略涨到 688MB
-const { evictCache, isCacheable } = require('../lib/cache-store');
+const { createBoundedBuffer, evictCache } = require('../lib/cache-store');
 // 定时归档任务的发现/解析（按程序路径认领，不硬编码 label）见 lib/launch-agents
 const { findArchiveAgents, describeSchedule } = require('../lib/launch-agents');
 // 表情清单：内置 Unicode 表只覆盖 83%，其余靠微博官方清单渲染成图片
@@ -62,12 +58,23 @@ const { buildNotifications } = require('../lib/notify-rules');
 // 应用内选群（#18）：会话列表拉取/解析 + config.json 的 groups 写入口（均有单测）
 const { fetchGroupSessions, diffConfiguredGroups } = require('../lib/group-sessions');
 const groupConfig = require('../lib/group-config');
-const CONFIG_PATH = path.join(ROOT, 'config.json');
+const {
+    readGroupMetadata,
+    resolveGroupStorageKey,
+    writeGroupMetadata,
+} = require('../lib/group-storage');
+const groupRegistry = require('../lib/group-registry');
+const { ensurePrivateFileMode, writePrivateJson } = require('../lib/private-json');
+const CONFIG_PATH = path.join(DATA_ROOT, 'config.json');
+const AI_CONFIG_PATH = path.join(DATA_ROOT, 'ai-config.json');
+const STATE_DIR = path.join(DATA_ROOT, 'state');
+const GROUP_REGISTRY_PATH = path.join(STATE_DIR, 'group-registry.json');
+let lastWeiboGroups = [];
 // 导出渲染（Markdown / 自包含 HTML），复用查看器的引用/表情/噪音规则
 const exportChat = require('../lib/export-chat');
 // 归档器跨进程锁的只读探测（#14）：/api/sync 在 spawn 前拒绝并发
 const syncLock = require('../lib/sync-lock');
-const isSyncLockFree = () => !syncLock.isLocked(path.join(ROOT, 'state'));
+const isSyncLockFree = () => !syncLock.isLocked(STATE_DIR);
 
 // 版本号与更新检查（#17）：比较/缓存逻辑在 lib/version-check（有单测），
 // 这里只注入真实的 GitHub API 请求。任何失败都静默为「无更新」。
@@ -134,7 +141,7 @@ async function refreshMe() {
 }
 
 // 通知偏好（与实时同步同一套路：存盘、默认保守 —— 只提醒提到我）
-const NOTIFY_CONFIG_PATH = path.join(ROOT, 'notify-config.json');
+const NOTIFY_CONFIG_PATH = path.join(DATA_ROOT, 'notify-config.json');
 function readNotifyConfig() {
     try {
         const c = JSON.parse(fs.readFileSync(NOTIFY_CONFIG_PATH, 'utf-8'));
@@ -149,40 +156,47 @@ function readNotifyConfig() {
 }
 let notifyConfig = readNotifyConfig();
 
-/** 群名 → 归档器写在 state 里的会话 id（缺失表示该群还没被归档器解析过）。 */
-function readGroupState(groupName) {
-    const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
+function readGroupStateByKey(storageKey) {
     try {
         return JSON.parse(
-            fs.readFileSync(path.join(ROOT, 'state', `last-archive-state_${safe}.json`), 'utf-8')
+            fs.readFileSync(path.join(STATE_DIR, `last-archive-state_${storageKey}.json`), 'utf-8')
         );
     } catch {
         return null;
     }
 }
 
-/** 可实时同步的群：output/ 下有数据且 state 里有 groupId。 */
-function resolveLiveGroups() {
-    const out = [];
-    if (!fs.existsSync(OUTPUT_DIR)) return out;
-    for (const entry of fs.readdirSync(OUTPUT_DIR, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        const st = readGroupState(entry.name);
-        if (!st?.groupId) continue;
-        out.push({
-            name: entry.name,
-            groupId: String(st.groupId),
-            dir: path.join(OUTPUT_DIR, entry.name),
+function resolveConfiguredGroup(groupName, registryByName) {
+    const registered = registryByName.get(groupName);
+    const storageKey =
+        registered?.storageKey ||
+        resolveGroupStorageKey(OUTPUT_DIR, STATE_DIR, groupName, {
+            groupId: registered?.groupId || '',
         });
-    }
-    return out;
+    const state = readGroupStateByKey(storageKey);
+    return {
+        name: storageKey,
+        displayName: groupName,
+        groupId: String(state?.groupId || registered?.groupId || ''),
+        dir: path.join(OUTPUT_DIR, storageKey),
+    };
+}
+
+/** 可实时同步的群：已配置且 state/注册表里有经过验证的 groupId。 */
+function resolveLiveGroups() {
+    const registry = groupRegistry.readRegistry(GROUP_REGISTRY_PATH);
+    const registryByName = new Map(registry.groups.map((group) => [group.groupName, group]));
+    return groupConfig
+        .readGroups(CONFIG_PATH)
+        .map((name) => resolveConfiguredGroup(name, registryByName))
+        .filter((group) => group.groupId);
 }
 // 实时同步总开关。**默认关闭**：轮询会读取群消息，而"读取是否会推进微博侧的
 // 已读游标"无法从外部证伪（query_messages 的响应自带 last_read_mid，只能通过
 // 同一个接口观察它）。默认开着就有可能悄悄吃掉原生客户端的未读提示 ——
 // 这种代价必须由用户显式选择承担，而不是默认替他决定。
 // 持久化在 live-config.json（与 ai-config.json 同套路，不去改用户手写的 config.json）。
-const LIVE_CONFIG_PATH = path.join(ROOT, 'live-config.json');
+const LIVE_CONFIG_PATH = path.join(DATA_ROOT, 'live-config.json');
 function readLiveEnabled() {
     try {
         return JSON.parse(fs.readFileSync(LIVE_CONFIG_PATH, 'utf-8')).enabled === true;
@@ -236,7 +250,7 @@ const liveSync = createLiveSync({
                 event.notifications = buildNotifications(event.messages, meState, {
                     keywords: notifyConfig.keywords,
                     notifyAll: notifyConfig.notifyAll,
-                    group: event.group,
+                    group: event.groupLabel || event.group,
                 });
             }
         } else if (event.type === 'auth' && event.ok === false) {
@@ -244,7 +258,7 @@ const liveSync = createLiveSync({
             authState.code = weiboAuth.UNAUTHENTICATED_CODE;
             authState.checkedAt = Date.now();
         } else if (event.type === 'error') {
-            logLiveError(event.group, event.error);
+            logLiveError(event.groupLabel || event.group, event.error);
         }
         broadcast(event);
     },
@@ -273,8 +287,6 @@ async function keepAliveTick(reason = '定时') {
     }
     authState.checkedAt = Date.now();
 }
-setInterval(keepAliveTick, 30 * 60 * 1000).unref();
-
 function getGroupDir(groupName) {
     return messageStore.getGroupDir(OUTPUT_DIR, groupName);
 }
@@ -292,7 +304,7 @@ function loadMessagesByDate(groupName = '', date = '') {
 // 归档器不在跑 + 当日有消息 + 今天没做过 → 生成摘要缓存 + SSE 推桌面通知。
 // 默认关闭：与 live-sync 同一哲学，关闭时零额外行为；未配 AI 完全不打扰。
 const { createDailyDigest } = require('../lib/daily-digest');
-const DIGEST_CONFIG_PATH = path.join(ROOT, 'digest-config.json');
+const DIGEST_CONFIG_PATH = path.join(DATA_ROOT, 'digest-config.json');
 function readDigestConfig() {
     try {
         const c = JSON.parse(fs.readFileSync(DIGEST_CONFIG_PATH, 'utf-8'));
@@ -302,11 +314,11 @@ function readDigestConfig() {
     }
 }
 let digestConfig = readDigestConfig();
-const DIGEST_STATE_PATH = path.join(ROOT, 'state', 'digest-state.json');
+const DIGEST_STATE_PATH = path.join(STATE_DIR, 'digest-state.json');
 
 function hasAiConfigComplete() {
     try {
-        const c = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
+        const c = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
         return !!(c.baseUrl && c.apiKey && c.model);
     } catch {
         return false;
@@ -377,30 +389,17 @@ const dailyDigest = createDailyDigest({
     },
     log: (m) => console.log(m),
 });
-// 定时归档进程结束的时刻 viewer 感知不到，用 5 分钟周期检查逼近「归档完成后」；
-// 条件链短路极快，摘要与通知本身有按日去重，多查无害。
-setInterval(
-    () => {
-        dailyDigest.check().catch(() => {});
-    },
-    5 * 60 * 1000
-).unref();
-setTimeout(() => {
-    dailyDigest.check().catch(() => {});
-}, 30 * 1000).unref();
-
 // 序列化时改写副本（#15）：缓存永远保存原始 URL，代理路径只存在于
 // /api/messages 的响应里。实现与回归测试见 lib/rewrite-image-urls。
 const { rewriteImageUrls } = require('../lib/rewrite-image-urls');
 
-const CACHE_DIR = path.join(ROOT, 'cache', 'images');
-if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+const CACHE_DIR = path.join(DATA_ROOT, 'cache', 'images');
 
 // Reusable LLM API caller (OpenAI-compatible)
 function callLlmApi(messages, callback) {
     let aiConfig;
     try {
-        aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
+        aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
     } catch {
         callback(null, 'AI 未配置');
         return;
@@ -660,7 +659,31 @@ function qaLegacy(question, allMessages, reply) {
     });
 }
 
-const server = http.createServer((req, res) => {
+const IMAGE_JSON_BODY_MAX_BYTES = 30 * 1024 * 1024;
+const QA_JSON_BODY_MAX_BYTES = 256 * 1024;
+
+/** 统一读取 JSON 请求体；超限返回 413，畸形/非对象 JSON 返回 400。 */
+async function parseJsonRequest(req, res, maxBytes = JSON_BODY_MAX_BYTES) {
+    try {
+        const value = await readJsonBody(req, { maxBytes });
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            const error = new Error('请求体必须是 JSON 对象');
+            error.statusCode = 400;
+            throw error;
+        }
+        return value;
+    } catch (e) {
+        if (!res.headersSent && !res.writableEnded) {
+            res.writeHead(e.statusCode === 413 ? 413 : 400, {
+                'Content-Type': 'application/json; charset=utf-8',
+            });
+            res.end(JSON.stringify({ ok: false, error: e.message }));
+        }
+        return null;
+    }
+}
+
+function requestHandler(req, res) {
     const url = new URL(req.url, `http://localhost:${PORT}`);
 
     // DNS rebinding 防护：攻击页把自有域名 rebind 到 127.0.0.1 后与本服务同源，
@@ -689,7 +712,7 @@ const server = http.createServer((req, res) => {
 
     // List available groups
     if (url.pathname === '/api/groups') {
-        const groups = [];
+        const discovered = new Map();
         let lastArchived = 0;
         // Check root output dir (backward compat)
         if (fs.existsSync(OUTPUT_DIR)) {
@@ -702,7 +725,7 @@ const server = http.createServer((req, res) => {
                     return mt > max ? mt : max;
                 }, 0);
                 if (latestMtime > lastArchived) lastArchived = latestMtime;
-                groups.push({ id: '', name: 'Default', count: rootFiles.length });
+                discovered.set('', { id: '', name: 'Default', count: rootFiles.length });
             }
             // Check subdirectories
             for (const entry of fs.readdirSync(OUTPUT_DIR, { withFileTypes: true })) {
@@ -717,11 +740,28 @@ const server = http.createServer((req, res) => {
                             return mt > max ? mt : max;
                         }, 0);
                         if (latestMtime > lastArchived) lastArchived = latestMtime;
-                        groups.push({ id: entry.name, name: entry.name, count: files.length });
+                        const metadata = readGroupMetadata(subDir);
+                        discovered.set(entry.name, {
+                            id: entry.name,
+                            name: metadata?.groupName || entry.name,
+                            count: files.length,
+                        });
                     }
                 }
             }
         }
+        // 已配置但尚无归档文件的群也进入选择器：contacts 接口已经提供可靠
+        // groupId，用户选群后即可发送；实时同步仍受默认关闭总闸门控制。
+        const registry = groupRegistry.readRegistry(GROUP_REGISTRY_PATH);
+        const registryByName = new Map(registry.groups.map((group) => [group.groupName, group]));
+        const groups = [];
+        for (const name of groupConfig.readGroups(CONFIG_PATH)) {
+            const resolved = resolveConfiguredGroup(name, registryByName);
+            const archived = discovered.get(resolved.name);
+            groups.push(archived ? { ...archived, name } : { id: resolved.name, name, count: 0 });
+            discovered.delete(resolved.name);
+        }
+        groups.push(...discovered.values());
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ groups, lastArchived }));
         return;
@@ -791,26 +831,7 @@ const server = http.createServer((req, res) => {
     // Get available dates and message counts
     if (url.pathname === '/api/dates') {
         const group = url.searchParams.get('group') || '';
-        const dir = getGroupDir(group);
-        const dates = {};
-        if (fs.existsSync(dir)) {
-            const files = fs
-                .readdirSync(dir)
-                .filter((f) => /^weibo_chat_\d{4}-\d{2}-\d{2}\.json$/.test(f));
-            for (const file of files) {
-                const dateMatch = file.match(/weibo_chat_(\d{4}-\d{2}-\d{2})\.json/);
-                if (dateMatch) {
-                    const date = dateMatch[1];
-                    try {
-                        const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
-                        const msgs = data.messages || data;
-                        dates[date] = Array.isArray(msgs) ? msgs.length : 0;
-                    } catch {
-                        dates[date] = 0;
-                    }
-                }
-            }
-        }
+        const dates = messageStore.listDateCounts(OUTPUT_DIR, group);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ dates }));
         return;
@@ -820,26 +841,13 @@ const server = http.createServer((req, res) => {
     // 成功后立刻催一轮实时同步：自己发的消息走与他人消息完全相同的入库路径，
     // 不在本地伪造回显（两条来源会打架）。
     if (url.pathname === '/api/send' && req.method === 'POST') {
-        let body = '';
-        // setEncoding 后 Node 用 StringDecoder 保留不完整的多字节序列；
-        // 少了它，中文请求体跨 chunk 就会碎成 ���（见 lib/read-stream.js）
-        req.setEncoding('utf-8');
-        req.on('data', (c) => {
-            body += c;
-            if (body.length > 1e5) req.destroy();
-        });
-        req.on('end', async () => {
+        void (async () => {
             const reply = (r) => {
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify(r));
             };
-            let params;
-            try {
-                params = JSON.parse(body);
-            } catch {
-                reply({ ok: false, error: '参数解析失败' });
-                return;
-            }
+            const params = await parseJsonRequest(req, res);
+            if (!params) return;
             const group = params.group || '';
             const target = resolveLiveGroups().find((g) => g.name === group);
             if (!target) {
@@ -870,35 +878,20 @@ const server = http.createServer((req, res) => {
             } catch (e) {
                 reply({ ok: false, error: `发送请求失败: ${e.message}` });
             }
-        });
+        })();
         return;
     }
 
     // 发送图片：前端传 base64（图片一般几百 KB，比多写一套 multipart 解析划算）。
     // 上传与发送的两步都在 lib/send-message 里，这里只做参数校验与结果转述。
     if (url.pathname === '/api/send-image' && req.method === 'POST') {
-        const chunks = [];
-        let bytes = 0;
-        req.on('data', (c) => {
-            bytes += c.length;
-            if (bytes > 30 * 1024 * 1024) {
-                req.destroy();
-                return;
-            } // 30MB 硬顶
-            chunks.push(c);
-        });
-        req.on('end', async () => {
+        void (async () => {
             const reply = (r) => {
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify(r));
             };
-            let params;
-            try {
-                params = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
-            } catch {
-                reply({ ok: false, error: '参数解析失败' });
-                return;
-            }
+            const params = await parseJsonRequest(req, res, IMAGE_JSON_BODY_MAX_BYTES);
+            if (!params) return;
             const group = params.group || '';
             const target = resolveLiveGroups().find((g) => g.name === group);
             if (!target) {
@@ -943,7 +936,7 @@ const server = http.createServer((req, res) => {
             } catch (e) {
                 reply({ ok: false, error: `发送图片失败: ${e.message}` });
             }
-        });
+        })();
         return;
     }
 
@@ -955,14 +948,10 @@ const server = http.createServer((req, res) => {
             return;
         }
         if (req.method === 'POST') {
-            let body = '';
-            req.setEncoding('utf-8');
-            req.on('data', (c) => {
-                body += c;
-            });
-            req.on('end', () => {
+            void (async () => {
+                const p = await parseJsonRequest(req, res);
+                if (!p) return;
                 try {
-                    const p = JSON.parse(body);
                     notifyConfig = {
                         enabled: p.enabled !== false,
                         notifyAll: p.notifyAll === true,
@@ -989,7 +978,7 @@ const server = http.createServer((req, res) => {
                     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
-            });
+            })();
             return;
         }
     }
@@ -1001,6 +990,7 @@ const server = http.createServer((req, res) => {
         (async () => {
             const r = await fetchGroupSessions({ cookieHeader: loadCookies() });
             if (r.ok) {
+                lastWeiboGroups = r.groups;
                 const configured = groupConfig.readGroups(CONFIG_PATH);
                 const { matched, missing } = diffConfiguredGroups(configured, r.groups);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1028,19 +1018,39 @@ const server = http.createServer((req, res) => {
             return;
         }
         if (req.method === 'POST') {
-            let body = '';
-            req.setEncoding('utf-8');
-            req.on('data', (c) => {
-                body += c;
-            });
-            req.on('end', () => {
+            void (async () => {
+                const p = await parseJsonRequest(req, res);
+                if (!p) return;
                 try {
-                    const p = JSON.parse(body);
+                    const plan = groupRegistry.planRegistryUpdate({
+                        file: GROUP_REGISTRY_PATH,
+                        names: p.groups,
+                        sessions: lastWeiboGroups,
+                        outputDir: OUTPUT_DIR,
+                        stateDir: STATE_DIR,
+                    });
+                    if (!plan.ok) {
+                        res.writeHead(400, {
+                            'Content-Type': 'application/json; charset=utf-8',
+                        });
+                        res.end(JSON.stringify(plan));
+                        return;
+                    }
                     const r = groupConfig.writeGroups(CONFIG_PATH, p.groups);
-                    if (r.ok)
+                    if (r.ok) {
+                        groupRegistry.writeRegistry(GROUP_REGISTRY_PATH, plan.registry);
+                        for (const group of plan.registry.groups) {
+                            if (!group.groupId) continue;
+                            writeGroupMetadata(path.join(OUTPUT_DIR, group.storageKey), {
+                                groupName: group.groupName,
+                                groupId: group.groupId,
+                                storageKey: group.storageKey,
+                            });
+                        }
                         console.log(
                             `[groups] 已选群写入 config.json（${r.groups.length} 个）: ${r.groups.join('、')}`
                         );
+                    }
                     res.writeHead(r.ok ? 200 : 400, {
                         'Content-Type': 'application/json; charset=utf-8',
                     });
@@ -1049,7 +1059,7 @@ const server = http.createServer((req, res) => {
                     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
-            });
+            })();
             return;
         }
     }
@@ -1077,14 +1087,10 @@ const server = http.createServer((req, res) => {
             return;
         }
         if (req.method === 'POST') {
-            let body = '';
-            req.setEncoding('utf-8');
-            req.on('data', (c) => {
-                body += c;
-            });
-            req.on('end', () => {
+            void (async () => {
+                const p = await parseJsonRequest(req, res);
+                if (!p) return;
                 try {
-                    const p = JSON.parse(body);
                     digestConfig = {
                         enabled: p.enabled === true,
                         // 时点限定 0-23 的整数，畸形输入回落默认 20 点
@@ -1106,7 +1112,7 @@ const server = http.createServer((req, res) => {
                     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
-            });
+            })();
             return;
         }
     }
@@ -1125,14 +1131,11 @@ const server = http.createServer((req, res) => {
             return;
         }
         if (req.method === 'POST') {
-            let body = '';
-            req.setEncoding('utf-8');
-            req.on('data', (c) => {
-                body += c;
-            });
-            req.on('end', () => {
+            void (async () => {
+                const params = await parseJsonRequest(req, res);
+                if (!params) return;
                 try {
-                    const { enabled } = JSON.parse(body);
+                    const { enabled } = params;
                     liveEnabled = !!enabled;
                     writeLiveEnabled(liveEnabled);
                     liveSync.refresh(); // 立即生效：开则起轮询，关则停
@@ -1143,7 +1146,7 @@ const server = http.createServer((req, res) => {
                     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
-            });
+            })();
             return;
         }
     }
@@ -1188,7 +1191,9 @@ const server = http.createServer((req, res) => {
     // 表情清单（标签 → 图片 URL）。磁盘缓存 7 天，网络失败退回旧缓存，
     // 因此前端拿不到映射只会退化成显示 [标签]，不会白屏或报错。
     if (url.pathname === '/api/emotions') {
-        loadEmotions(path.join(ROOT, 'cache', 'emotions.json'), { cookieHeader: loadCookies() })
+        loadEmotions(path.join(DATA_ROOT, 'cache', 'emotions.json'), {
+            cookieHeader: loadCookies(),
+        })
             .then(({ map, source, count }) => {
                 if (source === 'network') console.log(`[emotions] 已更新表情清单 ${count} 条`);
                 else if (source === 'empty')
@@ -1365,14 +1370,11 @@ const server = http.createServer((req, res) => {
         }
 
         if (req.method === 'POST') {
-            let body = '';
-            req.setEncoding('utf-8');
-            req.on('data', (chunk) => {
-                body += chunk;
-            });
-            req.on('end', () => {
+            void (async () => {
+                const params = await parseJsonRequest(req, res);
+                if (!params) return;
                 try {
-                    const { interval } = JSON.parse(body);
+                    const { interval } = params;
                     if (typeof interval !== 'number' || interval < 0) {
                         res.writeHead(400, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ ok: false, error: 'Invalid interval' }));
@@ -1431,7 +1433,7 @@ const server = http.createServer((req, res) => {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
-            });
+            })();
             return;
         }
     }
@@ -1479,15 +1481,19 @@ const server = http.createServer((req, res) => {
                     'Content-Type': ct,
                     'Cache-Control': 'public, max-age=86400',
                 });
-                const chunks = [];
-                proxyRes.on('data', (chunk) => chunks.push(chunk));
+                // 直接流给浏览器，避免必须等完整响应落进内存后才能开始显示。
+                // 只有 MIME 确认是图片时才保留一份有 8MB 硬顶的缓存副本；一旦
+                // 超限，collector 会立即释放已积累的块，但用户侧流仍继续。
+                const collector = ct.startsWith('image/') ? createBoundedBuffer() : null;
+                if (collector) proxyRes.on('data', (chunk) => collector.push(chunk));
                 proxyRes.on('end', () => {
-                    const buffer = Buffer.concat(chunks);
-                    // 超大条目不写缓存：代理把任何响应都按 ${fid}.jpg 落盘，视频也被
-                    // 当图片缓存过（实测单个 75MB），白占空间还挤掉真正的图片
-                    if (isCacheable(buffer.length)) fs.writeFile(cacheFile, buffer, () => {});
-                    res.end(buffer);
+                    const buffer = collector?.toBuffer();
+                    if (buffer) fs.writeFile(cacheFile, buffer, () => {});
                 });
+                proxyRes.on('error', () => {
+                    if (!res.writableEnded) res.destroy();
+                });
+                proxyRes.pipe(res);
             }
         );
         proxyReq.on('error', () => {
@@ -1555,8 +1561,6 @@ const server = http.createServer((req, res) => {
 
     // AI config: read/write ai-config.json
     if (url.pathname === '/api/ai-config') {
-        const AI_CONFIG_PATH = path.join(ROOT, 'ai-config.json');
-
         if (req.method === 'GET') {
             try {
                 const cfg = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
@@ -1575,14 +1579,11 @@ const server = http.createServer((req, res) => {
         }
 
         if (req.method === 'POST') {
-            let body = '';
-            req.setEncoding('utf-8');
-            req.on('data', (chunk) => {
-                body += chunk;
-            });
-            req.on('end', () => {
+            void (async () => {
+                const params = await parseJsonRequest(req, res);
+                if (!params) return;
                 try {
-                    const { baseUrl, apiKey, model, vision } = JSON.parse(body);
+                    const { baseUrl, apiKey, model, vision } = params;
                     let existingKey = '';
                     try {
                         existingKey =
@@ -1594,14 +1595,14 @@ const server = http.createServer((req, res) => {
                         model: model || '',
                         vision: !!vision,
                     };
-                    fs.writeFileSync(AI_CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8');
+                    writePrivateJson(AI_CONFIG_PATH, cfg);
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true }));
                 } catch (e) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ ok: false, error: e.message }));
                 }
-            });
+            })();
             return;
         }
     }
@@ -1617,7 +1618,6 @@ const server = http.createServer((req, res) => {
             return;
         }
 
-        const AI_CONFIG_PATH = path.join(ROOT, 'ai-config.json');
         let aiConfig;
         try {
             aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
@@ -2011,21 +2011,13 @@ const server = http.createServer((req, res) => {
 
     // --- Q&A Endpoint (Agentic RAG) ---
     if (url.pathname === '/api/qa' && req.method === 'POST') {
-        let body = '';
-        req.setEncoding('utf-8');
-        req.on('data', (c) => (body += c));
-        req.on('end', () => {
+        void (async () => {
             const reply = (data) => {
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify(data));
             };
-            let params;
-            try {
-                params = JSON.parse(body);
-            } catch {
-                reply({ ok: false, error: '参数解析失败' });
-                return;
-            }
+            const params = await parseJsonRequest(req, res, QA_JSON_BODY_MAX_BYTES);
+            if (!params) return;
             const { group, question, mode } = params;
             if (!group || !question) {
                 reply({ ok: false, error: '缺少 group 或 question' });
@@ -2047,7 +2039,7 @@ const server = http.createServer((req, res) => {
             // Agent mode (default): Vercel AI SDK with tool-use loop
             let aiConfig;
             try {
-                aiConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'ai-config.json'), 'utf-8'));
+                aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
             } catch {
                 reply({ ok: false, error: 'AI 未配置' });
                 return;
@@ -2064,7 +2056,7 @@ const server = http.createServer((req, res) => {
                 .catch((e) => {
                     reply({ ok: false, error: '加载 Agent 模块失败: ' + e.message });
                 });
-        });
+        })();
         return;
     }
 
@@ -2103,51 +2095,83 @@ const server = http.createServer((req, res) => {
 
     res.writeHead(404);
     res.end('Not Found');
-});
+}
 
-// 端口被占用时给出可操作的提示（最常见原因：桌面应用已在运行）
-server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`端口 ${PORT} 已被占用 —— 可能「微博群聊」桌面应用正在运行。`);
-        console.error(`  · 直接用浏览器访问 http://localhost:${PORT} 即可（服务是同一个）`);
-        console.error(`  · 或退出桌面应用后重新运行本命令`);
-        console.error(`  · 或换端口：WEIBO_PORT=3457 npm run view`);
-        process.exit(1);
-    }
-    throw err;
-});
+function createViewerServer({ groupSessions } = {}) {
+    if (Array.isArray(groupSessions)) lastWeiboGroups = groupSessions;
+    return http.createServer(requestHandler);
+}
 
-// 只监听回环地址：归档内容与 /api/request-login 等写操作都无鉴权，
-// 绑 0.0.0.0 会让同网段任意主机读取全部聊天记录并远程触发登录弹窗。
-server.listen(PORT, '127.0.0.1', () => {
-    const url = `http://localhost:${PORT}`;
-    console.log(`Weibo Group Chat Viewer: ${url}`);
-    // 桌面壳就绪哨兵：唯一、且只在 listen 成功之后打印。Rust 侧等这一行才把
-    // 主窗口导航过来 —— 旧判据（stdout 含 "3456"）会被上面 EADDRINUSE 的提示行
-    // 命中，导致窗口被导航到占用端口的那个不相干进程。
-    console.log(`SIDECAR_READY ${PORT}`);
-    keepAliveTick('启动');
-    // 图片缓存淘汰：启动时一次 + 每 6 小时一次。缓存内容都能从 CDN 再取，
-    // 所以淘汰是安全的；不做则只增不减（实测涨到 688MB）。
-    const evictTick = () => {
-        const r = evictCache(CACHE_DIR);
-        if (r.deleted > 0) {
-            console.log(
-                `[cache] 淘汰 ${r.deleted} 个条目，释放 ${(r.freedBytes / 1048576).toFixed(0)} MB，` +
-                    `剩余 ${(r.remainingBytes / 1048576).toFixed(0)} MB`
-            );
+function startViewerServer() {
+    process.on('uncaughtException', (err) => {
+        console.error('[uncaughtException]', err.message);
+    });
+    process.on('unhandledRejection', (err) => {
+        console.error('[unhandledRejection]', err);
+    });
+
+    if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+    // 定时归档进程结束的时刻 viewer 感知不到，用 5 分钟周期检查逼近「归档完成后」。
+    setInterval(keepAliveTick, 30 * 60 * 1000).unref();
+    setInterval(
+        () => {
+            dailyDigest.check().catch(() => {});
+        },
+        5 * 60 * 1000
+    ).unref();
+    setTimeout(() => {
+        dailyDigest.check().catch(() => {});
+    }, 30 * 1000).unref();
+
+    const server = createViewerServer();
+
+    // 端口被占用时给出可操作的提示（最常见原因：桌面应用已在运行）
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(`端口 ${PORT} 已被占用 —— 可能「微博群聊」桌面应用正在运行。`);
+            console.error(`  · 直接用浏览器访问 http://localhost:${PORT} 即可（服务是同一个）`);
+            console.error(`  · 或退出桌面应用后重新运行本命令`);
+            console.error(`  · 或换端口：WEIBO_PORT=3457 npm run view`);
+            process.exit(1);
         }
-    };
-    evictTick();
-    setInterval(evictTick, 6 * 3600 * 1000).unref();
-    // 自动打开浏览器（设 NO_OPEN=1 可禁用）
-    if (!process.env.NO_OPEN) {
-        const opener =
-            process.platform === 'darwin'
-                ? 'open'
-                : process.platform === 'win32'
-                  ? 'start'
-                  : 'xdg-open';
-        require('child_process').exec(`${opener} ${url}`, () => {});
-    }
-});
+        throw err;
+    });
+
+    // 只监听回环地址：归档内容与写操作都无鉴权，绝不能暴露到局域网。
+    server.listen(PORT, '127.0.0.1', () => {
+        const url = `http://localhost:${PORT}`;
+        console.log(`Weibo Group Chat Viewer: ${url}`);
+        console.log(`SIDECAR_READY ${PORT}`);
+        try {
+            ensurePrivateFileMode(AI_CONFIG_PATH);
+        } catch (e) {
+            console.warn(`[security] 无法收紧 ai-config.json 权限: ${e.message}`);
+        }
+        keepAliveTick('启动');
+        const evictTick = () => {
+            const r = evictCache(CACHE_DIR);
+            if (r.deleted > 0) {
+                console.log(
+                    `[cache] 淘汰 ${r.deleted} 个条目，释放 ${(r.freedBytes / 1048576).toFixed(0)} MB，` +
+                        `剩余 ${(r.remainingBytes / 1048576).toFixed(0)} MB`
+                );
+            }
+        };
+        evictTick();
+        setInterval(evictTick, 6 * 3600 * 1000).unref();
+        if (!process.env.NO_OPEN) {
+            const opener =
+                process.platform === 'darwin'
+                    ? 'open'
+                    : process.platform === 'win32'
+                      ? 'start'
+                      : 'xdg-open';
+            require('child_process').exec(`${opener} ${url}`, () => {});
+        }
+    });
+    return server;
+}
+
+if (require.main === module) startViewerServer();
+
+module.exports = { createViewerServer, requestHandler, startViewerServer };

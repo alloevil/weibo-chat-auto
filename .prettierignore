@@ -3,5 +3,7 @@ output/
 cache/
 docs/
 package-lock.json
+claims.json
 viewer.html
 *.md
+foodmap/

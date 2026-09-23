@@ -28,6 +28,7 @@ sidecar/dist/
 
 # Third-party design reference (clone from github.com/voltagent/awesome-design-md)
 design-md/
+foodmap/
 .codex/
 
 # Agent working directories

@@ -10,6 +10,7 @@
 #   macOS            → launchd（~/Library/LaunchAgents，与 setup.sh 历史行为一致）
 #   Linux + systemd  → user-level 的 weibo-archive.service + .timer
 #   Linux 无 systemd → crontab 条目（写入前查重，幂等）
+#   Windows Git Bash → 不自动配置，明确提示使用 Windows 任务计划程序
 # 日志统一落 logs/archive.log。可重复运行（幂等）。
 
 set -e
@@ -209,6 +210,13 @@ case "$ACTION" in
     install|uninstall|status) ;;
     -h|--help) usage 0 ;;
     *) usage 1 ;;
+esac
+
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        warn "Windows 原生环境暂不自动管理计划任务；请使用 Windows 任务计划程序运行 npm run archive。"
+        exit 1
+        ;;
 esac
 
 if [ "$(uname -s)" = "Darwin" ]; then

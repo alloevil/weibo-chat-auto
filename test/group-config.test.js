@@ -42,6 +42,13 @@ test('writeGroups: 去空去重保序;全空拒写', () => {
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf-8')).groups, ['群A', '群B']);
 });
 
+test('writeGroups: 唯一 storage key 上线后允许标点不同的群名', () => {
+    const file = tmpfile();
+    const r = writeGroups(file, ['项目🔥', '项目❤️']);
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf-8')).groups, ['项目🔥', '项目❤️']);
+});
+
 test('writeGroups: 损坏的手工 config.json 拒绝覆盖', () => {
     const file = tmpfile();
     fs.writeFileSync(file, '{"groups": ["半截');

@@ -179,7 +179,7 @@ test('createLiveSync: 跳过没有 groupId 的群，单群失败不影响其它�
     const live = ls.createLiveSync({
         resolveGroups: () => [
             { name: '无ID群', groupId: '', dir }, // 归档器还没解析出会话 id
-            { name: '炸群', groupId: '900', dir },
+            { name: 'broken__hash', displayName: '炸群', groupId: '900', dir },
             { name: '好群', groupId: '901', dir },
         ],
         cookieHeader: () => 'x',
@@ -195,8 +195,8 @@ test('createLiveSync: 跳过没有 groupId 的群，单群失败不影响其它�
     await live.tick();
     assert.strictEqual(calls, 2, '无 groupId 的群不得发起请求');
     assert.deepStrictEqual(
-        events.map((e) => [e.type, e.group]),
-        [['error', '炸群']]
+        events.map((e) => [e.type, e.group, e.groupLabel]),
+        [['error', 'broken__hash', '炸群']]
     );
     // 好群第一轮 primed（不广播），第二轮才可能有新消息 —— 关键是它确实被轮询到了
     live.stop();

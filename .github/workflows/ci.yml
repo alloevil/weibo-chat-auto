@@ -19,9 +19,8 @@ jobs:
         runs-on: ubuntu-latest
         strategy:
             matrix:
-                # package.json engines 是 >=20，两个版本都要验（只测 22 时
-                # Node 20 专属的兼容问题要到用户机器上才暴露）
-                node: [20, 22]
+                # 同时验证 engines 的最低 LTS patch 与当前 LTS。
+                node: ['22.13.0', 24]
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
             - name: Setup Node.js
@@ -32,6 +31,11 @@ jobs:
 
             - name: Install dependencies
               run: npm ci --no-audit --no-fund
+
+            - name: Verify runtime entry dependencies
+              run: |
+                  node scripts/check-node-version.js
+                  node -e "const p=require('puppeteer'); if(typeof p.launch!=='function') process.exit(1)"
 
             - name: Syntax-check all JS files
               run: |
@@ -66,6 +70,9 @@ jobs:
                   set -o pipefail
                   npm test 2>&1 | tee "/tmp/npm-test-node${{ matrix.node }}.log"
 
+            - name: Synthetic viewer smoke
+              run: npm run smoke:viewer
+
             - name: Upload test log
               if: always()
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -88,6 +95,21 @@ jobs:
             # Rust 侧 panic 对桌面应用等于用户看到进程消失；纯 grep，不需要编译。
             - name: Rust panic-site budget
               run: ./scripts/check-unwrap-budget.sh
+
+    windows-setup-check:
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+            - name: Setup Node.js
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+              with:
+                  node-version: 24
+                  cache: npm
+            - name: Run native Git Bash setup
+              shell: bash
+              run: npm run setup -- --yes
+            - name: Verify Puppeteer CommonJS entry
+              run: node -e "const p=require('puppeteer'); if(typeof p.launch!=='function') process.exit(1)"
 
     # Rust 侧此前完全没有 CI：PR 弄坏 src-tauri/src/lib.rs 或 Cargo.toml
     # 只会在下一次 release 构建时才炸。cargo check 不需要 sidecar 二进制。
@@ -129,7 +151,7 @@ jobs:
             - name: Setup Node.js
               uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
               with:
-                  node-version: 22
+                  node-version: 24
                   cache: npm
 
             - name: Install dependencies

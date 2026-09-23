@@ -4,11 +4,11 @@
 
 <p align="center">
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white">
-  <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white">
-  <img alt="Puppeteer" src="https://img.shields.io/badge/Puppeteer-24-40B5A4?logo=puppeteer&logoColor=white">
+  <img alt="Node" src="https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white">
+  <img alt="Puppeteer" src="https://img.shields.io/badge/Puppeteer-25-40B5A4?logo=puppeteer&logoColor=white">
   <a href="https://github.com/alloevil/weibo-chat-auto/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/alloevil/weibo-chat-auto/ci.yml?logo=githubactions&logoColor=white&label=CI"></a>
   <a href="https://github.com/alloevil/weibo-chat-auto/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/alloevil/weibo-chat-auto?logo=github&color=blue"></a>
-  <img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20WSL-555">
+  <img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-555">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
   <img alt="Stars" src="https://img.shields.io/github/stars/alloevil/weibo-chat-auto?style=flat&logo=github&color=yellow">
 </p>
@@ -67,7 +67,7 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 > ⚠️ Currently **Apple Silicon (M1/M2/M3/M4) only** — there is no Intel or Windows/Linux build yet. The app is unsigned/un-notarized (no paid Apple Developer account), hence the right-click step. On other platforms, use the Web Version below.
 
-### 🌐 Web Version (macOS / Linux / WSL)
+### 🌐 Web Version (macOS / Linux / WSL / Windows Git Bash)
 
 ```bash
 git clone https://github.com/alloevil/weibo-chat-auto.git
@@ -209,12 +209,12 @@ Live sync is **off by default**; enable it via the "Live" dropdown in the nav ba
 
 The guarantee when off is **not a single request is sent**: no timers, the page doesn't even establish the SSE connection, and even the "nudge one sync round" after a successful send is skipped (your own message then appears with the next archive run). The toggle lives on the server (`live-config.json`), shared between the browser and desktop versions, takes effect immediately, no restart needed.
 
-Both live sync and sending depend on the **group conversation id**. The archiver resolves it when clicking through groups and writes it to `state/last-archive-state_<group>.json`, so:
+Both live sync and sending depend on the **group conversation id**. When you select groups from the Weibo conversation list in Settings, the viewer stores the id returned by the API after positively verifying `user.type === 2`. The archiver later cross-checks and refreshes it from actual conversation requests. A newly selected group can therefore send immediately without a preliminary Chrome archive; live sync remains off by default.
 
 | State | Behavior |
 | --- | --- |
-| Archived at least once (v1.15.0+) | Live sync and sending both available |
-| Never archived | The input box is hidden for that group with a "click Sync Now first" hint; live sync skips the group automatically |
+| Selected from the Weibo conversation list in Settings | Live sync and sending are available immediately; no preliminary archive needed |
+| Added only by manually editing `config.json` | Run one archive so the archiver can verify and record its conversation id |
 
 Two more trade-offs:
 
@@ -254,7 +254,7 @@ Ask questions in the toolbar's Q&A box; natural-language time ("recently", "yest
 
 **Agent mode** (default): the LLM searches iteratively, choosing keywords and scope on its own, running multiple rounds until it has enough information.
 
-💡 **If people go by nicknames, add an alias table**: create `output/<group>/aliases.json` with e.g. `{"tombkeeper": \["tk", "TK"]}` (keys are the real display names as archived). Asking "what did tk say recently" then filters straight to that person instead of making the LLM guess. The file is optional; without it behavior is unchanged.
+💡 **If people go by nicknames, add an alias table**: create `output/<storage-key>/aliases.json` in that group's directory; the adjacent `.group-meta.json` records the original group name so you can identify it. Use e.g. `{"tombkeeper": \["tk", "TK"]}` (keys are the real display names as archived). Asking "what did tk say recently" then filters straight to that person instead of making the LLM guess. The file is optional, and CLI `--group <name>` arguments still accept the original group name.
 
 Retrieval automatically drops red-packet notices and check-in bot spam (same rules as the viewer's "hide noise" toggle) and collapses consecutive reposts, so "what is everyone talking about" isn't skewed by flooding. Asking about "last week" / "recently" / "yesterday" uses dates computed by the tools rather than inferred by the LLM. Shared links, videos and images are searchable too (asking "what links were shared last week" now finds them).
 
@@ -317,20 +317,22 @@ For current numbers, run `node scripts/benchmark-qa.js --group <group>` against 
 
 | Required | Notes |
 | --- | --- |
-| 🖥 **macOS / Linux / WSL** | Archiver and viewer run cross-platform; scheduled-job installation is automatic on every platform (launchd / systemd / cron) |
-| 🟢 **Node.js 20+** | \[brew install node](https://brew.sh) (macOS) / `apt install nodejs` (Linux) / [nodejs.org](https://nodejs.org) |
+| 🖥 **macOS / Linux / WSL / Windows Git Bash** | Archiver and viewer are supported; native Windows is currently experimental, while the desktop shell is still released only for macOS |
+| 🟢 **Node.js 22.13+ LTS or 24+** | Use `nvm install 24`, or install a supported LTS release from [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | The archiver drives it for login and scraping; path is auto-detected (or set `chromePath` in `config.json`). The project only ever uses your installed Chrome, so `package.json` sets `puppeteer.skipDownload` and `npm install` no longer pulls a ~650 MB bundled Chromium; if you do want the bundled one, install with `PUPPETEER_SKIP_DOWNLOAD=0 npm install` |
 | 📱 **Weibo account + mobile app** | First-time login to the web version requires scanning a QR code with the app |
 | 🦀 **Rust + Bun** | Desktop app only; `npm run desktop` installs them automatically |
 
-> Windows users, please use \[WSL](https://learn.microsoft.com/windows/wsl/install); the desktop app has only been verified on macOS so far.
+> WSL remains the recommended Windows path. Native Windows can run the web setup from Git Bash; automatic scheduling is not configured there, so use Windows Task Scheduler to run `npm run archive`. The desktop app has only been verified on macOS.
+>
+> If Chrome is outside the detected Windows locations, set `chromePath` in `config.json` using `C:/.../chrome.exe`, or escape backslashes in JSON, then rerun `npm run setup`; the installer now reads that configuration.
 
 </details>
 
 <details>
 <summary><b>⏰ Scheduled runs</b></summary>
 
-**All platforms** — `npm run setup` asks whether to enable this during installation; you can also manage the job any time with one command (macOS uses launchd, Linux uses a systemd user timer, and environments without systemd — e.g. some WSL distros — fall back to a crontab entry):
+**macOS / Linux / WSL** — `npm run setup` asks whether to enable this during installation; you can also manage the job any time with one command (macOS uses launchd, Linux uses a systemd user timer, and environments without systemd — e.g. some WSL distros — fall back to a crontab entry). On native Windows, use Task Scheduler instead:
 
 ```bash
 ./scripts/schedule.sh install     # install (hourly archive)
@@ -372,7 +374,7 @@ weibo-chat-auto/
 ├── ai-config.json               # AI configuration (not committed)
 ├── state/                       # Archiver state (not committed)
 ├── output/                      # Archived data (not committed)
-│   └── <group name>/
+│   └── <storage-key>/           # readable prefix + hash; .group-meta.json keeps the display name
 │       └── weibo_chat_2026-05-01.json
 ├── cache/images/                # Image cache (not committed)
 ├── docs/                        # Documentation and screenshots

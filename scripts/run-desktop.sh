@@ -13,6 +13,10 @@ if ! command -v node &>/dev/null; then
     echo "❌ 需要 Node.js，请先安装: https://nodejs.org"
     exit 1
 fi
+if ! NODE_VERSION_ERROR="$(node scripts/check-node-version.js 2>&1)"; then
+    echo "❌ $NODE_VERSION_ERROR"
+    exit 1
+fi
 
 # Check/Install Rust
 if ! command -v cargo &>/dev/null; then
@@ -29,10 +33,11 @@ if ! command -v bun &>/dev/null; then
     export PATH="$BUN_INSTALL/bin:$PATH"
 fi
 
-# Install npm deps if needed
-if [ ! -d "node_modules" ]; then
-    echo "📦 安装 npm 依赖..."
-    npm install
+# Install npm deps if missing or stale. Merely having node_modules is not enough:
+# after a git pull it can still be missing a newly added runtime package.
+if ! node scripts/check-dependencies.js >/dev/null 2>&1; then
+    echo "📦 安装或同步 npm 依赖..."
+    npm install --no-audit --no-fund
 fi
 
 # Build sidecar binary

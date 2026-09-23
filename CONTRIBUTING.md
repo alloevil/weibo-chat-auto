@@ -5,7 +5,7 @@
 ## 开发环境
 
 - macOS（定时任务依赖 launchd）
-- Node.js 18+
+- Node.js 22.13+ LTS 或 24+
 - Google Chrome
 
 ```bash
@@ -33,6 +33,8 @@ npm run view           # 启动查看器 → http://localhost:3456
 ```
 
 查看器改动后，浏览器普通刷新即可生效（服务端已设 no-cache）。
+
+提交前运行 `npm run check`；它会执行 Lint、全部单测和使用临时虚构数据的查看器切群冒烟，不读取本地聊天归档。
 
 ## 提交规范
 

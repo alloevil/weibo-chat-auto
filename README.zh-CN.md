@@ -4,11 +4,11 @@
 
 <p align="center">
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white">
-  <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A518-339933?logo=node.js&logoColor=white">
-  <img alt="Puppeteer" src="https://img.shields.io/badge/Puppeteer-24-40B5A4?logo=puppeteer&logoColor=white">
+  <img alt="Node" src="https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white">
+  <img alt="Puppeteer" src="https://img.shields.io/badge/Puppeteer-25-40B5A4?logo=puppeteer&logoColor=white">
   <a href="https://github.com/alloevil/weibo-chat-auto/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/alloevil/weibo-chat-auto/ci.yml?logo=githubactions&logoColor=white&label=CI"></a>
   <a href="https://github.com/alloevil/weibo-chat-auto/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/alloevil/weibo-chat-auto?logo=github&color=blue"></a>
-  <img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20WSL-555">
+  <img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-555">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
   <img alt="Stars" src="https://img.shields.io/github/stars/alloevil/weibo-chat-auto?style=flat&logo=github&color=yellow">
 </p>
@@ -67,7 +67,7 @@
 
 > ⚠️ 目前**仅支持 Apple Silicon（M1/M2/M3/M4）**，暂无 Intel 与 Windows/Linux 构建。应用未签名/未公证（没有付费开发者账号），所以需要右键打开。其他平台请用下面的网页版。
 
-### 🌐 网页版（macOS / Linux / WSL）
+### 🌐 网页版（macOS / Linux / WSL / Windows Git Bash）
 
 ```bash
 git clone https://github.com/alloevil/weibo-chat-auto.git
@@ -196,12 +196,12 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 关闭时的保证是**一个请求都不发**：不起定时器、页面连 SSE 都不建立，连发送成功后的那次"催一轮同步"也跳过（此时自己发的消息等下次归档出现）。开关存在服务端（`live-config.json`），浏览器版与桌面版共享，切换立即生效、无需重启。
 
-实时同步与发言都依赖**群会话 id**。归档器点击切群时会解析它并写进 `state/last-archive-state_<群名>.json`，所以：
+实时同步与发言都依赖**群会话 id**。在设置里从微博会话列表选群时，查看器会保存接口返回且经过 `user.type === 2` 校验的群 id；归档器之后也会用实际切群请求再次核对并刷新它。因此新选群不必先启动 Chrome 归档即可发言，实时同步仍保持默认关闭。
 
 | 状态 | 表现 |
 | --- | --- |
-| 已跑过归档（v1.15.0 之后） | 实时同步与发言均可用 |
-| 还没跑过 | 该群输入框隐藏并提示"先点 Sync Now"；实时同步自动跳过该群 |
+| 从设置中的微博会话列表选择 | 立即具备实时同步与发言条件，无需先归档 |
+| 仅手工写入 `config.json` | 需先归档一次，让归档器核对并记录会话 id |
 
 另外两个取舍：
 
@@ -241,7 +241,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 **Agent 模式**（默认）：LLM 迭代搜索，自主决定关键词和搜索范围，多轮查找直到信息充分。
 
-💡 **群友有外号就写张别名表**：新建 `output/<群名>/aliases.json`，内容形如 `{"tombkeeper": ["tk", "TK"]}`（键是归档里的真实昵称）。这样问「tk 最近说了什么」就能直接筛到人，不必靠 LLM 自己猜。文件可选，缺失时行为不变。
+💡 **群友有外号就写张别名表**：在该群目录中新建 `aliases.json`，即 `output/<storage-key>/aliases.json`；同目录的 `.group-meta.json` 记录了原始群名，可据此确认目录。内容形如 `{"tombkeeper": ["tk", "TK"]}`（键是归档里的真实昵称）。这样问「tk 最近说了什么」就能直接筛到人，不必靠 LLM 自己猜。文件可选，缺失时行为不变；命令行的 `--group <群名>` 仍可直接使用原始群名。
 
 检索会自动剔除红包提示与签到机器人（规则同查看器的「隐藏噪音」），并折叠连续复读，所以「大家在聊什么」不会被刷屏带偏。问「上周」「最近」「昨天」时日期由工具算好，不靠 LLM 自己推。分享的链接、视频、图片也可检索（问「上周分享过什么链接」能直接搜到）。
 
@@ -304,20 +304,22 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 
 | 必需 | 说明 |
 | --- | --- |
-| 🖥 **macOS / Linux / WSL** | 归档与查看器跨平台运行；定时任务全平台自动安装（launchd / systemd / cron） |
-| 🟢 **Node.js 20+** | [brew install node](https://brew.sh)（macOS）/ `apt install nodejs`（Linux）/ [nodejs.org](https://nodejs.org) |
+| 🖥 **macOS / Linux / WSL / Windows Git Bash** | 归档与查看器可运行；Windows 原生目前为实验性支持，桌面壳仍仅发布 macOS 版 |
+| 🟢 **Node.js 22.13+ LTS 或 24+** | 推荐 `nvm install 24`，或从 [nodejs.org](https://nodejs.org) 安装受支持的 LTS 版本 |
 | 🌐 **Google Chrome** | 归档器用它登录并抓取消息；路径自动探测（也可在 `config.json` 的 `chromePath` 指定）。项目只用系统已装的 Chrome，因此 `package.json` 里设了 `puppeteer.skipDownload`，`npm install` 不会再下载一份 ~650 MB 的 Chromium；确实想用自带 Chromium 的话，用 `PUPPETEER_SKIP_DOWNLOAD=0 npm install` 装回来 |
 | 📱 **微博账号 + 手机 App** | 首次需用 App 扫码登录网页版 |
 | 🦀 **Rust + Bun** | 仅桌面应用需要；`npm run desktop` 会自动安装 |
 
-> Windows 用户请在 [WSL](https://learn.microsoft.com/windows/wsl/install) 中使用；桌面应用目前仅在 macOS 验证。
+> Windows 推荐使用 [WSL](https://learn.microsoft.com/windows/wsl/install)。原生 Windows 可在 Git Bash 中运行网页版安装流程；自动定时归档暂不配置，请使用 Windows 任务计划程序运行 `npm run archive`。桌面应用目前仅在 macOS 验证。
+>
+> 若 Windows 的 Chrome 不在自动探测位置，请在 `config.json` 使用 `C:/.../chrome.exe` 形式，或在 JSON 中把反斜杠写成双反斜杠；修改后重新运行 `npm run setup`，安装器会读取该配置。
 
 </details>
 
 <details>
 <summary><b>⏰ 定时自动运行</b></summary>
 
-**全平台** — `npm run setup` 安装时会询问是否启用，也可随时用一条命令管理（macOS 用 launchd，Linux 用 systemd user timer，无 systemd 的环境 —— 如部分 WSL 发行版 —— 回退写 crontab 条目）：
+**macOS / Linux / WSL** — `npm run setup` 安装时会询问是否启用，也可随时用一条命令管理（macOS 用 launchd，Linux 用 systemd user timer，无 systemd 的环境 —— 如部分 WSL 发行版 —— 回退写 crontab 条目）。Windows 原生请使用任务计划程序：
 
 ```bash
 ./scripts/schedule.sh install     # 安装（每小时归档一次）
@@ -359,7 +361,7 @@ weibo-chat-auto/
 ├── ai-config.json               # AI 配置（不提交）
 ├── state/                       # 归档状态（不提交）
 ├── output/                      # 归档数据（不提交）
-│   └── 群名/
+│   └── <storage-key>/           # 新群为可读前缀 + hash；.group-meta.json 保存原始群名
 │       └── weibo_chat_2026-05-01.json
 ├── cache/images/                # 图片缓存（不提交）
 ├── docs/                        # 文档和截图

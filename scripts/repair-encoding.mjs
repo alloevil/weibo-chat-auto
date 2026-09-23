@@ -19,9 +19,11 @@ import cookieStore from '../lib/cookie-store.js';
 import normalizeMessageMod from '../lib/normalize-message.js';
 import dayFile from '../lib/day-file.js';
 import ms from '../lib/load-messages.js';
+import groupStorage from '../lib/group-storage.js';
 
 const { normalizeMessage } = normalizeMessageMod;
 const { mergeIntoDayFile } = dayFile;
+const { legacyGroupKey } = groupStorage;
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -32,12 +34,11 @@ const BAD = '\uFFFD';
 
 /** 群名 → 归档器记录的会话 id。 */
 function groupId(name) {
-    const safe = name.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
     try {
         return String(
             JSON.parse(
                 fs.readFileSync(
-                    path.join(ROOT, 'state', `last-archive-state_${safe}.json`),
+                    path.join(ROOT, 'state', `last-archive-state_${legacyGroupKey(name)}.json`),
                     'utf-8'
                 )
             ).groupId || ''

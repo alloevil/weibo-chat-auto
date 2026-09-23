@@ -39,17 +39,28 @@ const CONFIG = {
 
 const configData = require('../config.json');
 const GROUPS = configData.groups || [configData.groupName || '茧房建筑师协会'];
+const {
+    resolveGroupStorageKey,
+    findResolvedKeyCollisions,
+    describeLegacyKeyCollisions,
+    validateStoredGroupIdentity,
+    validateGroupStorageIdentity,
+    writeGroupMetadata,
+} = require('../lib/group-storage');
 
-function getGroupOutputDir(groupName) {
-    const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-    return path.join(CONFIG.outputDir, safe);
+const STATE_DIR = path.join(ROOT, 'state');
+
+function getGroupStorageKey(groupName, groupId = '') {
+    return resolveGroupStorageKey(CONFIG.outputDir, STATE_DIR, groupName, { groupId });
 }
 
-function getGroupStateFile(groupName) {
-    const safe = groupName.replace(/[^a-zA-Z0-9一-鿿]/g, '_');
-    const stateDir = path.join(ROOT, 'state');
-    if (!fs.existsSync(stateDir)) fs.mkdirSync(stateDir, { recursive: true });
-    return path.join(stateDir, `last-archive-state_${safe}.json`);
+function getGroupOutputDir(storageKey) {
+    return path.join(CONFIG.outputDir, storageKey);
+}
+
+function getGroupStateFile(storageKey) {
+    if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
+    return path.join(STATE_DIR, `last-archive-state_${storageKey}.json`);
 }
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -133,6 +144,18 @@ const USER_SCRIPT = buildPageScript();
 async function main() {
     console.log('=== 微博聊天自动归档 ===');
     console.log('启动时间:', new Date().toLocaleString('zh-CN'));
+
+    const groupKeyCollisions = findResolvedKeyCollisions(GROUPS, (name) =>
+        getGroupStorageKey(name)
+    );
+    if (groupKeyCollisions.length) {
+        const err = new Error(
+            '群名映射发生碰撞，为防止归档串档已中止：' +
+                describeLegacyKeyCollisions(groupKeyCollisions)
+        );
+        err.fatal = true;
+        throw err;
+    }
 
     if (!fs.existsSync(CONFIG.outputDir)) {
         fs.mkdirSync(CONFIG.outputDir, { recursive: true });
@@ -380,9 +403,9 @@ async function main() {
                         await delay(GROUP_RETRY_DELAY_MS);
                     }
                     networkSink = { msgs: [] }; // 每个群独立，不累积上一个群的网络层消息
-                    const groupDir = getGroupOutputDir(currentGroupName);
-                    const stateFile = getGroupStateFile(currentGroupName);
-                    if (!fs.existsSync(groupDir)) fs.mkdirSync(groupDir, { recursive: true });
+                    let storageKey = getGroupStorageKey(currentGroupName);
+                    let groupDir = getGroupOutputDir(storageKey);
+                    let stateFile = getGroupStateFile(storageKey);
 
                     // 自动点击群聊
                     console.log(`\n--- 归档群聊: ${currentGroupName} ---`);
@@ -537,6 +560,29 @@ async function main() {
                         skippedGroups.push(`${currentGroupName}(未取到群 ID)`);
                         break;
                     }
+
+                    // 有了真实 groupId 后重新解析一次：若旧目录/状态明确属于另一个群，
+                    // 当前群自动转入唯一 hash key，绝不复用对方的断点与数据。
+                    const verifiedStorageKey = getGroupStorageKey(currentGroupName, groupId);
+                    if (verifiedStorageKey !== storageKey) {
+                        storageKey = verifiedStorageKey;
+                        groupDir = getGroupOutputDir(storageKey);
+                        stateFile = getGroupStateFile(storageKey);
+                    }
+                    const storageIdentity = validateGroupStorageIdentity(
+                        CONFIG.outputDir,
+                        STATE_DIR,
+                        storageKey,
+                        currentGroupName,
+                        groupId
+                    );
+                    if (!storageIdentity.ok) {
+                        const err = new Error(
+                            `群「${currentGroupName}」拒绝复用现有存储：${storageIdentity.error}`
+                        );
+                        err.fatal = true;
+                        throw err;
+                    }
                     // 串档护栏：同一轮里两个群解析出同一个 id，说明会话没真正切换
                     if (archivedGroupIds.has(groupId)) {
                         console.log(
@@ -547,6 +593,12 @@ async function main() {
                         skippedGroups.push(`${currentGroupName}(会话未切换)`);
                         break;
                     }
+                    if (!fs.existsSync(groupDir)) fs.mkdirSync(groupDir, { recursive: true });
+                    writeGroupMetadata(groupDir, {
+                        groupName: currentGroupName,
+                        groupId,
+                        storageKey,
+                    });
 
                     // 等待初始消息加载
                     let waitCount = 0;
@@ -568,11 +620,26 @@ async function main() {
                     if (fs.existsSync(stateFile)) {
                         try {
                             lastState = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+                            const identity = validateStoredGroupIdentity(
+                                lastState,
+                                currentGroupName,
+                                groupId
+                            );
+                            if (!identity.ok) {
+                                const err = new Error(
+                                    `群「${currentGroupName}」拒绝复用旧归档状态：${identity.error}。` +
+                                        '请先核对 state 文件与归档目录，避免串档'
+                                );
+                                err.fatal = true;
+                                throw err;
+                            }
                             stopTimestamp = lastState.lastTimestamp || 0;
                             console.log(
                                 `上次归档截止: ${new Date(stopTimestamp).toLocaleString('zh-CN')}`
                             );
-                        } catch {}
+                        } catch (e) {
+                            if (e.fatal) throw e;
+                        }
                     }
                     if (!stopTimestamp) {
                         stopTimestamp = Date.now() - 7 * 24 * 3600 * 1000;
@@ -764,6 +831,7 @@ async function main() {
                                     // groupId 供查看器的实时同步用：它没有浏览器可点，只能靠归档器
                                     // 把切群时解析到的会话 id 记下来（缺失时实时同步对该群自动关闭）
                                     groupId: String(groupId),
+                                    groupName: currentGroupName,
                                     cursor: { maxMid: String(cursorMaxMid) },
                                 });
                                 console.log(`已保存续传游标 mid=${cursorMaxMid}`);
@@ -780,6 +848,7 @@ async function main() {
                                 // groupId 供查看器的实时同步用：它没有浏览器可点，只能靠归档器
                                 // 把切群时解析到的会话 id 记下来（缺失时实时同步对该群自动关闭）
                                 groupId: String(groupId),
+                                groupName: currentGroupName,
                                 // 分页走完：续传游标使命结束，清掉（不再写 cursor 即清除）
                             };
                             writeJsonAtomic(stateFile, newState);
@@ -797,7 +866,7 @@ async function main() {
                                 [
                                     path.join(ROOT, 'scripts', 'build-qa-index.mjs'),
                                     '--group',
-                                    currentGroupName,
+                                    storageKey,
                                     '--dates',
                                     updatedDates,
                                 ],

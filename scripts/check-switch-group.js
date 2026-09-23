@@ -112,6 +112,9 @@ async function main() {
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'lib/text-utils.js'), 'utf-8'), sandbox, {
         filename: 'text-utils.js',
     });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'lib/viewer-filters.js'), 'utf-8'), sandbox, {
+        filename: 'viewer-filters.js',
+    });
     vm.runInContext(script, sandbox, { filename: 'viewer-inline.js' });
 
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -126,7 +129,9 @@ async function main() {
     console.log(`初始: group=${g1} date=${date1} msgs=${msgs1.length}字 users=${users1.length}字`);
 
     // 切群
-    const target = g1 === '猫咪AI研究' ? '赛博动物园w' : '猫咪AI研究';
+    const groupIds = vm.runInContext('availableGroups.map(g => g.id)', sandbox);
+    const target = groupIds.find((id) => id !== g1);
+    if (!target) throw new Error('切群测试至少需要两个群');
     vm.runInContext(`switchGroup(${JSON.stringify(target)})`, sandbox);
     await wait(800);
     const g2 = vm.runInContext('currentGroup', sandbox);

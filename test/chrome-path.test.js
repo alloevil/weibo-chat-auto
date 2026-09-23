@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { resolveChromePath } = require('../lib/chrome-path.js');
+const { resolveChromePath, windowsCandidates } = require('../lib/chrome-path.js');
 
 test('resolveChromePath: config.json 指定且文件存在时优先于平台探测', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-path-'));
@@ -47,6 +47,24 @@ test('resolveChromePath: 落空时抛错,而不是退回 puppeteer 自带 Chromi
             configurable: true,
         });
     }
+});
+
+test('resolveChromePath: Windows 探测 LOCALAPPDATA 与 Program Files 环境路径', () => {
+    const env = {
+        LOCALAPPDATA: 'C:\\Users\\tester\\AppData\\Local',
+        PROGRAMFILES: 'D:\\Program Files',
+        'PROGRAMFILES(X86)': 'D:\\Program Files (x86)',
+    };
+    const expected = 'C:\\Users\\tester\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
+    assert.ok(windowsCandidates(env).includes(expected));
+    assert.strictEqual(
+        resolveChromePath('', {
+            platform: 'win32',
+            env,
+            existsSync: (candidate) => candidate === expected,
+        }),
+        expected
+    );
 });
 
 test('每个 puppeteer.launch 都自带 executablePath——这是 skipDownload 可以为 true 的前提', () => {
