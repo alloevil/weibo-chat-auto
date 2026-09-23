@@ -32,7 +32,7 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 ## 🎬 Demo
 
-![Demo](docs/demo.gif?v=20260910)
+![Demo](docs/demo.gif?v=20260923)
 
 > Usernames, group names, and avatars in the demo are anonymized samples.
 
