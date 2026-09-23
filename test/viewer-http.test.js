@@ -104,6 +104,55 @@ test('viewer HTTP 边界: Host、CSRF、JSON 400/413 契约', async (t) => {
     assert.strictEqual(valid.status, 200);
     assert.match(JSON.parse(valid.text).error, /缺少 group 或 question/);
 
+    const missingAi = JSON.parse((await request(port, { path: '/api/ai-config' })).text);
+    assert.strictEqual(missingAi.configured, false);
+    assert.deepStrictEqual(missingAi.missingFields, ['baseUrl', 'apiKey', 'model']);
+
+    const qaWithoutAi = JSON.parse(
+        (
+            await request(port, {
+                path: '/api/qa',
+                method: 'POST',
+                body: JSON.stringify({ group: 'missing-group', question: '今天聊了什么？' }),
+            })
+        ).text
+    );
+    assert.strictEqual(qaWithoutAi.code, 'AI_NOT_CONFIGURED');
+    assert.deepStrictEqual(qaWithoutAi.missingFields, ['baseUrl', 'apiKey', 'model']);
+
+    const summaryWithoutAi = JSON.parse(
+        (
+            await request(port, {
+                path: '/api/summary?group=missing-group&date=2026-09-23',
+            })
+        ).text
+    );
+    assert.strictEqual(summaryWithoutAi.code, 'AI_NOT_CONFIGURED');
+    assert.deepStrictEqual(summaryWithoutAi.missingFields, ['baseUrl', 'apiKey', 'model']);
+
+    const incompleteAi = await request(port, {
+        path: '/api/ai-config',
+        method: 'POST',
+        body: JSON.stringify({ baseUrl: 'https://api.example.com/v1', model: '' }),
+    });
+    assert.strictEqual(incompleteAi.status, 400);
+    assert.deepStrictEqual(JSON.parse(incompleteAi.text).missingFields, ['apiKey', 'model']);
+
+    const savedAi = await request(port, {
+        path: '/api/ai-config',
+        method: 'POST',
+        body: JSON.stringify({
+            baseUrl: 'https://api.example.com/v1',
+            apiKey: 'test-secret-key',
+            model: 'test-model',
+        }),
+    });
+    assert.strictEqual(savedAi.status, 200);
+    const configuredAi = JSON.parse((await request(port, { path: '/api/ai-config' })).text);
+    assert.strictEqual(configuredAi.configured, true);
+    assert.deepStrictEqual(configuredAi.missingFields, []);
+    assert.notStrictEqual(configuredAi.config.apiKey, 'test-secret-key');
+
     const saveGroups = await request(port, {
         path: '/api/group-config',
         method: 'POST',

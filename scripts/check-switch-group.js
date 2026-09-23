@@ -167,6 +167,23 @@ async function main() {
     const users1 = els['userList'].innerHTML;
     console.log(`初始: group=${g1} date=${date1} msgs=${msgs1.length}字 users=${users1.length}字`);
 
+    if (els.summaryBar.style.display !== '' || els.summaryBtn.textContent !== '配置 AI 摘要') {
+        throw new Error('AI 未配置时摘要入口没有提供配置提示');
+    }
+    await vm.runInContext('toggleQaComposer()', sandbox);
+    await wait(50);
+    if (
+        !els.settingsModal.classList.contains('show') ||
+        !els.aiConfigAlert.textContent.includes('API Key')
+    ) {
+        throw new Error('AI 未配置时问答入口没有打开设置并说明缺失字段');
+    }
+    if (els.qaQuickPanel.classList.contains('show')) {
+        throw new Error('AI 未配置时不应打开不可用的问答输入框');
+    }
+    vm.runInContext('closeSettings();dismissToast()', sandbox);
+    console.log('AI 未配置引导正常');
+
     // 切群
     const groupIds = vm.runInContext('availableGroups.map(g => g.id)', sandbox);
     const target = groupIds.find((id) => id !== g1);

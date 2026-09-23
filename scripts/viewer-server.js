@@ -67,9 +67,30 @@ const groupRegistry = require('../lib/group-registry');
 const { ensurePrivateFileMode, writePrivateJson } = require('../lib/private-json');
 const CONFIG_PATH = path.join(DATA_ROOT, 'config.json');
 const AI_CONFIG_PATH = path.join(DATA_ROOT, 'ai-config.json');
+const AI_CONFIG_FIELDS = [
+    ['baseUrl', 'API Base URL'],
+    ['apiKey', 'API Key'],
+    ['model', '模型名称'],
+];
 const STATE_DIR = path.join(DATA_ROOT, 'state');
 const GROUP_REGISTRY_PATH = path.join(STATE_DIR, 'group-registry.json');
 let lastWeiboGroups = [];
+
+function inspectAiConfig(config) {
+    const missingFields = AI_CONFIG_FIELDS.filter(
+        ([key]) => !config || typeof config[key] !== 'string' || !config[key].trim()
+    ).map(([key, label]) => ({ key, label }));
+    return { configured: missingFields.length === 0, missingFields };
+}
+
+function aiConfigError(status) {
+    return {
+        ok: false,
+        code: 'AI_NOT_CONFIGURED',
+        error: `AI 配置不完整：缺少 ${status.missingFields.map((field) => field.label).join('、')}`,
+        missingFields: status.missingFields.map((field) => field.key),
+    };
+}
 // 导出渲染（Markdown / 自包含 HTML），复用查看器的引用/表情/噪音规则
 const exportChat = require('../lib/export-chat');
 // 归档器跨进程锁的只读探测（#14）：/api/sync 在 spawn 前拒绝并发
@@ -319,7 +340,7 @@ const DIGEST_STATE_PATH = path.join(STATE_DIR, 'digest-state.json');
 function hasAiConfigComplete() {
     try {
         const c = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
-        return !!(c.baseUrl && c.apiKey && c.model);
+        return inspectAiConfig(c).configured;
     } catch {
         return false;
     }
@@ -402,6 +423,11 @@ function callLlmApi(messages, callback) {
         aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
     } catch {
         callback(null, 'AI 未配置');
+        return;
+    }
+    const configStatus = inspectAiConfig(aiConfig);
+    if (!configStatus.configured) {
+        callback(null, aiConfigError(configStatus).error);
         return;
     }
     const reqBody = JSON.stringify({ model: aiConfig.model, messages });
@@ -1564,16 +1590,32 @@ function requestHandler(req, res) {
         if (req.method === 'GET') {
             try {
                 const cfg = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
+                const status = inspectAiConfig(cfg);
                 const masked = { ...cfg };
                 if (masked.apiKey) {
                     const k = masked.apiKey;
                     masked.apiKey = k.length > 8 ? k.slice(0, 3) + '***' + k.slice(-4) : '***';
                 }
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true, config: masked }));
+                res.end(
+                    JSON.stringify({
+                        ok: true,
+                        configured: status.configured,
+                        missingFields: status.missingFields.map((field) => field.key),
+                        config: masked,
+                    })
+                );
             } catch {
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true, config: null }));
+                const status = inspectAiConfig(null);
+                res.end(
+                    JSON.stringify({
+                        ok: true,
+                        configured: false,
+                        missingFields: status.missingFields.map((field) => field.key),
+                        config: null,
+                    })
+                );
             }
             return;
         }
@@ -1595,6 +1637,14 @@ function requestHandler(req, res) {
                         model: model || '',
                         vision: !!vision,
                     };
+                    const status = inspectAiConfig(cfg);
+                    if (!status.configured) {
+                        res.writeHead(400, {
+                            'Content-Type': 'application/json; charset=utf-8',
+                        });
+                        res.end(JSON.stringify(aiConfigError(status)));
+                        return;
+                    }
                     writePrivateJson(AI_CONFIG_PATH, cfg);
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({ ok: true }));
@@ -1622,13 +1672,15 @@ function requestHandler(req, res) {
         try {
             aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
         } catch {
+            const status = inspectAiConfig(null);
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: false, error: '未配置 AI，请先在设置中配置' }));
+            res.end(JSON.stringify(aiConfigError(status)));
             return;
         }
-        if (!aiConfig.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
+        const aiStatus = inspectAiConfig(aiConfig);
+        if (!aiStatus.configured) {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: false, error: 'AI 配置不完整' }));
+            res.end(JSON.stringify(aiConfigError(aiStatus)));
             return;
         }
 
@@ -2024,6 +2076,19 @@ function requestHandler(req, res) {
                 return;
             }
 
+            let aiConfig;
+            try {
+                aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
+            } catch {
+                reply(aiConfigError(inspectAiConfig(null)));
+                return;
+            }
+            const aiStatus = inspectAiConfig(aiConfig);
+            if (!aiStatus.configured) {
+                reply(aiConfigError(aiStatus));
+                return;
+            }
+
             const allMessages = loadMessages(group);
             if (!allMessages.length) {
                 reply({ ok: false, error: '该群无消息数据' });
@@ -2037,13 +2102,6 @@ function requestHandler(req, res) {
             }
 
             // Agent mode (default): Vercel AI SDK with tool-use loop
-            let aiConfig;
-            try {
-                aiConfig = JSON.parse(fs.readFileSync(AI_CONFIG_PATH, 'utf-8'));
-            } catch {
-                reply({ ok: false, error: 'AI 未配置' });
-                return;
-            }
             import('./qa-agent.mjs')
                 .then(({ askAgent }) => {
                     // groupDir 供块级检索读取 qa-index/ 离线标注(缺失时自动降级)

@@ -237,7 +237,7 @@ The viewer ships two AI features: **daily summaries** and **agentic Q&A**. Both 
 
 ### Configuration
 
-⚙️ in the top-right corner of the page → fill in:
+Open **Settings** in the top-right corner of the page, then fill in:
 
 | Field | Description |
 |------|------|
@@ -247,10 +247,11 @@ The viewer ships two AI features: **daily summaries** and **agentic Q&A**. Both 
 | Vision | Whether to analyze images during summarization |
 
 Configuration is saved locally to `ai-config.json` (never committed to git).
+If the configuration is missing or incomplete, AI actions stay visible and open Settings with the missing fields listed and the first missing field focused. Authentication, quota, timeout, and connection failures are also reported with actionable messages.
 
 ### Q&A
 
-Ask questions in the toolbar's Q&A box; natural-language time ("recently", "yesterday", "last week") and person filters are supported.
+Open **Ask chat history** from the toolbar to ask questions; natural-language time ("recently", "yesterday", "last week") and person filters are supported.
 
 **Agent mode** (default): the LLM searches iteratively, choosing keywords and scope on its own, running multiple rounds until it has enough information.
 

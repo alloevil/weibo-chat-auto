@@ -88,6 +88,15 @@ function writeFixture() {
         JSON.stringify({ chromePath: '', groups: groups.map((group) => group.name) })
     );
     fs.writeFileSync(
+        path.join(TMP, 'ai-config.json'),
+        JSON.stringify({
+            baseUrl: 'https://api.example.invalid/v1',
+            apiKey: 'demo-key-not-real',
+            model: 'demo-model',
+            vision: false,
+        })
+    );
+    fs.writeFileSync(
         path.join(TMP, 'cache', 'emotions.json'),
         JSON.stringify({
             fetchedAt: Date.now(),

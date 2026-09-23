@@ -121,6 +121,9 @@ button, select, input { font-family: inherit; }
 .settings-row select { margin-left: 0; min-width: 150px; }
 .settings-hint { font-size: 12px; color: var(--ink-tertiary); line-height: 1.5; margin-bottom: 6px; }
 .settings-hint.on { display: block !important; color: var(--primary-hover); }
+.settings-section.attention { margin-inline: -12px; padding-inline: 12px; border-radius: 8px; background: var(--primary-tint); box-shadow: inset 3px 0 0 var(--primary); }
+.ai-config-alert { display: none; margin-bottom: 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--hairline)); border-radius: 7px; background: var(--surface-1); color: var(--ink-muted); }
+.ai-config-alert.show { display: block; }
 .settings-auth { flex: 1; font-size: 13px; color: var(--ink-muted); display: flex; align-items: center; gap: 6px; }
 .settings-auth::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-tertiary); flex-shrink: 0; }
 .settings-auth.ok::before { background: var(--success); }
@@ -175,6 +178,7 @@ button, select, input { font-family: inherit; }
 .summary-btn { height: 30px; padding: 0 14px; margin: 8px 0; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--primary-hover); cursor: pointer; font-size: 13px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
 .summary-btn:hover { background: var(--surface-2); border-color: var(--primary); }
 .summary-btn:disabled { opacity: .6; cursor: wait; }
+.summary-btn.needs-config, .tools-toggle.needs-config { border-style: dashed; border-color: color-mix(in srgb, var(--primary) 45%, var(--hairline)); background: var(--primary-tint); color: var(--primary-hover); }
 .summary-content { padding: 12px 0; font-size: 14px; line-height: 1.6; display: none; color: var(--ink-muted); }
 .summary-content.show { display: block; }
 .summary-content h2 { font-size: 15px; font-weight: 600; margin: 12px 0 6px; color: var(--ink); }
@@ -216,7 +220,7 @@ button, select, input { font-family: inherit; }
 .qa-quick-panel .qa-input:focus { width: auto; }
 .qa-quick-close { width: 28px; height: 28px; flex-shrink: 0; border: none; border-radius: 6px; background: transparent; color: var(--ink-subtle); cursor: pointer; font-size: 16px; }
 .qa-quick-close:hover { background: var(--surface-2); color: var(--ink); }
-.toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.4); opacity: 0; transition: transform var(--motion-panel) var(--ease-standard), opacity var(--motion-panel) var(--ease-standard); z-index: 1000; pointer-events: none; cursor: pointer; }
+.toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.4); opacity: 0; transition: transform var(--motion-panel) var(--ease-standard), opacity var(--motion-panel) var(--ease-standard); z-index: 3000; pointer-events: none; cursor: pointer; }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 .toast.success { background: var(--surface-3); color: var(--ink); border: 1px solid var(--hairline-strong); }
 .toast.error { background: var(--danger); color: #fff; }
@@ -1045,19 +1049,20 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             <div class="settings-hint">登录态失效时导航下方会出现红色横幅，点它同样可以扫码。</div>
         </div>
 
-        <div class="settings-section">
+        <div class="settings-section" id="aiSettingsSection">
             <div class="settings-section-title">AI（摘要与问答）</div>
+            <div class="settings-hint ai-config-alert" id="aiConfigAlert" role="alert"></div>
             <div class="modal-field">
-                <label>API Base URL</label>
-                <input type="text" id="aiBaseUrl" placeholder="https://api.deepseek.com/v1">
+                <label for="aiBaseUrl">API Base URL</label>
+                <input type="text" id="aiBaseUrl" placeholder="https://api.deepseek.com/v1" oninput="clearAiConfigAttention()">
             </div>
             <div class="modal-field">
-                <label>API Key</label>
-                <input type="password" id="aiApiKey" placeholder="sk-xxx">
+                <label for="aiApiKey">API Key</label>
+                <input type="password" id="aiApiKey" placeholder="sk-xxx" oninput="clearAiConfigAttention()">
             </div>
             <div class="modal-field">
-                <label>模型名称</label>
-                <input type="text" id="aiModel" placeholder="deepseek-chat">
+                <label for="aiModel">模型名称</label>
+                <input type="text" id="aiModel" placeholder="deepseek-chat" oninput="clearAiConfigAttention()">
             </div>
             <div class="modal-field">
                 <label>多模态（Vision）</label>
@@ -1658,28 +1663,102 @@ async function updateSchedule(val) {
 
 // --- AI Summary ---
 let aiConfigured = false;
+let aiMissingFields = ['baseUrl', 'apiKey', 'model'];
+let aiHasStoredKey = false;
+let aiConfigReadError = '';
+const AI_FIELD_LABELS = {
+    baseUrl: 'API Base URL',
+    apiKey: 'API Key',
+    model: '模型名称',
+};
 
 async function checkAiConfig() {
     try {
         const resp = await fetch('/api/ai-config');
         const data = await resp.json();
-        aiConfigured = !!(data.ok && data.config && data.config.baseUrl && data.config.model);
-    } catch { aiConfigured = false; }
+        const config = data.config || null;
+        aiHasStoredKey = !!config?.apiKey;
+        aiMissingFields = Array.isArray(data.missingFields)
+            ? data.missingFields
+            : Object.keys(AI_FIELD_LABELS).filter(key => !config?.[key]);
+        aiConfigured = data.ok === true
+            && (typeof data.configured === 'boolean' ? data.configured : aiMissingFields.length === 0);
+        aiConfigReadError = '';
+    } catch (e) {
+        aiConfigured = false;
+        aiMissingFields = ['baseUrl', 'apiKey', 'model'];
+        aiHasStoredKey = false;
+        aiConfigReadError = e.message || '服务不可用';
+    }
     updateSummaryBar();
     updateQaBar();
+    return aiConfigured;
 }
 
 function updateSummaryBar() {
     const bar = document.getElementById('summaryBar');
-    if (aiConfigured && selectedDate) {
-        bar.style.display = '';
-    } else {
-        bar.style.display = 'none';
-    }
+    bar.style.display = selectedDate ? '' : 'none';
+    const button = document.getElementById('summaryBtn');
+    button.classList.toggle('needs-config', !aiConfigured);
+    if (!button.disabled) setButtonLabel(button, aiConfigured ? 'AI 摘要' : '配置 AI 摘要');
 }
 
-function openSettings() {
+function aiMissingLabels(fields = aiMissingFields) {
+    return fields.map(field => AI_FIELD_LABELS[field] || field).join('、');
+}
+
+function clearAiConfigAttention() {
+    document.getElementById('aiSettingsSection')?.classList.remove('attention');
+    document.getElementById('aiConfigAlert')?.classList.remove('show');
+}
+
+function revealAiConfig(message, missingFields = aiMissingFields) {
     document.getElementById('settingsModal').classList.add('show');
+    const section = document.getElementById('aiSettingsSection');
+    const alert = document.getElementById('aiConfigAlert');
+    section.classList.add('attention');
+    alert.textContent = message;
+    alert.classList.add('show');
+    const fieldIds = { baseUrl: 'aiBaseUrl', apiKey: 'aiApiKey', model: 'aiModel' };
+    const target = document.getElementById(fieldIds[missingFields[0]] || 'aiBaseUrl');
+    setTimeout(() => {
+        section.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        target?.focus();
+    }, 0);
+}
+
+function showAiConfigRequired(feature, missingFields = aiMissingFields) {
+    const detail = aiConfigReadError
+        ? `无法读取 AI 配置：${aiConfigReadError}`
+        : `缺少 ${aiMissingLabels(missingFields) || '必要配置'}`;
+    const message = `${feature}暂不可用：${detail}。请完成设置后重试。`;
+    showToast(message, 'error', 8000);
+    openSettings({ aiMessage: message, missingFields });
+}
+
+async function ensureAiConfigured(feature) {
+    if (await checkAiConfig()) return true;
+    showAiConfigRequired(feature);
+    return false;
+}
+
+function friendlyAiError(error) {
+    const message = String(error || '未知错误');
+    if (/401|unauthori[sz]ed|invalid.*key|api.?key/i.test(message)) {
+        return 'API Key 无效或已失效，请在设置中更新后重试';
+    }
+    if (/429|rate.?limit|quota|余额|额度/i.test(message)) {
+        return 'AI 服务额度不足或请求过于频繁，请稍后重试或检查账户额度';
+    }
+    if (/timeout|timed out|超时|fetch failed|econn|enotfound/i.test(message)) {
+        return '无法连接 AI 服务，请检查 API Base URL 和网络状态';
+    }
+    return message;
+}
+
+function openSettings(options = {}) {
+    document.getElementById('settingsModal').classList.add('show');
+    if (options.aiMessage) revealAiConfig(options.aiMessage, options.missingFields);
     checkAuthStatus();   // 打开时刷新账号状态那一行
     loadNotifyConfig();
     fetch('/api/ai-config').then(r => r.json()).then(data => {
@@ -1843,6 +1922,7 @@ window.addEventListener('cookies-saved', (e) => {
 
 function closeSettings() {
     document.getElementById('settingsModal').classList.remove('show');
+    clearAiConfigAttention();
 }
 
 async function saveAiSettings() {
@@ -1850,6 +1930,14 @@ async function saveAiSettings() {
     const apiKeyInput = document.getElementById('aiApiKey').value.trim();
     const model = document.getElementById('aiModel').value.trim();
     const vision = document.getElementById('aiVision').checked;
+    const missingFields = [];
+    if (!baseUrl) missingFields.push('baseUrl');
+    if (!apiKeyInput && !aiHasStoredKey) missingFields.push('apiKey');
+    if (!model) missingFields.push('model');
+    if (missingFields.length) {
+        showAiConfigRequired('保存 AI 配置', missingFields);
+        return;
+    }
 
     try {
         const resp = await fetch('/api/ai-config', {
@@ -1859,11 +1947,19 @@ async function saveAiSettings() {
         });
         const data = await resp.json();
         if (data.ok) {
+            aiHasStoredKey = true;
+            aiMissingFields = [];
+            aiConfigured = true;
+            clearAiConfigAttention();
             showToast('AI 设置已保存', 'success');
             closeSettings();
             checkAiConfig();
         } else {
-            showToast('保存失败：' + (data.error || ''), 'error', 8000);
+            if (data.code === 'AI_NOT_CONFIGURED') {
+                showAiConfigRequired('保存 AI 配置', data.missingFields || []);
+            } else {
+                showToast('保存失败：' + friendlyAiError(data.error), 'error', 8000);
+            }
         }
     } catch (e) {
         showToast('保存失败：' + e.message, 'error', 8000);
@@ -1871,6 +1967,7 @@ async function saveAiSettings() {
 }
 
 async function loadSummary() {
+    if (!(await ensureAiConfigured('AI 摘要'))) return;
     const btn = document.getElementById('summaryBtn');
     const content = document.getElementById('summaryContent');
     const collapse = document.getElementById('summaryCollapse');
@@ -1888,11 +1985,17 @@ async function loadSummary() {
             collapse.style.display = '';
             setButtonLabel(btn, data.cached ? 'AI 摘要（已缓存）' : 'AI 摘要');
         } else {
-            showToast('摘要生成失败：' + (data.error || ''), 'error', 8000);
+            if (data.code === 'AI_NOT_CONFIGURED') {
+                aiMissingFields = data.missingFields || aiMissingFields;
+                aiConfigured = false;
+                showAiConfigRequired('AI 摘要', aiMissingFields);
+            } else {
+                showToast('摘要生成失败：' + friendlyAiError(data.error), 'error', 8000);
+            }
             setButtonLabel(btn, 'AI 摘要');
         }
     } catch (e) {
-        showToast('摘要请求失败：' + e.message, 'error', 8000);
+        showToast('摘要请求失败：' + friendlyAiError(e.message), 'error', 8000);
         setButtonLabel(btn, 'AI 摘要');
     }
     btn.disabled = false;
@@ -1911,7 +2014,11 @@ function toggleSummary() {
 }
 
 // --- Q&A ---
-function updateQaBar() {}
+function updateQaBar() {
+    const button = document.getElementById('qaToggle');
+    button.classList.toggle('needs-config', !aiConfigured);
+    button.title = aiConfigured ? '向 AI 查询群聊历史' : '需要先配置 AI';
+}
 
 function setQaComposer(open) {
     if (open && statsView) toggleStats();
@@ -1924,8 +2031,10 @@ function setQaComposer(open) {
     if (open) setTimeout(() => document.getElementById('qaInput').focus(), 0);
 }
 
-function toggleQaComposer() {
-    setQaComposer(!document.getElementById('qaQuickPanel').classList.contains('show'));
+async function toggleQaComposer() {
+    const opening = !document.getElementById('qaQuickPanel').classList.contains('show');
+    if (opening && !(await ensureAiConfigured('问群历史'))) return;
+    setQaComposer(opening);
 }
 
 function closeQaAnswer() {
@@ -1936,6 +2045,7 @@ async function askQuestion() {
     const input = document.getElementById('qaInput');
     const question = input.value.trim();
     if (!question) return;
+    if (!(await ensureAiConfigured('问群历史'))) return;
     setQaComposer(false);
     const btn = document.getElementById('qaSendBtn');
     const answerWrap = document.getElementById('qaAnswerWrap');
@@ -1953,7 +2063,14 @@ async function askQuestion() {
         });
         const data = await resp.json();
         if (!data.ok) {
-            answerDiv.innerHTML = `<div style="color:#f4212e">错误：${escapeHtml(data.error)}</div>`;
+            if (data.code === 'AI_NOT_CONFIGURED') {
+                aiMissingFields = data.missingFields || aiMissingFields;
+                aiConfigured = false;
+                answerWrap.style.display = 'none';
+                showAiConfigRequired('问群历史', aiMissingFields);
+            } else {
+                answerDiv.innerHTML = `<div style="color:var(--danger)">错误：${escapeHtml(friendlyAiError(data.error))}</div>`;
+            }
             return;
         }
         let html = renderMarkdown(data.answer);
@@ -1973,7 +2090,7 @@ async function askQuestion() {
         }
         answerDiv.innerHTML = html;
     } catch (e) {
-        answerDiv.innerHTML = `<div style="color:#f4212e">请求失败：${escapeHtml(e.message)}</div>`;
+        answerDiv.innerHTML = `<div style="color:var(--danger)">请求失败：${escapeHtml(friendlyAiError(e.message))}</div>`;
     } finally {
         btn.disabled = false;
         btn.textContent = '提问';
@@ -2081,6 +2198,7 @@ async function loadMessages(preserveScroll) {
     const scrollTop = preserveScroll ? document.getElementById('messages')?.scrollTop : null;
     renderHours();
     renderAll();
+    updateSummaryBar();
     if (preserveScroll && scrollTop != null) {
         requestAnimationFrame(() => { document.getElementById('messages').scrollTop = scrollTop; });
     }
