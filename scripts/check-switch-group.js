@@ -119,6 +119,30 @@ async function main() {
     vm.createContext(sandbox);
 
     const html = fs.readFileSync(path.join(ROOT, 'viewer.html'), 'utf-8');
+    const requiredIcons = [
+        'icon-chat',
+        'icon-search',
+        'icon-sync',
+        'icon-settings',
+        'icon-chart',
+        'icon-download',
+        'icon-users',
+        'icon-filter',
+        'icon-sparkles',
+        'icon-at',
+        'icon-list',
+        'icon-key',
+        'icon-smile',
+        'icon-image',
+        'icon-target',
+        'icon-clock',
+    ];
+    if (requiredIcons.some((id) => !html.includes(`id="${id}"`))) {
+        throw new Error('统一 SVG 图标集不完整');
+    }
+    if (!/id="syncBtn"[^>]*>[\s\S]*?#icon-sync[\s\S]*?button-label/.test(html)) {
+        throw new Error('同步按钮未使用可保留动态图标的标签结构');
+    }
     // viewer.html 有多个内联 <script>（head 的皮肤预加载 + 主逻辑），取最长的主逻辑块
     const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
         .map((b) => b[1])
@@ -166,6 +190,58 @@ async function main() {
         console.log('*** 消息区未变化 ***');
         process.exit(1);
     }
+
+    const memberSummary = els.userSummary.textContent;
+    if (!/^\d+ 人 · \d+ 条$/.test(memberSummary)) {
+        console.log(`*** 成员摘要异常:${memberSummary} ***`);
+        process.exit(1);
+    }
+    const firstUser = vm.runInContext(
+        'allMessages.find(m => m.date === selectedDate)?.user',
+        sandbox
+    );
+    vm.runInContext(`toggleUser(${JSON.stringify(firstUser)})`, sandbox);
+    if (!els.userClear.classList.contains('show')) {
+        console.log('*** 成员筛选生效后未显示清除入口 ***');
+        process.exit(1);
+    }
+    vm.runInContext(`toggleUser(${JSON.stringify(firstUser)})`, sandbox);
+    if (els.userClear.classList.contains('show')) {
+        console.log('*** 成员筛选清空后仍占用清除入口 ***');
+        process.exit(1);
+    }
+    console.log(`成员栏摘要正常:${memberSummary},清除入口按需显示`);
+
+    const firstMessageId = vm.runInContext(
+        'allMessages.find(m => m.date === selectedDate)?.id',
+        sandbox
+    );
+    vm.runInContext(`openContext(${JSON.stringify(String(firstMessageId))})`, sandbox);
+    if (!els.contextMeta.textContent.includes('/')) {
+        console.log(`*** 上下文位置摘要异常:${els.contextMeta.textContent} ***`);
+        process.exit(1);
+    }
+    if (!els.contextBody.innerHTML.includes('class="ctx-jump"')) {
+        console.log('*** 上下文缺少紧凑跳转入口 ***');
+        process.exit(1);
+    }
+    vm.runInContext('toggleContextDensity()', sandbox);
+    if (
+        !els.contextPanel.classList.contains('expanded') ||
+        els.ctxDensityBtn.textContent !== '紧凑'
+    ) {
+        console.log('*** 上下文全文模式未生效 ***');
+        process.exit(1);
+    }
+    vm.runInContext('toggleContextDensity()', sandbox);
+    if (
+        els.contextPanel.classList.contains('expanded') ||
+        els.ctxDensityBtn.textContent !== '全文'
+    ) {
+        console.log('*** 上下文紧凑模式未恢复 ***');
+        process.exit(1);
+    }
+    console.log(`上下文紧凑模式正常:${els.contextMeta.textContent}`);
 
     // 统计视图必须跟随切换后的群与日期生成摘要,且固定输出 4 个 KPI。
     vm.runInContext('toggleStats()', sandbox);

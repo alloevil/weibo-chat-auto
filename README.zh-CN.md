@@ -32,7 +32,7 @@
 
 ## 🎬 演示
 
-![演示](docs/demo.gif?v=20260923-layout2)
+![演示](docs/demo.gif?v=20260923-refined)
 
 > 演示中的用户名、群名与头像均为脱敏示例。
 

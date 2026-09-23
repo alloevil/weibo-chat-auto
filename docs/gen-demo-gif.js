@@ -233,7 +233,7 @@ async function main() {
         await hold(7);
 
         // 场景 4：上下文聚焦面板。
-        await page.evaluate(() => document.querySelector('.msg-ctx-btn')?.click());
+        await page.evaluate(() => document.querySelectorAll('.msg-ctx-btn')[20]?.click());
         await page.waitForSelector('.context-panel.open');
         await hold(8);
         await page.evaluate(() => document.querySelector('.ctx-close')?.click());
