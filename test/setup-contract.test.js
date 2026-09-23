@@ -6,6 +6,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const setup = fs.readFileSync(path.join(root, 'scripts', 'setup.sh'), 'utf-8');
 const schedule = fs.readFileSync(path.join(root, 'scripts', 'schedule.sh'), 'utf-8');
+const runDesktop = fs.readFileSync(path.join(root, 'scripts', 'run-desktop.sh'), 'utf-8');
 
 test('setup: Node 版本检查早于 npm install', () => {
     assert.ok(setup.indexOf('scripts/check-node-version.js') < setup.indexOf('npm install'));
@@ -30,4 +31,10 @@ test('package script: npm run setup 显式通过 bash 执行', () => {
     const scripts = require('../package.json').scripts;
     assert.strictEqual(scripts.setup, 'bash ./scripts/setup.sh');
     assert.strictEqual(scripts.preinstall, 'node scripts/check-node-version.js');
+});
+
+test('run-desktop: viewer、server 或 lib 更新后自动重建 sidecar', () => {
+    assert.match(runDesktop, /viewer\.html" -nt "\$SIDECAR/);
+    assert.match(runDesktop, /scripts\/viewer-server\.js" -nt "\$SIDECAR/);
+    assert.match(runDesktop, /find lib .* -newer "\$SIDECAR"/);
 });

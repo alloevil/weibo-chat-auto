@@ -9,6 +9,7 @@ const PORT = process.env.WEIBO_PORT || 3996;
 const BASE = `http://localhost:${PORT}`;
 
 function makeEl(id) {
+    const classes = new Set();
     return {
         innerHTML: '',
         textContent: '',
@@ -18,13 +19,24 @@ function makeEl(id) {
         style: {},
         dataset: {},
         classList: {
-            add() {},
-            remove() {},
-            toggle() {},
+            add(...names) {
+                names.forEach((name) => classes.add(name));
+            },
+            remove(...names) {
+                names.forEach((name) => classes.delete(name));
+            },
+            toggle(name, force) {
+                const add = force === undefined ? !classes.has(name) : force;
+                if (add) classes.add(name);
+                else classes.delete(name);
+                return add;
+            },
             contains() {
-                return false;
+                return classes.has(arguments[0]);
             },
         },
+        setAttribute() {},
+        toggleAttribute() {},
         appendChild() {},
         querySelector() {
             return null;
@@ -83,7 +95,10 @@ async function main() {
             getElementById(id) {
                 return els[id] || (els[id] = makeEl(id));
             },
-            querySelector() {
+            querySelector(selector) {
+                if (selector === '.main') return els.main || (els.main = makeEl('main'));
+                if (selector === '.content')
+                    return els.content || (els.content = makeEl('content'));
                 return null;
             },
             querySelectorAll() {
@@ -151,6 +166,18 @@ async function main() {
         console.log('*** 消息区未变化 ***');
         process.exit(1);
     }
+
+    // 统计视图必须跟随切换后的群与日期生成摘要,且固定输出 4 个 KPI。
+    vm.runInContext('toggleStats()', sandbox);
+    const statsHtml = els.statsPanel.innerHTML;
+    const kpiCount = (statsHtml.match(/class="stats-kpi"/g) || []).length;
+    if (!statsHtml.includes('class="stats-overview"') || kpiCount !== 4) {
+        console.log(
+            `*** 统计摘要异常:overview=${statsHtml.includes('class="stats-overview"')} kpi=${kpiCount} ***`
+        );
+        process.exit(1);
+    }
+    console.log(`统计摘要正常:${kpiCount} 个 KPI`);
     console.log('切群流程正常');
 }
 

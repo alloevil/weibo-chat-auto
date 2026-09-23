@@ -49,17 +49,19 @@ button, select, input { font-family: inherit; }
 
 /* Top nav */
 .nav { border-bottom: 1px solid var(--hairline); flex-shrink: 0; background: var(--canvas); position: relative; z-index: 20; }
-/* 允许换行：控件已有 9 个（群/日期/统计/皮肤/实时/定时/Sync/AI/登录），
-   在 1280 宽下原先会溢出到视口外 1654px —— AI 与登录按钮直接点不到。
-   flex-wrap 让它们掉到第二行，任何控件都不会因窗口变窄而消失。 */
-.nav-top { display: flex; flex-wrap: wrap; align-items: center; padding: 8px 16px; min-height: 56px; gap: 10px; row-gap: 8px; }
-/* 搜索/提问区参与伸缩，其余控件保持原尺寸 */
-.nav-top > * { flex-shrink: 0; white-space: nowrap; }
-.nav-search { display: flex; align-items: center; gap: 8px; flex: 1 1 340px; min-width: 260px; }
+/* 主导航分两层：第一层只放当前上下文、搜索与主操作；视图工具独立在第二层。
+   旧布局把十几个控件全塞进同一个 flex-wrap，换行位置随文字长度漂移。 */
+.nav-top { display: flex; align-items: center; padding: 8px 16px; min-height: 52px; gap: 12px; }
+.nav-context { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
+.nav-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
+.nav-search { display: flex; align-items: center; gap: 8px; flex: 1 1 480px; min-width: 280px; max-width: 760px; }
 .nav-search .search-input-wrap { flex: 1 1 auto; max-width: none; min-width: 140px; }
 .nav-search .qa-inline { flex: 1 1 auto; margin-left: 0; min-width: 150px; }
 .nav-search .qa-inline .qa-input { flex: 1 1 auto; width: auto; min-width: 0; }
 .nav-search .qa-inline .qa-input:focus { width: auto; }
+.nav-tools { min-height: 42px; padding: 5px 16px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--hairline); background: var(--surface-1); overflow-x: auto; }
+.nav-toolset { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.nav-tools .nav-stats { margin-left: auto; flex-shrink: 0; }
 /* 标题只留标识色块：文字占 90px 而窗口标题已经写着了 */
 .nav-title { display: flex; align-items: center; white-space: nowrap; }
 .nav-title::before { content: ''; width: 16px; height: 16px; border-radius: 5px; background: linear-gradient(135deg, var(--primary-hover), var(--primary)); box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset; flex-shrink: 0; }
@@ -68,8 +70,8 @@ button, select, input { font-family: inherit; }
 .nav-group-select { height: 32px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; }
 .nav-group-select:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
 .nav-stats { font-size: 13px; color: var(--ink-subtle); }
-.nav-last-archived { margin-left: auto; font-size: 12px; color: var(--ink-subtle); white-space: nowrap; }
-.sync-btn { height: 28px; padding: 0 12px; margin-left: 8px; border: 1px solid transparent; border-radius: 8px; background: var(--primary); color: var(--on-primary); cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; }
+.nav-last-archived { font-size: 12px; color: var(--ink-subtle); white-space: nowrap; }
+.sync-btn { height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: 8px; background: var(--primary); color: var(--on-primary); cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; }
 .sync-btn:hover { background: var(--primary-hover); }
 .sync-btn.syncing { background: var(--surface-2); color: var(--ink-subtle); border-color: var(--hairline); cursor: wait; }
 .auth-banner { margin: 8px 12px 0; padding: 8px 12px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.4; cursor: pointer; }
@@ -194,6 +196,13 @@ button, select, input { font-family: inherit; }
 .qa-source-item:hover { color: var(--primary-hover); }
 .qa-keywords { margin-top: 6px; font-size: 12px; color: var(--ink-subtle); }
 .qa-keywords span { display: inline-block; padding: 1px 6px; margin: 2px 3px 2px 0; background: var(--primary-tint); border-radius: 4px; color: var(--primary-hover); font-size: 11px; }
+.qa-quick-panel { display: none; align-items: center; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--hairline); background: var(--surface-1); }
+.qa-quick-panel.show { display: flex; }
+.qa-quick-panel .qa-inline { width: min(760px, 100%); margin: 0 auto; flex: 1; }
+.qa-quick-panel .qa-input { flex: 1; width: auto; }
+.qa-quick-panel .qa-input:focus { width: auto; }
+.qa-quick-close { width: 28px; height: 28px; flex-shrink: 0; border: none; border-radius: 6px; background: transparent; color: var(--ink-subtle); cursor: pointer; font-size: 16px; }
+.qa-quick-close:hover { background: var(--surface-2); color: var(--ink); }
 .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); max-width: 90vw; padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,.4); opacity: 0; transition: transform .25s ease, opacity .25s ease; z-index: 1000; pointer-events: none; cursor: pointer; }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 .toast.success { background: var(--surface-3); color: var(--ink); border: 1px solid var(--hairline-strong); }
@@ -218,7 +227,10 @@ button, select, input { font-family: inherit; }
 .cal-day.empty { visibility: hidden; }
 
 /* Main layout */
-.main { display: flex; flex: 1; overflow: hidden; }
+.main { display: flex; flex: 1; overflow: hidden; position: relative; }
+.main.stats-mode .sidebar { width: 0; overflow: hidden; border-right: none; }
+.pane-backdrop { display: none; position: absolute; inset: 0; z-index: 15; border: 0; background: rgba(0,0,0,.22); backdrop-filter: blur(1px); cursor: default; }
+.pane-backdrop.show { display: block; }
 
 /* Sidebar user list */
 /* 成员栏可折叠。窄屏下它占 290px —— 900px 视口里就是 32%,而消息气泡实际只用
@@ -499,10 +511,20 @@ button, select, input { font-family: inherit; }
 .stats-toggle { height: 32px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; }
 .stats-toggle:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
 .stats-toggle.active { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
-.stats-panel { display: none; flex: 1; overflow-y: auto; padding: 20px 24px; }
-.stats-panel.show { display: block; }
-.stats-section { margin-bottom: 28px; }
-.stats-section-title { font-size: 18px; font-weight: 600; margin-bottom: 12px; color: var(--ink); letter-spacing: -0.3px; }
+.stats-panel { display: none; flex: 1; overflow-y: auto; padding: 18px 20px; }
+.stats-panel.show { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "overview overview" "day media" "ranking hours" "words words"; gap: 16px; align-content: start; }
+.stats-overview { grid-area: overview; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stats-kpi { min-width: 0; padding: 14px 16px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-1); }
+.stats-kpi-value { overflow: hidden; color: var(--ink); font-size: 24px; font-weight: 650; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.stats-kpi-label { margin-top: 5px; color: var(--ink-subtle); font-size: 12px; }
+.stats-kpi-note { margin-left: 4px; color: var(--primary-hover); font-size: 11px; font-weight: 500; }
+.stats-section { min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface-1); }
+.stats-day { grid-area: day; }
+.stats-ranking { grid-area: ranking; }
+.stats-hours { grid-area: hours; }
+.stats-media { grid-area: media; }
+.stats-words { grid-area: words; }
+.stats-section-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--ink); letter-spacing: -0.2px; }
 .stats-chart { display: flex; align-items: flex-end; gap: 3px; height: 180px; padding-bottom: 24px; border-bottom: 1px solid var(--hairline); position: relative; }
 .stats-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
 .stats-bar { width: 100%; max-width: 40px; border-radius: 4px 4px 0 0; background: var(--primary); transition: height .3s; min-height: 2px; position: relative; }
@@ -523,6 +545,55 @@ button, select, input { font-family: inherit; }
 .stats-word-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .stats-word { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 9999px; font-size: 14px; color: var(--ink); }
 .stats-word .count { font-size: 12px; color: var(--ink-subtle); }
+
+@media (max-width: 1180px) {
+    .nav-top { flex-wrap: wrap; }
+    .nav-search { order: 3; flex-basis: 100%; max-width: none; }
+    .sidebar { width: 220px; }
+    .user-item { padding-inline: 12px; gap: 9px; }
+    .user-avatar { width: 34px; height: 34px; font-size: 14px; }
+    .user-actbar { display: none; }
+    .context-panel { position: absolute; inset: 0 0 0 auto; z-index: 18; box-shadow: -10px 0 30px rgba(0,0,0,.18); }
+    .context-panel.open { width: min(400px, 100%); }
+    .stats-panel.show { grid-template-columns: 1fr; grid-template-areas: "overview" "day" "media" "ranking" "hours" "words"; }
+    .stats-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+    .nav-top { padding: 7px 10px; gap: 8px; }
+    .nav-context { flex: 1 1 auto; }
+    .nav-group-select { min-width: 0; max-width: 46vw; }
+    .nav-tools { padding-inline: 10px; }
+    .nav-tools .nav-stats { margin-left: 0; }
+    .sidebar { position: absolute; inset: 0 auto 0 0; z-index: 16; width: min(280px, 82vw); box-shadow: 10px 0 30px rgba(0,0,0,.18); }
+    .sidebar.collapsed { width: 0; box-shadow: none; }
+    .stats-panel { padding: 12px; }
+}
+
+@media (max-width: 640px) {
+    .nav-title { display: none; }
+    .nav-actions .nav-last-archived, .nav-actions .live-dot { display: none; }
+    .nav-search { min-width: 100%; flex-wrap: wrap; }
+    .nav-search .search-input-wrap { min-width: 100%; }
+    .nav-tools { gap: 6px; }
+    .nav-toolset { gap: 6px; }
+    .tools-toggle, .stats-toggle { padding-inline: 9px; }
+    .stats-panel.show { gap: 10px; }
+    .stats-section { padding: 12px; }
+    .qa-quick-panel { padding-inline: 10px; }
+    .qa-quick-panel .qa-inline { min-width: 0; }
+    .msg-item:not(.msg-item-continuation) { grid-template-columns: minmax(110px, 32vw) minmax(0, 1fr); column-gap: 8px; }
+    .msg-item-continuation { padding-left: calc(40px + min(32vw, 160px) + 8px); }
+}
+
+@media (max-width: 480px) {
+    .nav-tools { overflow-x: hidden; }
+    .nav-toolset { width: 100%; justify-content: space-between; gap: 4px; }
+    .nav-tools .nav-stats { display: none; }
+    .nav-toolset .tools-toggle, .nav-toolset .stats-toggle { min-width: 36px; padding-inline: 8px; }
+    .nav-toolset .tool-label { display: none; }
+    .stats-overview { grid-template-columns: 1fr; }
+}
 
 /* ── 皮肤：QQ 2000（世纪初 QQ 聊天室 / Win98 风）─────────────────
    机制：html[data-theme="qq2000"] 覆盖 :root token + 少量年代感规则。
@@ -764,10 +835,12 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 
 <div class="nav">
     <div class="nav-top">
-        <div class="nav-title" title="微博群聊归档"></div>
-        <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
-        <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="选择要查看的日期">选择日期</button>
-        <!-- 搜索与提问是主操作，放在最上一行并自适应拉伸（原先独占第二行，中间还空一大片） -->
+        <div class="nav-context">
+            <div class="nav-title" title="微博群聊归档"></div>
+            <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
+            <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="选择要查看的日期">选择日期</button>
+        </div>
+        <!-- 搜索是高频内容操作，在主行中占据弹性空间；AI 问答按需从工具行展开 -->
         <div class="nav-search" id="navSearch">
             <div class="search-input-wrap">
                 <span class="search-icon">🔍</span>
@@ -782,27 +855,37 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                     <button class="search-nav-btn" onclick="navigateSearch(1)" title="下一处">▼</button>
                 </div>
             </div>
-            <div class="qa-inline" id="qaInline">
-                <input class="qa-input" id="qaInput" placeholder="问问群历史…" onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
-                <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
-            </div>
         </div>
-        <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="统计面板">📊</button>
-        <div class="export-menu-wrap">
-            <button class="tools-toggle" id="exportToggle" onclick="toggleExportMenu(event)" title="导出当前群当天的聊天记录">⬇ 导出</button>
-            <div class="export-menu" id="exportMenu">
-                <a id="exportMd" download>Markdown (.md)</a>
-                <a id="exportHtml" download>网页 (.html)</a>
-            </div>
+        <div class="nav-actions">
+            <div class="nav-last-archived" id="lastArchived" title="上次归档时间"></div>
+            <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点同步">实时</span>
+            <button class="sync-btn" id="syncBtn" onclick="syncNow()">同步</button>
+            <button class="ai-btn" id="settingsBtn" onclick="openSettings()" title="设置">⚙️</button>
         </div>
-        <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠/展开成员栏">👥 成员</button>
-        <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 筛选</button>
-        <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none">@我</button>
+    </div>
+    <div class="nav-tools">
+        <div class="nav-toolset">
+            <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="聊天/统计视图">📊 <span class="tool-label">统计</span></button>
+            <div class="export-menu-wrap">
+                <button class="tools-toggle" id="exportToggle" onclick="toggleExportMenu(event)" title="导出当前群当天的聊天记录">⬇ <span class="tool-label">导出</span></button>
+                <div class="export-menu" id="exportMenu">
+                    <a id="exportMd" download>Markdown (.md)</a>
+                    <a id="exportHtml" download>网页 (.html)</a>
+                </div>
+            </div>
+            <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠/展开成员栏">👥 <span class="tool-label">成员</span></button>
+            <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选">🔍 <span class="tool-label">筛选</span></button>
+            <button class="tools-toggle" id="qaToggle" onclick="toggleQaComposer()" aria-expanded="false" title="向 AI 查询群聊历史">🤖 <span class="tool-label">问群历史</span></button>
+            <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none"><span aria-hidden="true">@</span><span class="tool-label">我</span></button>
+        </div>
         <div class="nav-stats" id="stats"></div>
-        <div class="nav-last-archived" id="lastArchived" title="上次归档时间"></div>
-        <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点同步">实时</span>
-        <button class="sync-btn" id="syncBtn" onclick="syncNow()">同步</button>
-        <button class="ai-btn" id="settingsBtn" onclick="openSettings()">⚙️</button>
+    </div>
+    <div class="qa-quick-panel" id="qaQuickPanel">
+        <div class="qa-inline" id="qaInline">
+            <input class="qa-input" id="qaInput" placeholder="问问群历史…" onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
+            <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
+        </div>
+        <button class="qa-quick-close" onclick="setQaComposer(false)" title="收起问答" aria-label="收起问答">✕</button>
     </div>
     <div class="auth-banner" id="authBanner" style="display:none" onclick="doLogin()">⚠ 微博登录已失效，定时归档已停摆 — 点此重新扫码</div>
     <div class="calendar" id="calendar"></div>
@@ -935,6 +1018,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 </div>
 
 <div class="main">
+    <button class="pane-backdrop" id="paneBackdrop" onclick="closeTransientPanels()" aria-hidden="true" tabindex="-1"></button>
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header" data-tooltip="点击成员只看他的消息">成员</div>
         <div class="user-list" id="userList"></div>
@@ -998,12 +1082,16 @@ function closeLightbox() {
     document.getElementById('lightbox-img').src = '';
 }
 document.addEventListener('keydown', e => {
-    // Escape: close lightbox or context panel or clear search
+    // Escape:按视觉层级从上往下关闭临时界面,最后才清空搜索。
     if (e.key === 'Escape') {
         if (document.getElementById('lightbox').classList.contains('active')) {
             closeLightbox();
+        } else if (document.getElementById('qaQuickPanel').classList.contains('show')) {
+            setQaComposer(false);
         } else if (document.getElementById('contextPanel').classList.contains('open')) {
             closeContext();
+        } else if (isOverlaySidebar()) {
+            closeTransientPanels();
         } else if (searchQuery) {
             clearSearch();
         }
@@ -1083,10 +1171,39 @@ function jumpToMessage(id) {
 // ── 上下文聚焦面板（方向 B）──────────────────────
 let ctxFocusId = null;
 
+function isOverlaySidebar() {
+    return !!window.matchMedia?.('(max-width: 900px)')?.matches
+        && !document.getElementById('sidebar').classList.contains('collapsed');
+}
+
+function isOverlayContext() {
+    return !!window.matchMedia?.('(max-width: 1180px)')?.matches
+        && document.getElementById('contextPanel').classList.contains('open');
+}
+
+/** 统一维护窄屏抽屉的遮罩与背景可交互状态,避免多个面板各管一半。 */
+function syncPaneBackdrop() {
+    const active = isOverlaySidebar() || isOverlayContext();
+    const backdrop = document.getElementById('paneBackdrop');
+    backdrop.classList.toggle('show', active);
+    backdrop.setAttribute('aria-hidden', String(!active));
+    document.querySelector('.content').toggleAttribute('inert', active);
+}
+
+function closeTransientPanels() {
+    closeContext();
+    if (window.matchMedia?.('(max-width: 900px)')?.matches) {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('sidebarToggle').classList.remove('open');
+    }
+    syncPaneBackdrop();
+}
+
 function closeContext() {
     document.getElementById('contextPanel').classList.remove('open');
     document.querySelectorAll('.msg-item.ctx-focused').forEach(e => e.classList.remove('ctx-focused'));
     ctxFocusId = null;
+    syncPaneBackdrop();
 }
 
 // 提取消息纯文本预览（去引用结构、转义、限长）
@@ -1166,7 +1283,12 @@ function openContext(id) {
     }
 
     document.getElementById('contextBody').innerHTML = parts.join('');
+    if (window.matchMedia?.('(max-width: 900px)')?.matches) {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('sidebarToggle').classList.remove('open');
+    }
     document.getElementById('contextPanel').classList.add('open');
+    syncPaneBackdrop();
 
     // 主列表里标记焦点
     document.querySelectorAll('.msg-item.ctx-focused').forEach(e => e.classList.remove('ctx-focused'));
@@ -1685,6 +1807,21 @@ function toggleSummary() {
 // --- Q&A ---
 function updateQaBar() {}
 
+function setQaComposer(open) {
+    if (open && statsView) toggleStats();
+    const panel = document.getElementById('qaQuickPanel');
+    panel.classList.toggle('show', open);
+    const toggle = document.getElementById('qaToggle');
+    toggle.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    // click 的默认聚焦发生在事件末尾；延到下一任务才能稳定把光标交给输入框。
+    if (open) setTimeout(() => document.getElementById('qaInput').focus(), 0);
+}
+
+function toggleQaComposer() {
+    setQaComposer(!document.getElementById('qaQuickPanel').classList.contains('show'));
+}
+
 function closeQaAnswer() {
     document.getElementById('qaAnswerWrap').style.display = 'none';
 }
@@ -1693,6 +1830,7 @@ async function askQuestion() {
     const input = document.getElementById('qaInput');
     const question = input.value.trim();
     if (!question) return;
+    setQaComposer(false);
     const btn = document.getElementById('qaSendBtn');
     const answerWrap = document.getElementById('qaAnswerWrap');
     const answerDiv = document.getElementById('qaAnswer');
@@ -2042,6 +2180,11 @@ function toggleUser(user) {
     else selectedUsers.add(user);
     renderUserList();
     renderAll();
+    if (window.matchMedia?.('(max-width: 900px)')?.matches) {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('sidebarToggle').classList.remove('open');
+        syncPaneBackdrop();
+    }
 }
 
 /** 一键清空所有筛选（状态行的「清除」入口）：只显示"已筛选"却不给出路，
@@ -2601,14 +2744,17 @@ function renderAll() {
 function toggleStats() {
     statsView = !statsView;
     document.getElementById('statsToggle').classList.toggle('active', statsView);
+    document.querySelector('.main').classList.toggle('stats-mode', statsView);
     const msgEl = document.getElementById('messages');
     const statsEl = document.getElementById('statsPanel');
     // hours 与类型筛选现在都在筛选面板里，整块一起隐藏即可
     const toolsEl = document.getElementById('toolsPanel');
-    const searchEl = document.getElementById('navSearch');   // 搜索/提问已上移到导航行
+    const searchEl = document.getElementById('navSearch');
     const filterEl = document.getElementById('filterBar');
 
     if (statsView) {
+        setQaComposer(false);
+        closeContext();
         msgEl.style.display = 'none';
         toolsEl.style.display = 'none';
         searchEl.style.display = 'none';
@@ -2670,6 +2816,7 @@ function restoreToolsState() {
 function toggleSidebar() {
     const el = document.getElementById('sidebar');
     const collapsed = !el.classList.contains('collapsed');
+    if (!collapsed && window.matchMedia?.('(max-width: 1180px)')?.matches) closeContext();
     el.classList.toggle('collapsed', collapsed);
     document.getElementById('sidebarToggle').classList.toggle('open', !collapsed);
     try {
@@ -2677,16 +2824,29 @@ function toggleSidebar() {
             ? localStorage.setItem('viewer-sidebar-collapsed', '1')
             : localStorage.removeItem('viewer-sidebar-collapsed');
     } catch { /* 隐私模式 */ }
+    syncPaneBackdrop();
 }
 
 function restoreSidebarState() {
     let collapsed = false;
     try { collapsed = localStorage.getItem('viewer-sidebar-collapsed') === '1'; } catch { /* 隐私模式 */ }
+    if (window.matchMedia?.('(max-width: 900px)')?.matches) collapsed = true;
     // 折叠时成员筛选可能仍生效,按钮上的小圆点由 updateSidebarIndicator 提示
     if (collapsed) document.getElementById('sidebar').classList.add('collapsed');
     else document.getElementById('sidebarToggle').classList.add('open');
 }
 restoreSidebarState();
+let wasNarrowViewport = !!window.matchMedia?.('(max-width: 900px)')?.matches;
+window.addEventListener('resize', () => {
+    const narrow = !!window.matchMedia?.('(max-width: 900px)')?.matches;
+    // 桌面窗口被拖窄时不要让原本的固定成员栏突然盖住消息区。
+    if (narrow && !wasNarrowViewport) {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('sidebarToggle').classList.remove('open');
+    }
+    wasNarrowViewport = narrow;
+    syncPaneBackdrop();
+});
 
 /** 成员栏折叠时,若仍有成员筛选生效,用小圆点提示 —— 否则会以为消息莫名变少。 */
 function updateSidebarIndicator(hasUserFilter) {
@@ -2713,12 +2873,35 @@ function renderStats() {
 
     const panel = document.getElementById('statsPanel');
     let html = '';
+    html += renderStatsOverview(filtered);
     html += renderDayChart(); // Use date metadata for day chart
     html += renderUserRanking(filtered);
     html += renderHourChart(filtered);
     html += renderMediaBreakdown(allFiltered);
     html += renderWordFrequency(filtered);
     panel.innerHTML = html;
+}
+
+function renderStatsOverview(msgs) {
+    const userCounts = {};
+    const hourCounts = {};
+    msgs.forEach(m => {
+        userCounts[m.user] = (userCounts[m.user] || 0) + 1;
+        const hour = new Date(m.timestamp).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+    });
+    const topSpeaker = Object.entries(userCounts).sort((a, b) => b[1] - a[1])[0];
+    const peakHour = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0];
+    const topValue = topSpeaker ? escapeHtml(topSpeaker[0]) : '—';
+    const topNote = topSpeaker ? `${topSpeaker[1]} 条` : '暂无数据';
+    const peakValue = peakHour ? `${String(peakHour[0]).padStart(2, '0')}:00` : '—';
+    const peakNote = peakHour ? `${peakHour[1]} 条` : '暂无数据';
+    return `<div class="stats-overview">
+        <div class="stats-kpi"><div class="stats-kpi-value">${msgs.length}</div><div class="stats-kpi-label">当日消息</div></div>
+        <div class="stats-kpi"><div class="stats-kpi-value">${Object.keys(userCounts).length}</div><div class="stats-kpi-label">参与成员</div></div>
+        <div class="stats-kpi"><div class="stats-kpi-value" title="${topValue}">${topValue}</div><div class="stats-kpi-label">发言最多 <span class="stats-kpi-note">${topNote}</span></div></div>
+        <div class="stats-kpi"><div class="stats-kpi-value">${peakValue}</div><div class="stats-kpi-label">最活跃时段 <span class="stats-kpi-note">${peakNote}</span></div></div>
+    </div>`;
 }
 
 function renderDayChart() {
@@ -2731,7 +2914,7 @@ function renderDayChart() {
         const height = maxCount > 0 ? Math.max(2, (count / maxCount) * 150) : 2;
         return `<div class="stats-bar-wrap"><div class="stats-bar" style="height:${height}px"><span class="stats-bar-val">${count}</span></div><div class="stats-bar-label">${d.slice(5)}</div></div>`;
     }).join('');
-    return `<div class="stats-section"><div class="stats-section-title">每日消息量（共 ${total} 条）</div><div class="stats-chart">${bars}</div></div>`;
+    return `<div class="stats-section stats-day"><div class="stats-section-title">每日消息量（共 ${total} 条）</div><div class="stats-chart">${bars}</div></div>`;
 }
 
 function renderUserRanking(msgs) {
@@ -2744,7 +2927,7 @@ function renderUserRanking(msgs) {
         const barWidth = maxCount > 0 ? (count / maxCount) * 100 : 0;
         return `<tr><td class="rank">${i + 1}</td><td>${escapeHtml(user)}</td><td>${count}</td><td class="bar-cell"><div class="mini-bar" style="width:${barWidth}%"></div></td></tr>`;
     }).join('');
-    return `<div class="stats-section"><div class="stats-section-title">发言排行</div><table class="stats-table"><tr><th>#</th><th>成员</th><th>消息数</th><th></th></tr>${rows}</table></div>`;
+    return `<div class="stats-section stats-ranking"><div class="stats-section-title">发言排行</div><table class="stats-table"><tr><th>#</th><th>成员</th><th>消息数</th><th></th></tr>${rows}</table></div>`;
 }
 
 function renderHourChart(msgs) {
@@ -2757,7 +2940,7 @@ function renderHourChart(msgs) {
         const height = maxCount > 0 ? Math.max(2, (count / maxCount) * 150) : 2;
         bars.push(`<div class="stats-bar-wrap"><div class="stats-bar" style="height:${height}px"><span class="stats-bar-val">${count}</span></div><div class="stats-bar-label">${String(h).padStart(2, '0')}</div></div>`);
     }
-    return `<div class="stats-section"><div class="stats-section-title">时段分布</div><div class="stats-chart">${bars.join('')}</div></div>`;
+    return `<div class="stats-section stats-hours"><div class="stats-section-title">时段分布</div><div class="stats-chart">${bars.join('')}</div></div>`;
 }
 
 function renderMediaBreakdown(msgs) {
@@ -2781,7 +2964,7 @@ function renderMediaBreakdown(msgs) {
         { num: shares, label: '分享' },
         { num: links, label: '链接' },
     ].map(c => `<div class="stats-media-card"><div class="num">${c.num}</div><div class="label">${c.label}</div></div>`).join('');
-    return `<div class="stats-section"><div class="stats-section-title">消息类型分布</div><div class="stats-media-grid">${cards}</div></div>`;
+    return `<div class="stats-section stats-media"><div class="stats-section-title">消息类型分布</div><div class="stats-media-grid">${cards}</div></div>`;
 }
 
 function renderWordFrequency(msgs) {
@@ -2798,7 +2981,7 @@ function renderWordFrequency(msgs) {
     const sorted = Object.entries(wordCounts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 50);
     if (sorted.length === 0) return '';
     const words = sorted.map(([word, count]) => `<span class="stats-word">${escapeHtml(word)} <span class="count">×${count}</span></span>`).join('');
-    return `<div class="stats-section"><div class="stats-section-title">高频词</div><div class="stats-word-list">${words}</div></div>`;
+    return `<div class="stats-section stats-words"><div class="stats-section-title">高频词</div><div class="stats-word-list">${words}</div></div>`;
 }
 
 // Update last visit timestamp

@@ -216,7 +216,13 @@ async function main() {
             await shot();
         }
 
-        // 场景 2：切换到另一个群，展示新版稳定 storage key 背后的原始群名。
+        // 场景 2：按需展开 AI 问答；默认收起后搜索栏不再被两个输入框争抢。
+        await page.evaluate(() => document.getElementById('qaToggle')?.click());
+        await page.waitForSelector('.qa-quick-panel.show');
+        await hold(6);
+        await page.evaluate(() => document.querySelector('.qa-quick-close')?.click());
+
+        // 场景 3：切换到另一个群，展示新版稳定 storage key 背后的原始群名。
         await page.select('#groupSelect', uniqueGroupKey(groups[1].name));
         await page.waitForFunction(
             (expected) => document.querySelector('#groupSelect')?.value === expected,
@@ -226,13 +232,13 @@ async function main() {
         await page.waitForSelector('.msg-item');
         await hold(7);
 
-        // 场景 3：上下文聚焦面板。
+        // 场景 4：上下文聚焦面板。
         await page.evaluate(() => document.querySelector('.msg-ctx-btn')?.click());
         await page.waitForSelector('.context-panel.open');
         await hold(8);
         await page.evaluate(() => document.querySelector('.ctx-close')?.click());
 
-        // 场景 4：统计面板。
+        // 场景 5：统计面板（顶部先呈现 4 个关键摘要）。
         await page.evaluate(() => document.getElementById('statsToggle')?.click());
         await page.waitForSelector('.stats-panel.show');
         await hold(10);
