@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="archive">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<title>微博群聊</title>
+<title>群聊档案馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23238fc8'/%3E%3Cpath d='M6 7h12v7H10l-4 3V7z' fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -872,13 +872,382 @@ html[data-theme="qq2012"] ::-webkit-scrollbar-thumb { background: var(--hairline
 html[data-theme="qq2012"] ::-webkit-scrollbar-thumb:hover { background: var(--ink-tertiary); }
 html[data-theme="qq2012"] * { scrollbar-width: thin; scrollbar-color: var(--hairline-strong) var(--canvas); }
 html[data-theme="qq2012"] ::selection { background: #1e9fe4; color: #fff; }
+html[data-theme="archive"] {
+    --primary: #425e86; --primary-hover: #344f74; --primary-focus: #425e86;
+    --ink: #252931; --ink-muted: #3c424b; --ink-subtle: #69717c; --ink-tertiary: #69717c;
+    --canvas: #ffffff; --surface-1: #ffffff; --surface-2: #edf0f4; --surface-3: #e1e5eb; --surface-4: #f3f4f6;
+    --hairline: #e1e4e9; --hairline-strong: #cbd1d9; --success: #52684f; --danger: #a43229;
+    --primary-tint: #edf1f6; --primary-tint-strong: #dce5f1;
+    --chrome: #252a33; --chrome-secondary: #2e3540; --chrome-input: #3a4351;
+    --chrome-hover: #424d5d; --chrome-line: #526071; --chrome-text: #f4f6f9;
+    --chrome-muted: #c0c9d5; --chrome-accent: #b9ccec;
+    color-scheme: light;
+}
+body { height: 100dvh; flex-direction: row; overflow: hidden; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+.workspace { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.archive-nav { display: none; position: fixed; inset: 0 auto 0 0; z-index: 50; width: 320px; max-width: 90vw; padding: 24px 20px 0; background: var(--surface-4); border-right: 1px solid var(--hairline); flex-direction: column; min-height: 0; box-shadow: 12px 0 40px #18251c18; }
+.archive-nav.open { display: flex; }
+.archive-backdrop.show { display: block; position: fixed; inset: 0; background: #18251c44; border: 0; z-index: 45; }
+.date-drawer-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.date-drawer-heading h2 { font-size: 18px; font-weight: 600; }
+.date-drawer-heading p { font-size: 12px; color: var(--ink-subtle); margin-top: 7px; }
+.group-bar { display: flex; align-items: center; gap: 20px; padding: 18px 32px 0; }
+.group-bar .archive-brand { margin: 0; flex-shrink: 0; }
+.group-bar .archive-brand strong { font-size: 14px; letter-spacing: .04em; }
+.group-bar .archive-mark { width: 28px; height: 30px; border-radius: 7px; }
+.group-bar .archive-mark .ui-icon { width: 17px; height: 17px; }
+.group-bar .ai-btn { margin: 0 0 0 auto; flex-shrink: 0; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; background: transparent; }
+.group-picker-trigger { display: flex; align-items: center; gap: 9px; min-width: 0; max-width: 420px; padding: 10px 13px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); font-size: 13px; text-align: left; }
+.group-picker-trigger:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
+.group-picker-trigger #groupPickerLabel { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.group-picker-trigger .picker-chevron { margin-left: auto; color: var(--ink-subtle); }
+.group-picker-overlay { display: none; position: fixed; inset: 0; z-index: 1900; padding: 24px 16px; align-items: flex-start; justify-content: center; background: #18251c66; }
+.group-picker-overlay.show { display: flex; }
+.group-picker-dialog { display: flex; flex-direction: column; width: 460px; max-width: 100%; max-height: min(620px, calc(100dvh - 48px)); margin-top: min(8vh, 64px); border: 1px solid var(--hairline); border-radius: 14px; background: var(--surface-1); box-shadow: 0 20px 70px #00000025; overflow: hidden; }
+.group-picker-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 14px; }
+.group-picker-head h2 { font-size: 18px; font-weight: 600; }
+.group-picker-head p { margin-top: 6px; color: var(--ink-subtle); font-size: 12px; }
+.group-picker-search { display: flex; flex-direction: column; gap: 7px; margin: 0 20px; font-size: 12px; color: var(--ink-muted); }
+.group-picker-search input { width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--hairline-strong); border-radius: 8px; background: var(--canvas); color: var(--ink); font-size: 14px; }
+.group-picker-count { padding: 13px 20px 7px; font-size: 11px; color: var(--ink-subtle); }
+.group-picker-dialog .archive-groups { flex: 1; min-height: 0; max-height: none; overflow-y: auto; padding: 0 10px 12px; }
+.group-picker-dialog .archive-group { min-height: 48px; margin: 0; border: 0; border-radius: 8px; padding: 12px 10px; }
+.group-picker-dialog .archive-group .group-option-name { flex: 1; white-space: normal; overflow-wrap: anywhere; }
+.group-picker-dialog .archive-group small { flex-shrink: 0; font-size: 11px; color: var(--primary-hover); }
+.group-picker-help { padding: 12px 20px; border-top: 1px solid var(--hairline); font-size: 11px; color: var(--ink-subtle); }
+.archive-brand { display: flex; align-items: center; gap: 12px; margin: 0 4px 34px; }
+.archive-mark { display: grid; place-items: center; width: 38px; height: 42px; color: var(--on-primary); background: var(--primary); border-radius: 10px; }
+.archive-mark .ui-icon { width: 22px; height: 22px; }
+.archive-brand strong { display: block; font-size: 18px; letter-spacing: 1px; }
+.archive-brand small { display: block; margin-top: 6px; color: var(--ink-subtle); font-size: 11px; }
+.archive-section-label { display: flex; justify-content: space-between; padding: 0 10px; color: var(--ink-subtle); font-size: 11px; letter-spacing: .08em; margin-bottom: 12px; }
+.archive-groups { max-height: 28vh; overflow-y: auto; flex-shrink: 0; }
+.archive-group { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; background: transparent; border: 1px solid transparent; padding: 12px 10px; border-radius: 9px; margin-bottom: 5px; color: var(--ink-muted); }
+.archive-group .ui-icon { width: 17px; height: 17px; }
+.archive-group span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.archive-group:hover, .archive-day:hover { background: var(--surface-2); }
+.archive-group.active { color: var(--primary-hover); background: var(--primary-tint); border-color: color-mix(in srgb, var(--primary) 12%, transparent); font-weight: 600; }
+.archive-history-label { margin-top: 28px; }
+.archive-nav .nav-date { font-size: 12px; height: 36px; flex-shrink: 0; text-align: left; margin: 0 2px 12px; background: transparent; }
+.archive-dates { flex: 1; min-height: 70px; overflow-y: auto; }
+.archive-history-heading { display: flex; justify-content: space-between; gap: 6px; font-size: 10px; padding: 12px 10px 8px; color: var(--ink-subtle); }
+.archive-history-heading.older { border-top: 1px solid var(--hairline); margin-top: 14px; padding-top: 18px; }
+.archive-period-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-muted); text-align: left; font-size: 12px; }
+.archive-period-toggle:hover { background: var(--surface-2); }
+.archive-period-toggle .archive-chevron { color: var(--ink-subtle); font-size: 10px; transition: transform var(--motion-fast); }
+.archive-period-toggle[aria-expanded="true"] .archive-chevron { transform: rotate(90deg); }
+.archive-period-toggle small { margin-left: auto; color: var(--ink-subtle); font-size: 10px; font-weight: 400; }
+.archive-period-toggle.contains-current { color: var(--primary-hover); font-weight: 600; }
+.archive-year > .archive-period-toggle { position: sticky; top: 0; z-index: 1; background: var(--surface-4); }
+.archive-year-content { padding-left: 10px; }
+.archive-month-content { border-left: 1px solid var(--hairline); margin-left: 12px; padding-left: 5px; }
+.archive-day { width: 100%; display: flex; justify-content: space-between; align-items: center; border: 0; border-radius: 7px; padding: 10px 12px; background: transparent; color: var(--ink-muted); font-size: 12px; }
+.archive-day.active { background: var(--surface-1); color: var(--primary-hover); box-shadow: inset 3px 0 var(--primary); font-weight: 600; }
+.archive-day small { font-size: 10px; font-weight: 400; color: var(--ink-subtle); }
+.archive-footer { display: flex; align-items: center; gap: 7px; margin-top: 14px; padding: 18px 4px; border-top: 1px solid var(--hairline); color: var(--ink-subtle); font-size: 11px; }
+.archive-footer .ai-btn { margin-left: auto; padding: 5px; border: 0; background: transparent; }
+.archive-nav .calendar { padding: 8px 0; max-height: 260px; overflow-y: auto; flex-shrink: 0; margin-bottom: 8px; }
+.archive-nav .cal-grid { grid-template-columns: repeat(7, 29px); gap: 1px; }
+.archive-nav .cal-day { width: 29px; height: 29px; font-size: 11px; }
+.cal-day { border: 0; background: transparent; font-family: inherit; }
+.archive-nav .calendar-header { margin-bottom: 3px; gap: 4px; }
+.archive-backdrop { display: none; }
+.archive-nav-toggle { display: inline-flex; }
+.nav { z-index: 10; }
+.nav-top { padding: 18px 32px 12px; gap: 24px; min-height: 76px; }
+.nav-context { flex: 1; overflow: hidden; }
+.nav-title { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; overflow: hidden; }
+.archive-eyebrow { font-size: 10px; font-weight: 500; letter-spacing: .14em; color: var(--ink-subtle); }
+.nav-title strong { font-size: 21px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.nav-search { position: relative; flex: 0 1 350px; min-width: 240px; max-width: 420px; gap: 0; height: 40px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); }
+.search-scope { width: 92px; flex-shrink: 0; padding: 0 8px; border: 0; border-right: 1px solid var(--hairline); background: transparent; font-size: 11px; color: var(--ink-muted); height: 22px; }
+.nav-search .search-input-wrap { min-width: 0; }
+.nav-search .search-input { height: 38px; border: 0; background: transparent; font-size: 12px; box-shadow: none; padding-left: 30px; width: 100%; }
+.nav-search .search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.nav-search .search-icon { left: 9px; }
+.nav-search .search-count { position: absolute; top: 43px; right: 0; font-size: 10px; white-space: nowrap; }
+.nav-search .search-all-hint { display: none; }
+.nav-actions { margin-left: 0; gap: 10px; }
+.nav-actions .sync-btn { font-size: 12px; height: 36px; background: transparent; color: var(--ink-muted); border: 1px solid var(--hairline); padding: 0 10px; }
+.nav-last-archived, .live-dot { font-size: 10px; }
+.nav-tools { min-height: 58px; padding: 10px 32px; background: transparent; border-top: 0; overflow: visible; justify-content: space-between; gap: 10px; }
+.reading-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13px; }
+.reading-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.reading-heading .nav-stats { margin-left: 6px; font-size: 11px; }
+.nav-toolset { gap: 4px; }
+.nav-toolset > .tools-toggle { font-size: 12px; background: transparent; border-color: transparent; }
+.nav-toolset > #qaToggle { color: var(--primary-hover); background: var(--primary-tint); border: 1px solid transparent; }
+.archive-more { position: relative; font-size: 12px; }
+.archive-more summary { list-style: none; cursor: pointer; padding: 9px 10px; color: var(--ink-subtle); border-radius: 6px; }
+.archive-more summary::-webkit-details-marker { display: none; }
+.archive-more summary:hover { background: var(--surface-2); }
+.archive-more-menu { position: absolute; top: 38px; right: 0; width: 180px; z-index: 30; padding: 8px; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 10px; box-shadow: 0 10px 30px #00000014; }
+.archive-more-menu .tools-toggle, .archive-more-menu .stats-toggle { width: 100%; justify-content: flex-start; margin: 0; border: 0; font-size: 12px; background: transparent; }
+.archive-more-menu .export-menu { position: static; box-shadow: none; min-width: 0; }
+.content { min-width: 0; border-right: 0; background: var(--canvas); }
+.messages { padding: 10px 24px 35px; overflow-anchor: none; }
+.messages .msg-item { padding: 8px 14px 6px 52px; border: 0; border-radius: 6px; margin: 0 0 4px; min-height: 48px; }
+.messages .msg-item:not(.msg-item-continuation) { display: block; }
+.messages .msg-item .msg-header { display: flex; align-items: center; gap: 9px; margin-bottom: 3px; padding: 0; }
+.messages .msg-item .msg-user { font-size: 12px; font-weight: 650; color: var(--ink); max-width: min(240px, 65%); }
+.messages .msg-item .msg-time { font-size: 10px; color: var(--ink-subtle); }
+.messages .msg-item .msg-avatar { display: flex; width: 30px; height: 30px; left: 9px; top: 8px; font-size: 12px; border-radius: 9px; background: color-mix(in srgb, var(--user-accent) 13%, var(--surface-1)); color: color-mix(in srgb, var(--user-accent) 55%, var(--ink)); }
+.messages .msg-body { min-width: 0; max-width: 880px; }
+.messages .msg-content { display: block; padding: 0; width: auto; min-width: 0; max-width: none; background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 14px; line-height: 1.7; color: var(--ink-muted); overflow-wrap: anywhere; }
+.messages .msg-item:hover .msg-content { background: transparent; border: 0; }
+.messages .msg-item-continuation { padding-top: 0; padding-bottom: 3px; min-height: 27px; margin-top: -3px; margin-bottom: 3px; }
+.messages .msg-item-continuation .continuation-time { position: absolute; left: 4px; top: 4px; width: 40px; color: var(--ink-subtle); font-size: 9px; opacity: 0; }
+.messages .msg-item-continuation:hover .continuation-time, .messages .msg-item-continuation:focus-within .continuation-time { opacity: 1; }
+.messages .msg-attach { margin-top: 5px; max-width: 100%; overflow-wrap: anywhere; }
+.messages .msg-pics { gap: 6px; }
+.messages .msg-pics img { max-width: min(100%, 280px); max-height: 220px; border-radius: 8px; }
+.messages .forward-quote { margin: 4px 0 7px; padding: 7px 10px; border-left-width: 2px; font-size: 12px; line-height: 1.65; }
+.messages .forward-quote summary { cursor: pointer; overflow-wrap: anywhere; }
+.messages .quote-preview { color: var(--ink-subtle); }
+.messages .forward-quote[open] .quote-preview { display: none; }
+.messages .quote-full { margin-top: 6px; }
+.quote-jump { display: block; margin-top: 5px; padding: 0; border: 0; background: none; color: var(--primary-hover); font-size: 11px; }
+.msg-menu { display: none; position: absolute; right: 0; top: 1px; z-index: 3; }
+.msg-menu > summary { list-style: none; cursor: pointer; width: 30px; height: 28px; display: grid; place-items: center; border-radius: 5px; color: var(--ink-subtle); font-size: 18px; }
+.msg-menu > summary::-webkit-details-marker { display: none; }
+.msg-menu[open] { z-index: 5; }
+.msg-menu[open] > summary { background: var(--surface-2); }
+.msg-menu-body { position: absolute; right: 0; top: 28px; width: 210px; padding: 10px; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 8px; box-shadow: 0 6px 20px #00000020; }
+.msg-menu.menu-up .msg-menu-body { top: auto; bottom: 28px; }
+.msg-menu-body small { display: block; font-size: 10px; color: var(--ink-subtle); margin-bottom: 8px; overflow-wrap: anywhere; }
+.msg-menu-body button { width: 100%; padding: 9px; border: 0; border-radius: 5px; background: var(--primary-tint); color: var(--primary-hover); font-size: 12px; }
+.messages .msg-item-continuation .msg-header, .messages .cont-avatar { display: none; }
+.messages .time-divider { display: flex; align-items: center; margin: 18px 10px 20px; justify-content: flex-start; color: var(--ink-subtle); font-size: 11px; }
+.messages .time-divider span { padding: 0 12px 0 0; background: var(--canvas); border: 0; border-radius: 0; }
+.messages .time-divider::before { display: none; }
+.messages .time-divider::after { background: var(--hairline); }
+.messages .time-divider::after { content: ''; height: 1px; flex: 1; }
+.msg-ctx-btn { top: 9px; font-size: 10px; font-family: inherit; display: inline-flex; opacity: 0; }
+.msg-item:hover .msg-ctx-btn, .msg-item:focus-within .msg-ctx-btn, .msg-ctx-btn:focus-visible { opacity: 1; }
+.msg-item:focus-within .msg-ctx-btn, .msg-ctx-btn:focus-visible { display: inline-flex; }
+.reading-footer { flex-shrink: 0; padding: 13px 28px; border-top: 1px solid var(--hairline); display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--ink-subtle); background: var(--canvas); }
+.reading-footer button { background: none; border: 0; color: var(--primary-hover); font-size: 11px; }
+.reading-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.reading-actions button:disabled { opacity: .45; cursor: default; }
+.reading-actions #newArchiveBtn { background: var(--primary-tint); padding: 5px 9px; border-radius: 6px; font-weight: 600; }
+.archive-freshness { padding: 0 32px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 12px; font-size: 11px; color: var(--ink-subtle); }
+.archive-freshness button { border: 0; background: var(--primary-tint); color: var(--primary-hover); font-size: 11px; padding: 5px 10px; border-radius: 6px; }
+.archive-freshness button:disabled { opacity: .45; cursor: default; }
+.composer-hint.on { padding: 12px 20px 4px; color: var(--primary-hover); font-size: 12px; }
+.research-panel { display: none; flex: 0 0 350px; width: 350px; min-height: 0; flex-direction: column; border-left: 1px solid var(--hairline); background: var(--surface-1); }
+.research-panel.open { display: flex; }
+.research-header { display: flex; justify-content: space-between; align-items: center; padding: 23px 20px 18px; border-bottom: 1px solid var(--hairline); flex-shrink: 0; }
+.research-header h2 { font-size: 17px; font-weight: 600; margin-top: 7px; }
+.research-note { font-size: 12px; line-height: 1.8; color: var(--ink-subtle); padding: 16px 20px; }
+.research-panel > .search-results, .research-panel > .sidebar, .research-panel > .research-ai, .research-panel > .context-panel { display: none; }
+.research-panel[data-view="search"] > .search-results { display: flex; }
+.research-panel[data-view="members"] > .sidebar { display: flex; }
+.research-panel[data-view="ai"] > .research-ai { display: block; overflow-y: auto; }
+.research-panel[data-view="context"] > .context-panel { display: flex; }
+.research-panel .sidebar, .research-panel .context-panel, .main.stats-mode .research-panel .sidebar { position: static; width: 100%; min-width: 0; max-width: none; flex: 1; border: 0; background: transparent; transform: none; box-shadow: none; overflow: hidden; }
+.research-panel .sidebar-header { padding: 16px 20px 0; font-size: 12px; }
+.research-panel .ctx-header { padding: 12px 16px; }
+.research-panel .ctx-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+.research-panel .ctx-title { display: none; }
+.research-panel .ctx-meta { font-size: 11px; }
+.research-panel .ctx-jump { grid-row: 1; }
+.research-panel .ctx-msg { padding: 10px 16px; margin: 4px 0; grid-template-columns: 120px minmax(0, 1fr) 22px; }
+.research-panel .ctx-msg-content { grid-column: 1 / -1; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.7; }
+.research-panel .ctx-msg.focus .ctx-msg-content, .research-panel .expanded .ctx-msg-content { display: block; }
+.research-panel .ctx-section-label { padding: 16px 18px 8px; font-size: 11px; }
+.research-panel .search-results { flex: 1; min-height: 0; max-height: none; flex-direction: column; padding: 0; border: 0; overflow: hidden; }
+.research-panel .sr-head { padding: 16px 20px; font-size: 12px; }
+.research-panel .sr-days { padding: 0 20px 12px; }
+.research-panel .sr-day { padding: 4px 7px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--surface-4); color: var(--ink-muted); font-size: 10px; }
+.research-panel .sr-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; padding: 0 12px 15px; }
+.research-panel .sr-row { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 14px 10px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--hairline); background: transparent; border-radius: 5px; }
+.research-panel .sr-row:hover { background: var(--surface-2); }
+.research-panel .sr-date { width: auto; font-size: 10px; color: var(--ink-subtle); }
+.research-panel .sr-user { width: auto; font-size: 12px; color: var(--ink); }
+.research-panel .sr-text { font-size: 13px; color: var(--ink-muted); line-height: 1.75; white-space: normal; }
+.sr-location { font-size: 10px; color: var(--primary-hover); }
+.research-panel .qa-quick-panel { position: static; padding: 18px 20px; background: transparent; box-shadow: none; flex-direction: column; align-items: stretch; border: 0; }
+.research-panel .qa-quick-panel label { font-size: 12px; margin-bottom: 12px; color: var(--ink-muted); }
+.research-panel .qa-inline { margin: 0; min-width: 0; }
+.research-panel .qa-input, .research-panel .qa-input:focus { width: 100%; min-width: 0; }
+.research-panel .qa-answer-wrap { padding: 0 20px 20px; overflow: visible; }
+.research-panel .qa-answer { max-height: none; box-shadow: none; font-size: 13px; padding: 10px 0; border: 0; }
+.research-panel .summary-bar { padding: 0 20px 16px; }
+.pane-backdrop { z-index: 15; }
+@media (max-width: 1300px) {
+    .group-bar { padding-inline: 24px; }
+    .nav-top { padding: 22px 24px; gap: 14px; }
+    .nav-tools { padding-inline: 24px; }
+    .nav-title strong { font-size: 18px; }
+    .nav-last-archived { display: none !important; }
+    .research-panel { width: 320px; flex-basis: 320px; }
+}
+@media (max-width: 1100px) {
+    .research-panel { position: absolute; inset: 0 0 0 auto; width: min(370px, 100%); z-index: 20; box-shadow: -12px 0 35px #00000012; }
+    .nav-top { flex-wrap: wrap; gap: 12px; }
+    .nav-search { order: 3; flex: 1 0 100%; max-width: none; }
+    .nav-search .search-count { top: 10px; right: 30px; pointer-events: none; }
+    .reading-heading .nav-stats { display: none; }
+}
+@media (max-width: 760px) {
+    .archive-nav { display: none; position: fixed; inset: 0 auto 0 0; z-index: 50; width: 275px; padding-inline: 18px; }
+    .archive-nav.open { display: flex; }
+    .archive-backdrop.show { display: block; position: fixed; inset: 0; background: #18251c66; border: 0; z-index: 45; }
+    .archive-nav-toggle { display: inline-flex; flex-shrink: 0; }
+    .group-bar { padding: 12px 16px 0; gap: 8px; }
+    .group-bar .archive-brand { display: none; }
+    .group-picker-trigger { flex: 1; max-width: none; }
+    .group-picker-dialog { margin-top: 0; max-height: calc(100dvh - 48px); }
+    .nav-context { gap: 10px; }
+    .nav-top { min-height: 0; padding: 18px 16px 10px; }
+    .nav-title strong { font-size: 16px; }
+    .nav-actions { gap: 0; }
+    .nav-actions .sync-btn { padding: 0 8px; font-size: 10px; }
+    .nav-actions .live-dot { display: none; }
+    .nav-tools { padding: 10px 16px; min-height: 52px; flex-wrap: nowrap; }
+    .reading-heading { font-size: 11px; gap: 6px; flex-shrink: 0; white-space: nowrap; }
+    .nav-toolset { gap: 0; width: auto; justify-content: flex-end; }
+    .nav-toolset .tool-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; }
+    .nav-toolset > .tools-toggle { padding: 0 8px; font-size: 11px; }
+    .nav-toolset > #toolsToggle .tool-label { display: none; }
+    .archive-more summary { padding: 8px; font-size: 11px; }
+    .messages { padding: 0 12px 20px; }
+    .messages .msg-item { padding-left: 44px; padding-right: 32px; }
+    .messages .msg-item .msg-avatar { width: 28px; height: 28px; left: 5px; }
+    .messages .msg-content { font-size: 13px; }
+    .messages .msg-item-continuation { padding-top: 0; }
+    .messages .msg-ctx-btn, .messages .msg-item:hover .msg-ctx-btn, .messages .msg-item:focus-within .msg-ctx-btn { display: none; }
+    .msg-menu { display: block; }
+    .msg-ctx-btn .ui-icon { display: none; }
+    .reading-footer { padding: 12px 16px; font-size: 10px; }
+    .reading-footer button { font-size: 10px; }
+    .reading-footer { flex-wrap: wrap; gap: 8px; }
+    .reading-actions { width: 100%; justify-content: space-between; gap: 8px; }
+    .archive-freshness { padding: 0 16px 12px; font-size: 10px; gap: 6px 8px; }
+    .archive-freshness button { font-size: 10px; }
+    .composer { padding: 8px; gap: 4px; }
+    .composer-icon { width: 28px; }
+    .composer-send { padding: 0 10px; }
+}
+html[data-theme="archive"] body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; letter-spacing: 0; }
+html[data-theme="archive"] .nav { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(330px, 1fr); background: var(--chrome); color: var(--chrome-text); border: 0; }
+html[data-theme="archive"] .group-bar { min-height: 70px; padding: 12px 24px; gap: 22px; min-width: 0; }
+html[data-theme="archive"] .group-bar .archive-brand strong { font-size: 13px; letter-spacing: .02em; }
+html[data-theme="archive"] .group-bar .archive-mark { color: var(--chrome-accent); background: transparent; border: 0; }
+html[data-theme="archive"] .group-picker-trigger { font-family: inherit; font-size: 15px; font-weight: 600; border: 0; border-left: 1px solid var(--chrome-line); border-radius: 0; padding: 7px 0 7px 20px; color: var(--chrome-text); background: transparent; max-width: none; }
+html[data-theme="archive"] .group-picker-trigger > .ui-icon { display: none; }
+html[data-theme="archive"] .group-picker-trigger .picker-chevron { color: var(--chrome-muted); }
+html[data-theme="archive"] .group-bar .ai-btn { border: 0; color: var(--chrome-muted); }
+html[data-theme="archive"] .nav-context { display: none; }
+html[data-theme="archive"] .nav-top { min-height: 70px; padding: 12px 24px 12px 8px; flex-wrap: nowrap; gap: 12px; }
+html[data-theme="archive"] .nav-search { flex: 1; flex-wrap: nowrap; order: 0; min-width: 0; max-width: none; height: 36px; border: 1px solid var(--chrome-line); border-radius: 7px; background: var(--chrome-input); }
+html[data-theme="archive"] .nav-search .search-input-wrap { min-width: 0; }
+html[data-theme="archive"] .nav-search .search-input { height: 34px; color: var(--chrome-text); background: transparent; }
+html[data-theme="archive"] .nav-search .search-input::placeholder { color: var(--chrome-muted); }
+html[data-theme="archive"] .nav-search .search-icon, html[data-theme="archive"] .search-clear { color: var(--chrome-muted); }
+html[data-theme="archive"] .search-scope { color: var(--chrome-text); border-right-color: var(--chrome-line); color-scheme: dark; }
+html[data-theme="archive"] .search-scope option { color: var(--chrome-text); background: var(--chrome-input); }
+html[data-theme="archive"] .nav-search .search-count { top: 38px; color: var(--chrome-muted); background: var(--chrome-secondary); border-radius: 3px; z-index: 2; }
+html[data-theme="archive"] .nav-actions .nav-last-archived { display: none !important; }
+html[data-theme="archive"] .nav-actions .sync-btn { border-color: transparent; background: transparent; color: var(--chrome-text); border-radius: 5px; }
+html[data-theme="archive"] .live-dot { color: var(--chrome-muted); }
+html[data-theme="archive"] .nav-tools { grid-column: 1 / -1; min-height: 46px; padding: 7px 24px; background: var(--chrome-secondary); }
+html[data-theme="archive"] .reading-heading .nav-stats { color: var(--chrome-muted); }
+html[data-theme="archive"] .reading-heading .nav-stats span { color: var(--chrome-accent) !important; }
+html[data-theme="archive"] .reading-indicator { background: var(--chrome-accent); }
+html[data-theme="archive"] .nav-toolset > .tools-toggle, html[data-theme="archive"] .archive-more summary { color: var(--chrome-muted); }
+html[data-theme="archive"] .nav-toolset > #qaToggle { color: var(--chrome-accent); background: transparent; }
+html[data-theme="archive"] .nav-toolset > .tools-toggle.open { background: var(--chrome-hover); border-color: var(--chrome-line); }
+html[data-theme="archive"] .archive-freshness { grid-column: 1 / -1; background: var(--chrome-secondary); color: var(--chrome-muted); padding: 0 24px 10px; gap: 6px 14px; }
+html[data-theme="archive"] .archive-freshness button { background: transparent; color: var(--chrome-accent); padding-inline: 0; }
+html[data-theme="archive"] .nav .auth-banner { grid-column: 1 / -1; margin-bottom: 8px; }
+html[data-theme="archive"] .nav :is(.ai-btn:hover, .sync-btn:hover, .group-picker-trigger:hover, .nav-toolset > .tools-toggle:hover, .archive-more > summary:hover, .search-clear:hover) { background: var(--chrome-hover); color: var(--chrome-text); }
+html[data-theme="archive"] .nav :focus-visible { outline-color: var(--chrome-accent); }
+html[data-theme="archive"] .archive-more-menu, html[data-theme="archive"] .export-menu { color: var(--ink); background: var(--surface-1); }
+html[data-theme="archive"] .archive-more-menu .tools-toggle, html[data-theme="archive"] .archive-more-menu .stats-toggle { color: var(--ink-muted); }
+html[data-theme="archive"] .research-panel { background: var(--surface-4); }
+html[data-theme="archive"] .research-header { background: var(--chrome-secondary); color: var(--chrome-text); }
+html[data-theme="archive"] .research-header .archive-eyebrow, html[data-theme="archive"] .research-header .ctx-close { color: var(--chrome-muted); }
+html[data-theme="archive"] .research-header .ctx-close:hover { background: var(--chrome-hover); color: var(--chrome-text); }
+html[data-theme="archive"] .research-header :focus-visible { outline-color: var(--chrome-accent); }
+html[data-theme="archive"] .research-panel .ctx-msg.focus { border-left-color: var(--primary); background: var(--primary-tint); }
+html[data-theme="archive"] .research-panel .ctx-msg.same-user { border-left-color: var(--hairline-strong); }
+html[data-theme="archive"] .messages .msg-item .msg-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--surface-2); color: var(--ink-muted); border: 1px solid var(--hairline); }
+html[data-theme="archive"] .messages .msg-item { border-radius: 6px; }
+html[data-theme="archive"] .messages .msg-item.ctx-focused { background: var(--primary-tint); box-shadow: inset 2px 0 var(--primary); }
+html[data-theme="archive"] .messages .msg-content { font-size: 14px; line-height: 1.75; color: var(--ink-muted); }
+html[data-theme="archive"] .messages .msg-time { font-size: 11px; }
+html[data-theme="archive"] .messages .forward-quote { background: var(--surface-4); border-left-color: var(--hairline-strong); }
+html[data-theme="archive"] .messages .quote-author { color: var(--ink); }
+html[data-theme="archive"] .msg-menu > summary { font-family: Arial, sans-serif; letter-spacing: 0; }
+html[data-theme="archive"] .reading-actions #newArchiveBtn { color: var(--on-primary); background: var(--primary-hover); }
+html[data-theme="archive"] .reading-footer { background: var(--surface-1); }
+html[data-theme="archive"] .user-avatar { background: var(--surface-3) !important; color: var(--ink-muted) !important; }
+@media (max-width: 1100px) {
+    html[data-theme="archive"] .nav { grid-template-columns: minmax(0, 1fr); }
+    html[data-theme="archive"] .nav-top { min-height: 48px; padding: 0 24px 12px; }
+    html[data-theme="archive"] .nav-search .search-count { top: 36px; }
+}
+@media (max-width: 760px) {
+    html[data-theme="archive"] .group-bar { padding: 12px 16px 6px; min-height: 56px; gap: 10px; }
+    html[data-theme="archive"] .group-bar .archive-brand { display: flex; }
+    html[data-theme="archive"] .group-bar .archive-brand strong { display: none; }
+    html[data-theme="archive"] .group-picker-trigger { border: 0; padding: 6px 0; font-size: 14px; }
+    html[data-theme="archive"] .nav-top { padding: 0 16px 10px; gap: 6px; }
+    html[data-theme="archive"] .nav-actions .sync-btn { width: 32px; padding: 0; }
+    html[data-theme="archive"] .nav-actions .sync-btn .button-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+    html[data-theme="archive"] .nav-tools { padding: 6px 16px; min-height: 40px; }
+    html[data-theme="archive"] .archive-freshness { padding: 0 16px 10px; font-size: 10px; }
+    html[data-theme="archive"] .messages .msg-content { font-size: 13px; }
+    html[data-theme="archive"] .messages .msg-item .msg-avatar { width: 28px; height: 28px; }
+}
+.group-bar .code-mode-toggle { margin-left: 0; }
+.code-mode-view { display: none; }
+body.code-mode { background: #1e2229; }
+body.code-mode > :not(#codeModeView) { display: none !important; }
+body.code-mode #codeModeView { display: flex; flex-direction: column; width: 100%; height: 100dvh; color: #d5dae3; background: #1e2229; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; color-scheme: dark; }
+.code-titlebar { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 18px; background: #272d36; border-bottom: 1px solid #333c49; font-size: 12px; }
+.code-titlebar .code-glyph { color: #81abc7; font-size: 16px; }
+.code-titlebar button { margin-left: auto; border: 1px solid #4d5b6e; border-radius: 4px; padding: 5px 10px; background: transparent; color: #d5dae3; font-size: 11px; }
+.code-titlebar button:hover { background: #384252; }
+.code-path { padding: 8px 20px; color: #9aa7b9; background: #222730; font-size: 11px; }
+.code-log { flex: 1; overflow: auto; min-height: 0; padding: 14px 0 40px; counter-reset: log-line; scrollbar-color: #4a5463 #1e2229; }
+.code-row { display: grid; grid-template-columns: 54px minmax(0, 1fr); padding: 3px 18px 3px 0; font-size: 13px; line-height: 1.8; }
+.code-row::before { counter-increment: log-line; content: counter(log-line); color: #909aac; border-right: 1px solid #343d49; text-align: right; padding-right: 13px; margin-right: 14px; user-select: none; }
+.code-row:hover { background: #252c35; }
+.code-statement { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.code-method { color: #83b9d4; }
+.code-time { color: #b5a4d3; }
+.code-source { color: #9cb8ca; }
+.code-text { color: #d0c098; }
+.code-comment { color: #94a48b; }
+.code-footer { padding: 8px 18px; border-top: 1px solid #333c49; background: #272d36; color: #b2bdcd; display: flex; justify-content: space-between; gap: 12px; font-size: 11px; }
+.code-mode-view :focus-visible { outline: 2px solid #81abc7; outline-offset: -2px; }
+@media (max-width: 760px) {
+    .code-titlebar { padding-inline: 12px; gap: 8px; }
+    .code-titlebar button { font-size: 10px; }
+    .code-row { grid-template-columns: 40px minmax(0, 1fr); font-size: 12px; padding-right: 12px; }
+    .code-row::before { padding-right: 8px; margin-right: 8px; }
+    .code-footer { flex-wrap: wrap; font-size: 10px; padding-inline: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 </style>
 <script>
 // 皮肤须在首帧前生效，避免闪一下深色（切换逻辑在页尾 applyTheme）
-try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* 隐私模式无 localStorage */ }
+try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.documentElement.dataset.theme = t; } catch { /* 隐私模式无 localStorage */ }
 </script>
 </head>
 <body>
+
+<section id="codeModeView" class="code-mode-view" aria-label="只读代码日志视图">
+    <header class="code-titlebar"><span class="code-glyph" aria-hidden="true">&lt;/&gt;</span><span>workspace.log</span><button id="codeModeExit" onclick="toggleCodeMode()" title="恢复普通视图（Alt+Shift+X）">View · Alt ⇧ X</button></header>
+    <div class="code-path">workspace / logs / workspace.log</div>
+    <div class="code-log" id="codeLog" tabindex="0" aria-label="日志内容"></div>
+    <footer class="code-footer"><span id="codeLogStatus">Read only</span><span>UTF-8 · Plain Text</span></footer>
+</section>
 
 <!-- 单一 SVG 图标源：所有操作图标继承 currentColor，避免不同系统 Emoji 风格漂移。 -->
 <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -904,19 +1273,40 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 
 <div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lightbox-img" src=""></div>
 
+<div class="group-picker-overlay" id="groupPickerOverlay" onclick="if(event.target===this)closeGroupPicker()">
+    <section class="group-picker-dialog" id="groupPickerDialog" role="dialog" aria-modal="true" aria-labelledby="groupPickerTitle">
+        <div class="group-picker-head"><div><h2 id="groupPickerTitle">切换群聊</h2><p>从已归档的群聊中选择</p></div><button id="groupPickerClose" class="ctx-close" onclick="closeGroupPicker()" aria-label="关闭群选择器">✕</button></div>
+        <label class="group-picker-search" for="groupPickerSearch">搜索群名<input id="groupPickerSearch" type="search" placeholder="输入群名关键词…" autocomplete="off" oninput="renderGroupOptions()"></label>
+        <div class="group-picker-count" id="groupPickerCount" role="status"></div>
+        <div class="archive-groups" id="archiveGroups" aria-label="群聊列表"></div>
+        <div class="group-picker-help">↑ ↓ 浏览 · Enter 选择 · Esc 关闭</div>
+    </section>
+</div>
+
+<button class="archive-backdrop" id="archiveBackdrop" onclick="toggleArchive(false)" aria-label="关闭日期导航" tabindex="-1"></button>
+<aside class="archive-nav" id="archiveNav" role="dialog" aria-modal="true" aria-labelledby="dateDrawerTitle">
+    <div class="date-drawer-heading"><div><h2 id="dateDrawerTitle">选择日期</h2><p id="dateDrawerGroup"></p></div><button id="dateDrawerClose" class="ctx-close" onclick="toggleArchive(false)" aria-label="关闭日期导航">✕</button></div>
+    <div class="archive-section-label archive-history-label">浏览历史 <span id="archiveDateCount"></span></div>
+    <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" aria-expanded="false">选择日期</button>
+    <div class="calendar" id="calendar"></div>
+    <div class="archive-dates" id="archiveDates"></div>
+    <div class="archive-footer"><svg class="ui-icon" aria-hidden="true"><use href="#icon-list"></use></svg><span>仅显示有归档记录的日期</span></div>
+</aside>
+<div class="workspace">
 <div class="nav">
+    <div class="group-bar"><div class="archive-brand"><span class="archive-mark"><svg class="ui-icon" aria-hidden="true"><use href="#icon-list"></use></svg></span><strong>群聊档案馆</strong></div><button class="group-picker-trigger" id="groupPickerToggle" onclick="openGroupPicker()" aria-haspopup="dialog" aria-controls="groupPickerDialog" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chat"></use></svg><span id="groupPickerLabel">选择群聊</span><span class="picker-chevron" aria-hidden="true">▾</span></button><span id="archiveGroupCount" hidden></span><button class="ai-btn code-mode-toggle" id="codeModeToggle" onclick="toggleCodeMode()" aria-pressed="false" title="代码日志模式（Alt+Shift+X）：正文仍可见，不是隐私屏障" aria-label="切换代码日志模式">&lt;/&gt;</button><button class="ai-btn" id="settingsBtn" onclick="openSettings()" title="设置" aria-label="设置"><svg class="ui-icon" aria-hidden="true"><use href="#icon-settings"></use></svg></button></div>
     <div class="nav-top">
         <div class="nav-context">
-            <div class="nav-title" title="微博群聊归档"><svg class="ui-icon brand-icon" aria-hidden="true"><use href="#icon-chat"></use></svg></div>
-            <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" style="display:none"></select>
-            <button class="nav-date" id="dateToggle" onclick="toggleCalendar()" data-tooltip="选择要查看的日期">选择日期</button>
+            <div class="nav-title"><span class="archive-eyebrow">群聊档案</span><strong id="archiveTitle">正在打开档案…</strong></div>
+            <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" aria-label="切换群聊" hidden></select>
         </div>
         <!-- 搜索是高频内容操作，在主行中占据弹性空间；AI 问答按需从工具行展开 -->
         <div class="nav-search" id="navSearch">
+            <select class="search-scope" id="searchScope" aria-label="搜索范围" onchange="changeSearchScope()"><option value="all">全部日期</option><option value="day">当前日期</option></select>
             <div class="search-input-wrap">
                 <span class="search-icon"><svg class="ui-icon" aria-hidden="true"><use href="#icon-search"></use></svg></span>
-                <input type="text" class="search-input" id="searchInput" placeholder="搜索消息…" oninput="onSearchInput(this.value)">
-                <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+                <input type="search" class="search-input" id="searchInput" placeholder="搜索这个群的历史…" aria-label="搜索群聊历史" oninput="onSearchInput(this.value)" onkeydown="if(event.key==='Enter')runGlobalSearch(this.value.trim())">
+                <button class="search-clear" id="searchClear" onclick="clearSearch()" aria-label="清空搜索">✕</button>
             </div>
             <div class="search-count" id="searchCount">
                 <span id="searchCountText"></span>
@@ -930,13 +1320,17 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
         <div class="nav-actions">
             <div class="nav-last-archived" id="lastArchived" title="上次归档时间" style="display:none"><svg class="ui-icon" aria-hidden="true"><use href="#icon-clock"></use></svg><span class="button-label"></span></div>
             <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点同步">实时</span>
-            <button class="sync-btn" id="syncBtn" onclick="syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="button-label">同步</span></button>
-            <button class="ai-btn" id="settingsBtn" onclick="openSettings()" title="设置" aria-label="设置"><svg class="ui-icon" aria-hidden="true"><use href="#icon-settings"></use></svg></button>
+            <button class="sync-btn" id="syncBtn" onclick="syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="button-label">同步归档</span></button>
         </div>
     </div>
     <div class="nav-tools">
+        <div class="reading-heading"><span class="reading-indicator"></span><span id="readingDate">历史记录</span><span class="nav-stats" id="stats"></span></div>
         <div class="nav-toolset">
-            <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="聊天/统计视图"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chart"></use></svg><span class="tool-label">统计</span></button>
+            <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段、类型与噪声筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">筛选</span></button>
+            <button class="tools-toggle" id="qaToggle" onclick="toggleQaComposer()" aria-expanded="false" title="向 AI 查询群聊历史"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">AI 助读</span></button>
+            <details class="archive-more" id="archiveMore"><summary aria-label="更多档案操作">更多 ···</summary><div class="archive-more-menu">
+            <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="阅读/统计视图"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chart"></use></svg><span class="tool-label">查看统计</span></button>
+            <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="按成员筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-users"></use></svg><span class="tool-label">按成员筛选</span></button>
             <div class="export-menu-wrap">
                 <button class="tools-toggle" id="exportToggle" onclick="toggleExportMenu(event)" title="导出当前群当天的聊天记录"><svg class="ui-icon" aria-hidden="true"><use href="#icon-download"></use></svg><span class="tool-label">导出</span></button>
                 <div class="export-menu" id="exportMenu">
@@ -944,22 +1338,12 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
                     <a id="exportHtml" download>网页 (.html)</a>
                 </div>
             </div>
-            <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠/展开成员栏"><svg class="ui-icon" aria-hidden="true"><use href="#icon-users"></use></svg><span class="tool-label">成员</span></button>
-            <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段热力图与类型/噪声筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">筛选</span></button>
-            <button class="tools-toggle" id="qaToggle" onclick="toggleQaComposer()" aria-expanded="false" title="向 AI 查询群聊历史"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">问群历史</span></button>
             <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none"><svg class="ui-icon" aria-hidden="true"><use href="#icon-at"></use></svg><span class="tool-label">我</span></button>
+            </div></details>
         </div>
-        <div class="nav-stats" id="stats"></div>
     </div>
-    <div class="qa-quick-panel" id="qaQuickPanel">
-        <div class="qa-inline" id="qaInline">
-            <input class="qa-input" id="qaInput" placeholder="问问群历史…" onkeydown="if(event.key==='Enter'&&!event.shiftKey)askQuestion()">
-            <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
-        </div>
-        <button class="qa-quick-close" onclick="setQaComposer(false)" title="收起问答" aria-label="收起问答">✕</button>
-    </div>
+    <div class="archive-freshness"><button class="archive-nav-toggle" id="archiveNavToggle" onclick="toggleArchive()" aria-label="选择日期" aria-controls="archiveNav" aria-expanded="false">选择日期 ▾</button><button id="latestArchiveBtn" onclick="jumpToLatestArchive()">最新归档 ↘</button><span id="archiveFreshness" role="status">正在读取同步状态</span><span>归档记录不代表微博实时最新</span></div>
     <div class="auth-banner" id="authBanner" style="display:none" onclick="doLogin()">⚠ 微博登录已失效，定时归档已停摆 — 点此重新扫码</div>
-    <div class="calendar" id="calendar"></div>
 </div>
 
 <!-- 设置：皮肤 / 同步 / 微博账号 / AI 都在这里，导航只留高频操作 -->
@@ -972,12 +1356,14 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             <div class="settings-row">
                 <label for="themeSelect">皮肤</label>
                 <select class="schedule-select" id="themeSelect" onchange="applyTheme(this.value)">
+                    <option value="archive">石墨工具栏 · 白色阅读</option>
                     <option value="">深色（Linear）</option>
                     <option value="qq2000">QQ 2000 复古</option>
                     <option value="qq2008">QQ 2008 玻璃</option>
                     <option value="qq2012">QQ 2012 轻白</option>
                 </select>
             </div>
+            <div class="settings-hint">代码日志模式：顶部 &lt;/&gt; 或 Alt+Shift+X 切换。隐藏群名、头像和聊天控件，正文仍可读（不会自动脱敏），不是隐私屏障。模式内不发新的应用通知；无法撤回已有系统通知，也不隐藏浏览器地址、历史或原生窗口名称。刷新后恢复普通视图。</div>
         </div>
 
         <div class="settings-section">
@@ -1091,11 +1477,6 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
 
 <div class="main">
     <button class="pane-backdrop" id="paneBackdrop" onclick="closeTransientPanels()" aria-hidden="true" tabindex="-1"></button>
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-header" data-tooltip="点击成员只看他的消息"><span>成员</span><span class="sidebar-summary" id="userSummary"></span></div>
-        <div class="user-list" id="userList"></div>
-        <div class="user-clear" id="userClear"><button onclick="clearUserFilter()">清除成员筛选</button></div>
-    </div>
     <div class="content">
         <!-- 筛选面板：默认折叠，由导航的「🔍 筛选」开关控制 -->
         <div class="tools-panel" id="toolsPanel">
@@ -1110,38 +1491,58 @@ try { const t = localStorage.getItem('viewer-theme'); if (t) document.documentEl
             </div>
         </div>
         <div class="filter-bar" id="filterBar"></div>
-        <div class="search-results" id="searchResults"></div>
-        <div class="summary-bar" id="summaryBar" style="display:none">
-            <button class="summary-btn" id="summaryBtn" onclick="loadSummary()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="button-label">AI 摘要</span></button>
-            <button class="summary-collapse" id="summaryCollapse" onclick="toggleSummary()" style="display:none">收起</button>
-            <div class="summary-content" id="summaryContent"></div>
-        </div>
-        <div class="qa-answer-wrap" id="qaAnswerWrap" style="display:none">
-            <div class="qa-answer-head"><button class="summary-collapse" onclick="closeQaAnswer()">✕ 收起回答</button></div>
-            <div class="qa-answer show" id="qaAnswer"></div>
-        </div>
         <div class="messages" id="messages"></div>
         <div class="stats-panel" id="statsPanel"></div>
+        <div class="reading-footer"><span id="readingStatus">只读浏览 · 本地历史记录</span><div class="reading-actions"><button id="newArchiveBtn" onclick="jumpToNewArchive()" aria-live="polite" hidden></button><button id="dayBottomBtn" onclick="jumpToDayBottom()">跳到当天底部 ↓</button><button id="composeToggle" onclick="toggleCompose()" aria-expanded="false">向群里发消息 ↗</button></div></div>
         <div class="composer-hint" id="composerHint"></div>
         <div class="emoji-picker" id="emojiPicker"></div>
         <div class="composer" id="composer">
             <button class="composer-icon" id="emojiBtn" onclick="toggleEmojiPicker()" title="表情" aria-label="表情"><svg class="ui-icon" aria-hidden="true"><use href="#icon-smile"></use></svg></button>
             <button class="composer-icon" onclick="document.getElementById('imageInput').click()" title="发送图片" aria-label="发送图片"><svg class="ui-icon" aria-hidden="true"><use href="#icon-image"></use></svg></button>
             <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="sendChatImageFromInput(this)">
-            <textarea id="composerInput" rows="1" placeholder="发送到当前群聊…（Enter 发送，Shift+Enter 换行，可直接粘贴图片）"
+            <textarea id="composerInput" rows="1" placeholder="发送到实时群聊（Enter 发送，Shift+Enter 换行）" aria-label="发送到实时群聊"
                 oninput="autoGrowComposer(this)" onkeydown="composerKeydown(event)" onpaste="composerPaste(event)"></textarea>
             <button class="composer-send" id="composerSend" onclick="sendChatMessage()">发送</button>
         </div>
     </div>
-    <div class="context-panel" id="contextPanel">
+    <aside class="research-panel" id="researchPanel" aria-label="档案工具">
+        <div class="research-header"><div><span class="archive-eyebrow">档案工具</span><h2 id="researchTitle">检索结果</h2></div><button class="ctx-close" onclick="closeResearch()" aria-label="关闭档案工具">✕</button></div>
+        <div class="search-results" id="searchResults" aria-live="polite"></div>
+        <div class="sidebar collapsed" id="sidebar">
+            <div class="sidebar-header"><span>当日成员</span><span class="sidebar-summary" id="userSummary"></span></div>
+            <p class="research-note">选择成员，仅显示他们在当前日期的发言。</p>
+            <div class="user-list" id="userList"></div>
+            <div class="user-clear" id="userClear"><button onclick="clearUserFilter()">清除成员筛选</button></div>
+        </div>
+        <div class="research-ai" id="researchAi">
+            <p class="research-note">从原始记录中找答案。AI 内容仅供参考，请通过来源消息核对。</p>
+            <div class="summary-bar" id="summaryBar" style="display:none">
+                <button class="summary-btn" id="summaryBtn" onclick="loadSummary()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="button-label">AI 摘要</span></button>
+                <button class="summary-collapse" id="summaryCollapse" onclick="toggleSummary()" style="display:none">收起</button>
+                <div class="summary-content" id="summaryContent"></div>
+            </div>
+            <div class="qa-quick-panel" id="qaQuickPanel">
+                <label for="qaInput">向这个群的历史提问</label>
+                <div class="qa-inline" id="qaInline">
+                    <input class="qa-input" id="qaInput" placeholder="例如：上次讨论的方案是什么？" onkeydown="if(event.key==='Enter'&&!event.isComposing)askQuestion()">
+                    <button class="qa-send" id="qaSendBtn" onclick="askQuestion()">提问</button>
+                </div>
+            </div>
+            <div class="qa-answer-wrap" id="qaAnswerWrap" style="display:none">
+                <div class="qa-answer-head"><button class="summary-collapse" onclick="closeQaAnswer()">收起回答</button></div>
+                <div class="qa-answer show" id="qaAnswer"></div>
+            </div>
+        </div>
+        <div class="context-panel" id="contextPanel">
         <div class="ctx-header">
             <div class="ctx-heading"><span class="ctx-title"><svg class="ui-icon" aria-hidden="true"><use href="#icon-target"></use></svg>上下文</span><span class="ctx-meta" id="contextMeta"></span></div>
             <div class="ctx-actions">
                 <button class="ctx-density-toggle" id="ctxDensityBtn" onclick="toggleContextDensity()" aria-pressed="false" title="显示全部消息正文">全文</button>
-                <button class="ctx-close" onclick="closeContext()" title="关闭 (Esc)">✕</button>
             </div>
         </div>
         <div class="ctx-body" id="contextBody"></div>
+        </div>
+    </aside>
     </div>
 </div>
 
@@ -1163,21 +1564,481 @@ function setButtonLabel(button, text) {
     else if (button) button.textContent = text;
 }
 
-function setLastArchivedTime(text) {
+function setLastArchivedTime(text, fullText = text) {
     const container = document.getElementById('lastArchived');
     const label = container?.querySelector('.button-label');
     if (label) label.textContent = text;
     if (container) container.style.display = text ? '' : 'none';
+    archiveUpdatedAt = fullText;
+    updateArchiveFreshness();
+}
+let composeOpen = false;
+let archiveRevision = 0;
+let searchRevision = 0;
+let archiveBaseline = null;
+let newArchiveTarget = '';
+let archiveSyncState = 'unknown';
+let archiveUpdatedAt = '';
+let codeMode = false;
+let codeModeSnapshot = null;
+const codeModeSources = new Map();
+const readingPositionPrefix = 'viewer-reading-v1:';
+const readingPositionMemory = new Map();
+let readingPositionReady = false;
+let readingPositionTimer = null;
+let pendingReadingPosition = null;
+let readingLoadRevision = 0;
+
+function readPositionValue(key) {
+    if (readingPositionMemory.has(key)) return readingPositionMemory.get(key);
+    try { return localStorage.getItem(key) ?? readingPositionMemory.get(key); }
+    catch { return readingPositionMemory.get(key); }
+}
+
+function writePositionValue(key, value) {
+    readingPositionMemory.set(key, value);
+    try { localStorage.setItem(key, value); } catch {}
+}
+
+function getReadingPosition(group) {
+    try {
+        const position = JSON.parse(readPositionValue(readingPositionPrefix + encodeURIComponent(group)) || 'null');
+        if (!position || position.version !== 1 || typeof position.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(position.date)
+            || typeof position.messageId !== 'string' || !position.messageId
+            || !Number.isFinite(position.offset) || Math.abs(position.offset) > 1000000
+            || !['messages', 'code'].includes(position.view)) return null;
+        return position;
+    } catch { return null; }
+}
+
+function readingViewportTop(container) {
+    const top = container.getBoundingClientRect().top;
+    return [...container.querySelectorAll('.time-divider')].reduce((visibleTop, divider) => {
+        const bounds = divider.getBoundingClientRect();
+        const stickyMargin = parseFloat(getComputedStyle(divider).marginTop) || 0;
+        return bounds.top <= top + stickyMargin + 1 && bounds.bottom > top ? Math.max(visibleTop, bounds.bottom) : visibleTop;
+    }, top);
+}
+
+function saveReadingPosition() {
+    clearTimeout(readingPositionTimer);
+    if (!readingPositionReady || !selectedDate || (!codeMode && statsView)) return;
+    const normal = document.getElementById('messages');
+    if (normal.dataset.location !== JSON.stringify([currentGroup, selectedDate])) return;
+    const container = codeMode ? document.getElementById('codeLog') : normal;
+    const viewport = container.getBoundingClientRect();
+    if (!viewport.height) return;
+    const visibleTop = readingViewportTop(container);
+    const rows = [...container.querySelectorAll(codeMode ? '.code-row[data-message-id]' : '.msg-item')];
+    const anchor = rows.find(element => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.height && bounds.bottom > visibleTop + 1 && bounds.top < viewport.bottom;
+    });
+    if (!anchor) return;
+    const position = {
+        version: 1, date: selectedDate,
+        messageId: codeMode ? anchor.dataset.messageId : anchor.id.slice(4),
+        offset: visibleTop - anchor.getBoundingClientRect().top,
+        view: codeMode ? 'code' : 'messages',
+    };
+    writePositionValue(readingPositionPrefix + encodeURIComponent(currentGroup), JSON.stringify(position));
+    writePositionValue('viewer-reading-last-group-v1', JSON.stringify(currentGroup));
+}
+
+function restoreReadingPosition(position) {
+    const container = document.getElementById(codeMode ? 'codeLog' : 'messages');
+    const anchor = codeMode
+        ? [...container.querySelectorAll('.code-row')].find(element => element.dataset.messageId === position?.messageId)
+        : document.getElementById('msg-' + position?.messageId);
+    container.scrollTop = 0;
+    if (!position || position.date !== selectedDate || !anchor || !container.contains(anchor)) return;
+    const bounds = anchor.getBoundingClientRect();
+    if (!bounds.height) return;
+    const offset = position.view === (codeMode ? 'code' : 'messages')
+        ? Math.min(position.offset, bounds.height - 1) : 0;
+    container.scrollTop += bounds.top - container.getBoundingClientRect().top + offset;
+    container.scrollTop -= readingViewportTop(container) - container.getBoundingClientRect().top;
+}
+
+function queueReadingPosition() {
+    clearTimeout(readingPositionTimer);
+    if (!readingPositionReady) return;
+    readingPositionTimer = setTimeout(saveReadingPosition, 250);
+}
+
+document.getElementById('messages').addEventListener('scroll', queueReadingPosition, { passive: true });
+document.getElementById('codeLog').addEventListener('scroll', queueReadingPosition, { passive: true });
+window.addEventListener('pagehide', saveReadingPosition);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveReadingPosition(); });
+
+function renderCodeLog() {
+    if (!codeMode) return;
+    const log = document.getElementById('codeLog');
+    const scrollTop = log.scrollTop;
+    const scrollLeft = log.scrollLeft;
+    const messages = getFiltered();
+    const rows = messages.map(message => {
+        const identity = message.from_uid != null ? `uid:${message.from_uid}` : `name:${message.user}`;
+        if (!codeModeSources.has(identity)) codeModeSources.set(identity, `source_${String(codeModeSources.size + 1).padStart(2, '0')}`);
+        const time = String(message.time || '').split(' ')[1] || '--:--';
+        const attachmentCount = (message.pics?.length || 0) + (message.share ? 1 : 0) + (message.videoUrl ? 1 : 0) + (message.link ? 1 : 0);
+        const text = String(message.content || '') + (attachmentCount ? ` [attachments: ${attachmentCount}]` : '');
+        return `<div class="code-row" data-message-id="${escapeHtml(String(message.id))}"><span class="code-statement"><span class="code-method">logger.info</span>(<span class="code-time">${escapeHtml(JSON.stringify(time))}</span>, <span class="code-source">${escapeHtml(JSON.stringify(codeModeSources.get(identity)))}</span>, <span class="code-text">${escapeHtml(JSON.stringify(text))}</span>);</span></div>`;
+    });
+    log.innerHTML = rows.length ? rows.join('') : '<div class="code-row"><span class="code-comment">// No records in current view.</span></div>';
+    log.scrollTop = scrollTop;
+    log.scrollLeft = scrollLeft;
+    document.getElementById('codeLogStatus').textContent = `${messages.length} records · Read only`;
+    document.title = 'workspace.log — Editor';
+}
+
+function toggleCodeMode() {
+    saveReadingPosition();
+    const messages = document.getElementById('messages');
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (!codeMode) {
+        const bounds = messages.getBoundingClientRect();
+        const anchor = [...messages.querySelectorAll('.msg-item')].find(element => element.getBoundingClientRect().bottom > bounds.top);
+        const focused = document.activeElement;
+        codeModeSnapshot = {
+            group: currentGroup, date: selectedDate,
+            scrollTop: messages.scrollTop, scrollLeft: messages.scrollLeft,
+            anchor: anchor?.id.slice(4), focused,
+            selectionStart: focused?.selectionStart, selectionEnd: focused?.selectionEnd,
+            favicon: favicon?.getAttribute('href'),
+        };
+        codeModeSources.clear();
+        codeMode = true;
+        document.body.classList.add('code-mode');
+        document.getElementById('codeModeToggle').setAttribute('aria-pressed', 'true');
+        dismissToast();
+        if (favicon) favicon.setAttribute('href', "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='4' fill='%23272d36'/%3E%3Cpath d='m8 7-5 5 5 5m8-10 5 5-5 5' fill='none' stroke='%2381abc7' stroke-width='2'/%3E%3C/svg%3E");
+        renderCodeLog();
+        const log = document.getElementById('codeLog');
+        log.scrollTop = 0;
+        const row = [...log.querySelectorAll('.code-row')].find(element => element.dataset.messageId === codeModeSnapshot.anchor);
+        row?.scrollIntoView({ block: 'start' });
+        log.focus({ preventScroll: true });
+    } else {
+        const snapshot = codeModeSnapshot;
+        codeMode = false;
+        document.body.classList.remove('code-mode');
+        document.getElementById('codeModeToggle').setAttribute('aria-pressed', 'false');
+        document.getElementById('codeLog').innerHTML = '';
+        codeModeSources.clear();
+        renderArchiveNavigation();
+        if (favicon && snapshot?.favicon != null) favicon.setAttribute('href', snapshot.favicon);
+        if (snapshot?.group === currentGroup && snapshot.date === selectedDate) {
+            messages.scrollTop = snapshot.scrollTop;
+            messages.scrollLeft = snapshot.scrollLeft;
+        }
+        const target = snapshot?.focused?.isConnected && snapshot.focused.getBoundingClientRect().height ? snapshot.focused : document.getElementById('codeModeToggle');
+        target.focus({ preventScroll: true });
+        if (snapshot?.selectionStart != null && target === snapshot.focused) target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+        codeModeSnapshot = null;
+    }
+}
+let archiveHistoryGroup = null;
+let archiveHistorySelection = '';
+let archiveSelectionWasRecent = false;
+const archiveExpandedYears = new Set();
+const archiveExpandedMonths = new Set();
+
+function archiveDateButton(date) {
+    return `<button id="archive-date-${date}" class="archive-day${date === selectedDate ? ' active' : ''}" aria-current="${date === selectedDate ? 'date' : 'false'}" aria-label="${date}，${dateCounts[date]} 条消息" title="${date}" onclick="selectDate('${date}')"><span>${date.slice(5).replace('-', ' / ')} <small>${getWeekday(date)}</small></span><small>${dateCounts[date]} 条</small></button>`;
+}
+
+function revealArchiveSelection() {
+    const list = document.getElementById('archiveDates');
+    const selected = document.getElementById('archive-date-' + selectedDate);
+    if (!selected || !selected.getBoundingClientRect().height) return;
+    const viewport = list.getBoundingClientRect();
+    const item = selected.getBoundingClientRect();
+    const headingHeight = selected.closest?.('.archive-year') ? 40 : 0;
+    if (item.top < viewport.top + headingHeight) list.scrollTop += item.top - viewport.top - headingHeight - 8;
+    else if (item.bottom > viewport.bottom) list.scrollTop += item.bottom - viewport.bottom + 8;
+}
+
+function toggleArchivePeriod(kind, period) {
+    const expanded = kind === 'year' ? archiveExpandedYears : archiveExpandedMonths;
+    if (expanded.has(period)) expanded.delete(period);
+    else expanded.add(period);
+    renderArchiveDates();
+    document.getElementById(`archive-${kind}-${period}`).focus({ preventScroll: true });
+}
+
+function renderArchiveDates() {
+    const dates = Object.keys(dateCounts).sort().reverse();
+    const recent = dates.slice(0, 7);
+    const earlier = dates.slice(7);
+    const groupChanged = archiveHistoryGroup !== currentGroup;
+    if (groupChanged) {
+        archiveHistoryGroup = currentGroup;
+        archiveExpandedYears.clear();
+        archiveExpandedMonths.clear();
+    }
+    const selectionChanged = groupChanged || archiveHistorySelection !== selectedDate;
+    const movedToHistory = archiveSelectionWasRecent && !recent.includes(selectedDate);
+    if ((selectionChanged || movedToHistory) && earlier.includes(selectedDate)) {
+        archiveExpandedYears.add(selectedDate.slice(0, 4));
+        archiveExpandedMonths.add(selectedDate.slice(0, 7));
+    }
+    archiveHistorySelection = selectedDate;
+    archiveSelectionWasRecent = recent.includes(selectedDate);
+    const list = document.getElementById('archiveDates');
+    const signature = JSON.stringify([currentGroup, dateCounts, selectedDate, [...archiveExpandedYears], [...archiveExpandedMonths]]);
+    if (list.dataset.signature === signature) return;
+    list.dataset.signature = signature;
+    const previousScroll = groupChanged ? 0 : list.scrollTop;
+    const focusedId = document.activeElement?.id;
+    const years = [...new Set(earlier.map(date => date.slice(0, 4)))];
+    const history = years.map(year => {
+        const yearDates = earlier.filter(date => date.startsWith(year));
+        const yearOpen = archiveExpandedYears.has(year);
+        const months = [...new Set(yearDates.map(date => date.slice(0, 7)))];
+        const monthRows = yearOpen ? months.map(month => {
+            const monthDates = yearDates.filter(date => date.startsWith(month));
+            const monthOpen = archiveExpandedMonths.has(month);
+            return `<button id="archive-month-${month}" class="archive-period-toggle${monthDates.includes(selectedDate) ? ' contains-current' : ''}" aria-expanded="${monthOpen}" aria-controls="archive-month-content-${month}" onclick="toggleArchivePeriod('month', '${month}')"><span class="archive-chevron" aria-hidden="true">›</span><span>${Number(month.slice(5))} 月</span><small>${monthDates.length} 天</small></button><div id="archive-month-content-${month}" class="archive-month-content"${monthOpen ? '' : ' hidden'}>${monthOpen ? monthDates.map(archiveDateButton).join('') : ''}</div>`;
+        }).join('') : '';
+        return `<div class="archive-year"><button id="archive-year-${year}" class="archive-period-toggle${yearDates.includes(selectedDate) ? ' contains-current' : ''}" aria-expanded="${yearOpen}" aria-controls="archive-year-content-${year}" onclick="toggleArchivePeriod('year', '${year}')"><span class="archive-chevron" aria-hidden="true">›</span><span>${year} 年</span><small>${yearDates.length} 天</small></button><div id="archive-year-content-${year}" class="archive-year-content"${yearOpen ? '' : ' hidden'}>${monthRows}</div></div>`;
+    }).join('');
+    list.innerHTML = dates.length
+        ? `<div class="archive-history-heading"><span>最近 ${recent.length} 个归档日</span><span>${recent.at(-1).slice(0, 4) === recent[0].slice(0, 4) ? recent[0].slice(0, 4) : recent.at(-1).slice(0, 4) + '–' + recent[0].slice(0, 4)}</span></div><div class="archive-recent">${recent.map(archiveDateButton).join('')}</div>${earlier.length ? `<div class="archive-history-heading older" title="最近的归档日已在上方列出，不重复计入年月分组"><span>更早记录</span><span>${earlier.length} 天</span></div>${history}` : ''}`
+        : '<p class="research-note">暂无历史记录<br>同步后，归档日期会出现在这里。</p>';
+    list.scrollTop = previousScroll;
+    if (focusedId?.startsWith('archive-')) document.getElementById(focusedId)?.focus({ preventScroll: true });
+    if (selectionChanged || movedToHistory) requestAnimationFrame(revealArchiveSelection);
+}
+
+function updateArchiveFreshness() {
+    const states = { unknown: '同步状态未知', off: '实时同步已关闭', on: '实时同步已连接', stale: '实时同步连接中断' };
+    document.getElementById('archiveFreshness').textContent = `${states[archiveSyncState]}${archiveUpdatedAt ? ' · 归档更新 ' + archiveUpdatedAt : ''}`;
+}
+
+function updateReadingActions() {
+    const latest = Object.keys(dateCounts).sort().at(-1);
+    const latestButton = document.getElementById('latestArchiveBtn');
+    latestButton.disabled = !latest;
+    latestButton.title = latest ? `查看 ${latest} 的最后几条归档消息` : '暂无归档';
+    document.getElementById('dayBottomBtn').disabled = !selectedDate || statsView;
+    const pendingDates = Object.keys(dateCounts).filter(date => date >= selectedDate && dateCounts[date] > (archiveBaseline?.[date] || 0)).sort();
+    const count = archiveBaseline ? pendingDates.reduce((total, date) => total + dateCounts[date] - (archiveBaseline[date] || 0), 0) : 0;
+    newArchiveTarget = pendingDates.at(-1) || '';
+    const button = document.getElementById('newArchiveBtn');
+    button.hidden = !count;
+    button.textContent = `新增 ${count} 条${newArchiveTarget && newArchiveTarget !== selectedDate ? ' · ' + newArchiveTarget.slice(5) : ''} ↓`;
+    button.title = '当前群新归档的记录；点击查看，不自动移动阅读位置';
+}
+
+function jumpToDayBottom() {
+    if (!selectedDate || statsView) return;
+    const list = document.getElementById('messages');
+    list.scrollTop = list.scrollHeight;
+    if (archiveBaseline) archiveBaseline[selectedDate] = dateCounts[selectedDate] || 0;
+    updateReadingActions();
+    saveReadingPosition();
+}
+
+async function jumpToArchiveDate(date) {
+    if (!date) return;
+    if (statsView) toggleStats();
+    const group = currentGroup;
+    await selectDate(date);
+    if (currentGroup === group && selectedDate === date) jumpToDayBottom();
+}
+
+async function jumpToLatestArchive() {
+    await jumpToArchiveDate(Object.keys(dateCounts).sort().at(-1));
+}
+
+async function jumpToNewArchive() {
+    await jumpToArchiveDate(newArchiveTarget);
+}
+
+function toggleArchive(force) {
+    const panel = document.getElementById('archiveNav');
+    const wasOpen = panel.classList.contains('open');
+    const open = force === undefined ? !panel.classList.contains('open') : force;
+    panel.classList.toggle('open', open);
+    document.getElementById('archiveBackdrop').classList.toggle('show', open);
+    document.getElementById('archiveNavToggle').setAttribute('aria-expanded', String(open));
+    document.querySelector('.workspace')?.toggleAttribute('inert', open);
+    if (open) { document.getElementById('dateDrawerClose').focus(); requestAnimationFrame(revealArchiveSelection); }
+    else if (wasOpen) document.getElementById('archiveNavToggle').focus({ preventScroll: true });
+}
+
+function renderArchiveNavigation() {
+    document.getElementById('archiveGroupCount').textContent = String(availableGroups.length);
+    renderGroupOptions();
+    const groupName = availableGroups.find(group => group.id === currentGroup)?.name || '群聊档案馆';
+    document.getElementById('groupPickerLabel').textContent = availableGroups.length ? groupName : '选择群聊';
+    document.getElementById('groupPickerToggle').title = `切换群聊：${groupName}（${availableGroups.length} 个群）`;
+    document.getElementById('archiveTitle').textContent = groupName;
+    document.getElementById('dateDrawerGroup').textContent = groupName;
+    document.title = codeMode ? 'workspace.log — Editor' : `${groupName} · 群聊档案馆`;
+    const dates = Object.keys(dateCounts).sort().reverse();
+    document.getElementById('archiveDateCount').textContent = `${dates.length} 天`;
+    renderArchiveDates();
+    document.getElementById('readingDate').textContent = selectedDate ? selectedDate.replaceAll('-', ' / ') : '暂无记录';
+    updateReadingActions();
+}
+
+function renderGroupOptions() {
+    const query = document.getElementById('groupPickerSearch').value.trim().toLocaleLowerCase();
+    const groupList = document.getElementById('archiveGroups');
+    const matches = availableGroups.map((group, index) => ({ group, index })).filter(({ group }) => group.name.toLocaleLowerCase().includes(query));
+    document.getElementById('groupPickerCount').textContent = query ? `找到 ${matches.length} 个 · 共 ${availableGroups.length} 个群` : `共 ${availableGroups.length} 个群`;
+    const groupSignature = JSON.stringify([availableGroups, currentGroup, query]);
+    if (groupList.dataset.signature !== groupSignature) {
+        groupList.dataset.signature = groupSignature;
+        const focusedIndex = document.activeElement?.dataset?.groupIndex;
+        groupList.innerHTML = matches.length ? matches.map(({ group, index }) =>
+            `<button class="archive-group${group.id === currentGroup ? ' active' : ''}" data-group-index="${index}" aria-current="${group.id === currentGroup ? 'page' : 'false'}" onclick="chooseGroup(${index})"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chat"></use></svg><span class="group-option-name">${escapeHtml(group.name)}</span>${group.id === currentGroup ? '<small>当前群</small>' : ''}</button>`
+        ).join('') : `<p class="research-note">${availableGroups.length ? '没有匹配的群聊，试试其他关键词。' : '还没有归档的群聊。请关闭此窗口，在设置中选择群，再同步归档。'}</p>`;
+        if (focusedIndex !== undefined) {
+            const option = groupList.querySelector(`[data-group-index="${focusedIndex}"]`);
+            (option || document.getElementById('groupPickerSearch')).focus();
+        }
+    }
+}
+
+function openGroupPicker() {
+    toggleArchive(false);
+    document.getElementById('groupPickerSearch').value = '';
+    renderGroupOptions();
+    document.getElementById('groupPickerOverlay').classList.add('show');
+    document.getElementById('groupPickerToggle').setAttribute('aria-expanded', 'true');
+    document.querySelector('.workspace')?.toggleAttribute('inert', true);
+    document.getElementById('groupPickerSearch').focus();
+    document.getElementById('archiveGroups').scrollTop = 0;
+}
+
+function closeGroupPicker() {
+    const overlay = document.getElementById('groupPickerOverlay');
+    if (!overlay.classList.contains('show')) return;
+    overlay.classList.remove('show');
+    document.getElementById('groupPickerToggle').setAttribute('aria-expanded', 'false');
+    document.querySelector('.workspace')?.toggleAttribute('inert', false);
+    document.getElementById('groupPickerToggle').focus({ preventScroll: true });
+}
+
+function chooseGroup(index) {
+    const group = availableGroups[index];
+    if (!group) return;
+    closeGroupPicker();
+    if (group.id !== currentGroup) switchGroup(group.id);
+}
+
+function openResearch(view) {
+    const panel = document.getElementById('researchPanel');
+    if (panel.dataset.view === 'search' && view !== 'search') { clearTimeout(globalSearchTimer); searchRevision++; }
+    panel.dataset.view = view;
+    panel.classList.add('open');
+    document.getElementById('researchTitle').textContent = { search: '检索结果', context: '消息上下文', members: '按成员筛选', ai: 'AI 助读' }[view];
+    document.getElementById('archiveMore').open = false;
+    document.getElementById('sidebar').classList.toggle('collapsed', view !== 'members');
+    document.getElementById('sidebarToggle').classList.toggle('open', view === 'members');
+    document.getElementById('qaToggle').classList.toggle('open', view === 'ai');
+    document.getElementById('qaToggle').setAttribute('aria-expanded', String(view === 'ai'));
+    if (view !== 'context') {
+        document.getElementById('contextPanel').classList.remove('open');
+        document.querySelectorAll('.msg-item.ctx-focused').forEach(element => element.classList.remove('ctx-focused'));
+    }
+    syncPaneBackdrop();
+}
+
+function closeResearch() {
+    const panel = document.getElementById('researchPanel');
+    if (panel.dataset.view === 'search') { clearTimeout(globalSearchTimer); searchRevision++; }
+    const trigger = { ai: 'qaToggle', members: 'sidebarToggle', search: 'searchInput' }[panel.dataset.view];
+    panel.classList.remove('open');
+    document.getElementById('contextPanel').classList.remove('open');
+    document.getElementById('sidebar').classList.add('collapsed');
+    document.getElementById('sidebarToggle').classList.remove('open');
+    document.getElementById('qaQuickPanel').classList.remove('show');
+    document.getElementById('qaToggle').classList.remove('open');
+    document.getElementById('qaToggle').setAttribute('aria-expanded', 'false');
+    document.querySelectorAll('.msg-item.ctx-focused').forEach(element => element.classList.remove('ctx-focused'));
+    syncPaneBackdrop();
+    if (trigger) document.getElementById(trigger).focus();
+}
+
+function resetArchiveView() {
+    saveReadingPosition();
+    readingPositionReady = false;
+    pendingReadingPosition = null;
+    closeMessageMenus();
+    archiveHistorySelection = '';
+    archiveRevision++;
+    clearSearch(false);
+    closeResearch();
+    composeOpen = false;
+    document.getElementById('composerInput').value = '';
+    document.getElementById('composerInput').disabled = false;
+    document.getElementById('composerSend').disabled = false;
+    document.getElementById('emojiPicker').classList.remove('show');
+    document.getElementById('summaryContent').classList.remove('show');
+    document.getElementById('summaryContent').innerHTML = '';
+    document.getElementById('summaryCollapse').style.display = 'none';
+    document.getElementById('summaryBtn').disabled = false;
+    document.getElementById('qaSendBtn').disabled = false;
+    document.getElementById('qaSendBtn').textContent = '提问';
+    document.getElementById('qaAnswerWrap').style.display = 'none';
+    document.getElementById('qaAnswer').innerHTML = '';
+    document.getElementById('qaInput').value = '';
+    toggleArchive(false);
+}
+
+function toggleCompose() {
+    composeOpen = !composeOpen;
+    updateComposer();
+    if (composeOpen && liveGroups.includes(currentGroup)) document.getElementById('composerInput').focus();
 }
 document.addEventListener('keydown', e => {
+    if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyX') {
+        if (!e.isComposing) { e.preventDefault(); if (!e.repeat) toggleCodeMode(); }
+        return;
+    }
+    if (codeMode) return;
+    const messageMenu = document.querySelector('.msg-menu[open]');
+    if (e.key === 'Escape' && messageMenu) { e.preventDefault(); messageMenu.open = false; messageMenu.querySelector('summary').focus(); return; }
+    if (document.getElementById('groupPickerOverlay').classList.contains('show')) {
+        if (e.isComposing) return;
+        if (e.key === 'Escape') { e.preventDefault(); closeGroupPicker(); return; }
+        const options = [...document.getElementById('archiveGroups').querySelectorAll('button')];
+        const search = document.getElementById('groupPickerSearch');
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const index = options.indexOf(document.activeElement);
+            const next = index < 0 ? (e.key === 'ArrowDown' ? 0 : options.length - 1) : (index + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+            options[next]?.focus();
+        } else if (e.key === 'Enter' && document.activeElement === search) {
+            e.preventDefault();
+            options[0]?.click();
+        } else if (e.key === 'Tab') {
+            const first = document.getElementById('groupPickerClose');
+            const last = options.at(-1) || search;
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+        return;
+    }
+    if (e.key === 'Tab' && document.getElementById('archiveNav').classList.contains('open')) {
+        const controls = [...document.getElementById('archiveNav').querySelectorAll('button:not([disabled])')].filter(element => element.getBoundingClientRect().height > 0);
+        const first = controls[0];
+        const last = controls.at(-1);
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
     // Escape:按视觉层级从上往下关闭临时界面,最后才清空搜索。
     if (e.key === 'Escape') {
+        if (document.getElementById('settingsModal').classList.contains('show')) { closeSettings(); return; }
+        if (document.getElementById('archiveNav').classList.contains('open')) { toggleArchive(false); document.getElementById('archiveNavToggle').focus(); return; }
         if (document.getElementById('lightbox').classList.contains('active')) {
             closeLightbox();
-        } else if (document.getElementById('qaQuickPanel').classList.contains('show')) {
-            setQaComposer(false);
-        } else if (document.getElementById('contextPanel').classList.contains('open')) {
-            closeContext();
+        } else if (document.getElementById('researchPanel').classList.contains('open')) {
+            closeResearch();
         } else if (isOverlaySidebar()) {
             closeTransientPanels();
         } else if (searchQuery) {
@@ -1208,8 +2069,6 @@ let months = [];        // ['2026-04', '2026-05']
 let monthDates = {};    // { '2026-05': ['2026-05-01', ...] }
 let selectedMonth = '';
 let selectedDate = '';
-// true = 停在最新那天（跨日自动跟随）；主动翻回旧日期时置 false，见 loadDates
-let followLatest = true;
 let selectedHours = new Set();
 let selectedUsers = new Set();
 let mediaFilter = 'all';
@@ -1223,7 +2082,8 @@ let availableGroups = [];
 let userColorMap = {};
 let calendarOpen = false;
 let statsView = false;
-let lastVisitTimestamp = parseInt(localStorage.getItem('lastVisitTimestamp') || '0');
+let lastVisitTimestamp = 0;
+try { lastVisitTimestamp = parseInt(localStorage.getItem('lastVisitTimestamp') || '0'); } catch {}
 
 const AVATARS = 10;
 const USER_ACCENTS = ['#5e6ad2', '#e5484d', '#d4a72c', '#27a644', '#8b5cf6', '#e0823d', '#de4d8a', '#3aa8c1', '#7c6fe0', '#2f9e6f'];
@@ -1260,13 +2120,12 @@ function jumpToMessage(id) {
 let ctxFocusId = null;
 
 function isOverlaySidebar() {
-    return !!window.matchMedia?.('(max-width: 900px)')?.matches
-        && !document.getElementById('sidebar').classList.contains('collapsed');
+    return false;
 }
 
 function isOverlayContext() {
-    return !!window.matchMedia?.('(max-width: 1180px)')?.matches
-        && document.getElementById('contextPanel').classList.contains('open');
+    return !!window.matchMedia?.('(max-width: 1100px)')?.matches
+        && document.getElementById('researchPanel').classList.contains('open');
 }
 
 /** 统一维护窄屏抽屉的遮罩与背景可交互状态,避免多个面板各管一半。 */
@@ -1279,17 +2138,11 @@ function syncPaneBackdrop() {
 }
 
 function closeTransientPanels() {
-    closeContext();
-    if (window.matchMedia?.('(max-width: 900px)')?.matches) {
-        document.getElementById('sidebar').classList.add('collapsed');
-        document.getElementById('sidebarToggle').classList.remove('open');
-    }
-    syncPaneBackdrop();
+    closeResearch();
 }
 
 function closeContext() {
-    document.getElementById('contextPanel').classList.remove('open');
-    document.querySelectorAll('.msg-item.ctx-focused').forEach(e => e.classList.remove('ctx-focused'));
+    closeResearch();
     ctxFocusId = null;
     syncPaneBackdrop();
 }
@@ -1399,7 +2252,7 @@ function openContext(id) {
         document.getElementById('sidebarToggle').classList.remove('open');
     }
     document.getElementById('contextPanel').classList.add('open');
-    syncPaneBackdrop();
+    openResearch('context');
 
     // 主列表里标记焦点
     document.querySelectorAll('.msg-item.ctx-focused').forEach(e => e.classList.remove('ctx-focused'));
@@ -1497,12 +2350,36 @@ function processForward(text) {
     const hit = (quoteLabel || !qKey) ? null : (window.__contentIndex && window.__contentIndex[qKey]);
     const targetId = hit ? hit.id : null;
     const authorTag = (hit && hit.user) ? `<span class="quote-author">${escapeHtml(hit.user)}：</span>` : '';
-    const quoteOpen = targetId
-        ? `<div class="forward-quote jumpable" onclick="jumpToMessage('${targetId}')" title="跳转到原消息">`
-        : `<div class="forward-quote">`;
-
-    return `${quoteOpen}${authorTag}${quoteHtml}</div><div class="forward-reply"><br>${replyHtml}</div>`;
+    const jump = targetId ? `<button class="quote-jump" onclick="jumpToMessage('${targetId}')">回到原消息 ↗</button>` : '';
+    const longQuote = quote.length > 180 || quote.split('\n').length > 3;
+    const quoted = longQuote
+        ? `<details class="forward-quote"><summary>${authorTag}<span class="quote-preview">${escapeHtml(quote.slice(0, 72))}… </span><span>引用原文</span></summary><div class="quote-full">${quoteHtml}</div>${jump}</details>`
+        : `<div class="forward-quote">${authorTag}${quoteHtml}${jump}</div>`;
+    return `${quoted}<div class="forward-reply">${replyHtml}</div>`;
 }
+
+function closeMessageMenus(except) {
+    document.querySelectorAll('.msg-menu[open]').forEach(menu => { if (menu !== except) menu.open = false; });
+}
+
+function toggleMessageMenu(menu) {
+    if (!menu.open) return;
+    closeMessageMenus(menu);
+    menu.classList.remove('menu-up');
+    const content = menu.querySelector('.msg-menu-body');
+    const viewport = document.getElementById('messages').getBoundingClientRect();
+    if (content.getBoundingClientRect().bottom > viewport.bottom) menu.classList.add('menu-up');
+}
+
+function showMessageContext(id) {
+    closeMessageMenus();
+    openContext(id);
+    document.querySelector('#researchPanel .ctx-close')?.focus();
+}
+
+document.addEventListener('click', event => {
+    if (!event.target.closest?.('.msg-menu')) closeMessageMenus();
+});
 
 // Weekday
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -1515,6 +2392,12 @@ async function loadGroups() {
     const resp = await fetch('/api/groups');
     const data = await resp.json();
     availableGroups = data.groups;
+    if (!selectedDate && !currentGroup) {
+        try {
+            const lastGroup = JSON.parse(readPositionValue('viewer-reading-last-group-v1') || 'null');
+            if (availableGroups.some(group => group.id === lastGroup)) currentGroup = lastGroup;
+        } catch {}
+    }
 
     // Show last archived time
     if (data.lastArchived) {
@@ -1522,7 +2405,7 @@ async function loadGroups() {
         const pad = n => String(n).padStart(2, '0');
         const timeStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
         // 导航只显示 HH:MM；完整语义由时钟图标和 title 提供。
-        setLastArchivedTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`);
+        setLastArchivedTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`, timeStr);
     }
 
     const sel = document.getElementById('groupSelect');
@@ -1537,31 +2420,42 @@ async function loadGroups() {
             currentGroup = preferred ? preferred.id : (namedGroup ? namedGroup.id : availableGroups[0].id);
         }
         sel.innerHTML = availableGroups.map(g =>
-            `<option value="${g.id}"${g.id === currentGroup ? ' selected' : ''}>${escapeHtml(g.name)}</option>`
+            `<option value="${escapeHtml(g.id)}"${g.id === currentGroup ? ' selected' : ''}>${escapeHtml(g.name)}</option>`
         ).join('');
         sel.style.display = '';
     }
     updateQaBar();
+    renderArchiveNavigation();
 }
 
-function switchGroup(groupId) {
+async function switchGroup(groupId) {
+    closeGroupPicker();
+    resetArchiveView();
     currentGroup = groupId;
+    document.getElementById('groupSelect').value = groupId;
     selectedHours.clear();
     selectedUsers.clear();
     mediaFilter = 'all';
     searchQuery = '';
-    // 切群要落到新群的最新一天：清空选择并恢复跟随
-    selectedDate = '';
-    followLatest = true;
+    pendingReadingPosition = getReadingPosition(groupId);
+    selectedDate = pendingReadingPosition?.date || '';
+    archiveBaseline = null;
     const si = document.getElementById('searchInput'); if (si) si.value = '';
     const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
-    loadData();
+    allMessages = [];
+    dateCounts = {};
+    renderArchiveNavigation();
+    document.getElementById('messages').innerHTML = '<div class="empty">正在打开档案…</div>';
+    await loadDates();
+    if (currentGroup !== groupId) return;
+    await loadMessages();
     updateQaBar();
     updateComposer();
 }
 
 let toastTimer = null;
 function showToast(message, type = 'success', duration = 4000) {
+    if (codeMode) return;
     const el = document.getElementById('toast');
     el.textContent = message;
     el.className = 'toast show ' + type;
@@ -1595,10 +2489,12 @@ async function syncNow() {
         const resp = await fetch('/api/sync', { method: 'POST' });
         const data = await resp.json();
         if (data.ok) {
-            await loadData();
+            await loadGroups();
+            await loadDates();
+            await loadMessages(true);
             const dt = new Date();
             const pad = n => String(n).padStart(2, '0');
-            setLastArchivedTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`);
+            setLastArchivedTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`, dt.toLocaleString('zh-CN', { hour12: false }));
             const skipNote = data.skipped ? `（${data.skipped} 个群跳过）` : '';
             showToast(`✓ 同步完成，归档 ${data.archived} 个群${skipNote}`, 'success');
         } else {
@@ -1610,7 +2506,7 @@ async function syncNow() {
         showToast('同步出错：' + e.message, 'error', 8000);
     }
     clearInterval(progressTimer);
-    setButtonLabel(btn, '同步');
+    setButtonLabel(btn, '同步归档');
     btn.classList.remove('syncing');
     btn.disabled = false;
 }
@@ -1757,6 +2653,7 @@ function friendlyAiError(error) {
 }
 
 function openSettings(options = {}) {
+    toggleArchive(false);
     document.getElementById('settingsModal').classList.add('show');
     if (options.aiMessage) revealAiConfig(options.aiMessage, options.missingFields);
     checkAuthStatus();   // 打开时刷新账号状态那一行
@@ -1858,6 +2755,7 @@ async function loadVersionInfo() {
 }
 
 async function doLogin() {
+    if (codeMode) return;
     // 浏览器版：请求服务器用 Puppeteer 开可见 Chrome 扫码，成功后自动存 Cookie
     if (!window.__WEIBO_DESKTOP) {
         const btn = document.getElementById('loginBtn');
@@ -1910,7 +2808,7 @@ checkAuthStatus();
 function applyTheme(name) {
     if (name) document.documentElement.dataset.theme = name;
     else delete document.documentElement.dataset.theme;
-    try { name ? localStorage.setItem('viewer-theme', name) : localStorage.removeItem('viewer-theme'); } catch { /* 隐私模式 */ }
+    try { localStorage.setItem('viewer-theme', name); } catch { /* 隐私模式 */ }
 }
 document.getElementById('themeSelect').value = document.documentElement.dataset.theme || '';
 
@@ -1968,6 +2866,8 @@ async function saveAiSettings() {
 
 async function loadSummary() {
     if (!(await ensureAiConfigured('AI 摘要'))) return;
+    const revision = archiveRevision;
+    openResearch('ai');
     const btn = document.getElementById('summaryBtn');
     const content = document.getElementById('summaryContent');
     const collapse = document.getElementById('summaryCollapse');
@@ -1979,6 +2879,7 @@ async function loadSummary() {
     try {
         const resp = await fetch(`/api/summary?date=${selectedDate}${groupParam}`);
         const data = await resp.json();
+        if (revision !== archiveRevision) return;
         if (data.ok) {
             content.innerHTML = renderMarkdown(data.summary);
             content.classList.add('show');
@@ -1995,10 +2896,12 @@ async function loadSummary() {
             setButtonLabel(btn, 'AI 摘要');
         }
     } catch (e) {
+        if (revision !== archiveRevision) return;
         showToast('摘要请求失败：' + friendlyAiError(e.message), 'error', 8000);
         setButtonLabel(btn, 'AI 摘要');
+    } finally {
+        if (revision === archiveRevision) btn.disabled = false;
     }
-    btn.disabled = false;
 }
 
 function toggleSummary() {
@@ -2029,12 +2932,15 @@ function setQaComposer(open) {
     toggle.setAttribute('aria-expanded', String(open));
     // click 的默认聚焦发生在事件末尾；延到下一任务才能稳定把光标交给输入框。
     if (open) setTimeout(() => document.getElementById('qaInput').focus(), 0);
+    if (open) openResearch('ai');
 }
 
 async function toggleQaComposer() {
-    const opening = !document.getElementById('qaQuickPanel').classList.contains('show');
+    const research = document.getElementById('researchPanel');
+    const opening = !(research.classList.contains('open') && research.dataset.view === 'ai');
     if (opening && !(await ensureAiConfigured('问群历史'))) return;
     setQaComposer(opening);
+    if (!opening) closeResearch();
 }
 
 function closeQaAnswer() {
@@ -2046,7 +2952,7 @@ async function askQuestion() {
     const question = input.value.trim();
     if (!question) return;
     if (!(await ensureAiConfigured('问群历史'))) return;
-    setQaComposer(false);
+    const revision = archiveRevision;
     const btn = document.getElementById('qaSendBtn');
     const answerWrap = document.getElementById('qaAnswerWrap');
     const answerDiv = document.getElementById('qaAnswer');
@@ -2062,6 +2968,7 @@ async function askQuestion() {
             body: JSON.stringify({ group: currentGroup, question })
         });
         const data = await resp.json();
+        if (revision !== archiveRevision) return;
         if (!data.ok) {
             if (data.code === 'AI_NOT_CONFIGURED') {
                 aiMissingFields = data.missingFields || aiMissingFields;
@@ -2090,10 +2997,10 @@ async function askQuestion() {
         }
         answerDiv.innerHTML = html;
     } catch (e) {
+        if (revision !== archiveRevision) return;
         answerDiv.innerHTML = `<div style="color:var(--danger)">请求失败：${escapeHtml(friendlyAiError(e.message))}</div>`;
     } finally {
-        btn.disabled = false;
-        btn.textContent = '提问';
+        if (revision === archiveRevision) { btn.disabled = false; btn.textContent = '提问'; }
     }
 }
 
@@ -2105,8 +3012,8 @@ function isLatestDate(d) {
 
 function jumpToDate(date) {
     if (!date) return;
+    resetArchiveView();
     selectedDate = date;
-    followLatest = isLatestDate(date);
     const month = date.slice(0, 7);
     if (monthDates[month]) selectedMonth = month;
     renderCalendar();
@@ -2116,6 +3023,15 @@ function jumpToDate(date) {
 
 // Q&A 来源点击：先切到消息所在日期，加载完成后滚动到该消息并高亮
 async function jumpToSource(date, id) {
+    const sourceGroup = currentGroup;
+    resetArchiveView();
+    selectedUsers.clear();
+    selectedHours.clear();
+    mediaFilter = 'all';
+    mentionOnly = false;
+    hideNoise = false;
+    clearSearch(false);
+    closeResearch();
     if (date && date !== selectedDate) {
         selectedDate = date;
         const month = date.slice(0, 7);
@@ -2123,10 +3039,13 @@ async function jumpToSource(date, id) {
         renderCalendar();
         await loadMessages();
         updateSummaryBar();
+    } else {
+        renderAll();
+        readingPositionReady = true;
     }
-    if (id) {
+    if (id && currentGroup === sourceGroup) {
         // loadMessages 渲染是同步 DOM 更新，稍等一拍再滚动
-        setTimeout(() => jumpToMessage(id), 150);
+        setTimeout(() => { if (currentGroup === sourceGroup) jumpToMessage(id); }, 150);
     }
 }
 
@@ -2149,16 +3068,23 @@ function renderMarkdown(md) {
 
 async function loadData() {
     await loadGroups();
+    if (!selectedDate) {
+        pendingReadingPosition = getReadingPosition(currentGroup);
+        selectedDate = pendingReadingPosition?.date || '';
+    }
     await loadDates();
     await loadMessages();
 }
 
 async function loadDates() {
+    const requestedGroup = currentGroup;
     const groupParam = currentGroup ? '?group=' + encodeURIComponent(currentGroup) : '';
     const resp = await fetch('/api/dates' + groupParam);
     const data = await resp.json();
+    if (requestedGroup !== currentGroup) return;
     const dates = data.dates || {};
     dateCounts = dates; // Store for stats
+    if (archiveBaseline === null) archiveBaseline = { ...dates };
     const allDates = Object.keys(dates).sort();
 
     // Group by month
@@ -2171,46 +3097,70 @@ async function loadDates() {
     for (const m in monthDates) monthDates[m] = [...monthDates[m]].sort();
     months = Object.keys(monthDates).sort();
 
-    // 日期选择的"跟随"语义：loadDates 不只在初次加载时跑，60s 自动刷新与
-    // 实时同步事件也会调它。此前它无条件跳到最新日期 —— 一到半夜（今天的
-    // 日文件刚出现）正在读的那天就被拽走、滚动位置也丢。
-    //   · followLatest（默认，或主动选中了最新那天）→ 跨日自动跟随到新的一天，
-    //     符合"开着过夜"的直觉；
-    //   · 主动翻回旧日期 → 钉住不动，新数据只进日历（并提示一次）。
     const latest = allDates[allDates.length - 1];
-    if (!selectedDate || followLatest || !allDates.includes(selectedDate)) {
+    if (!selectedDate || !allDates.includes(selectedDate)) {
         selectedDate = latest;
-        followLatest = true;
     }
+    selectedDate = selectedDate || '';
     selectedMonth = selectedDate.slice(0, 7);
-    if (!monthDates[selectedMonth]) selectedMonth = months[months.length - 1];
+    if (!monthDates[selectedMonth]) selectedMonth = months[months.length - 1] || '';
 
+    if (pendingReadingPosition) archiveHistorySelection = '';
     renderCalendar();
+    renderArchiveNavigation();
 }
 
 async function loadMessages(preserveScroll) {
-    if (!selectedDate) return;
+    if (!selectedDate) { readingPositionReady = false; allMessages = []; renderAll(); updateSummaryBar(); updateComposer(); return; }
+    const loadRevision = ++readingLoadRevision;
+    const requestedGroup = currentGroup;
+    const requestedDate = selectedDate;
+    const position = pendingReadingPosition;
+    const messageList = document.getElementById('messages');
+    const locationKey = JSON.stringify([requestedGroup, requestedDate]);
+    if (messageList.dataset.location !== locationKey) {
+        readingPositionReady = false;
+        allMessages = [];
+        messageList.innerHTML = '<div class="empty">正在读取历史记录…</div>';
+    }
     const groupParam = currentGroup ? '&group=' + encodeURIComponent(currentGroup) : '';
     const resp = await fetch('/api/messages?date=' + selectedDate + groupParam);
     const data = await resp.json();
+    if (loadRevision !== readingLoadRevision || requestedGroup !== currentGroup || requestedDate !== selectedDate) return;
     allMessages = data.messages || [];
+    dateCounts[requestedDate] = allMessages.length;
+    if (!preserveScroll && archiveBaseline) archiveBaseline[requestedDate] = allMessages.length;
+    messageList.dataset.location = locationKey;
 
-    const scrollTop = preserveScroll ? document.getElementById('messages')?.scrollTop : null;
+    const scrollTop = preserveScroll
+        ? (codeMode && codeModeSnapshot?.group === requestedGroup && codeModeSnapshot.date === requestedDate
+            ? codeModeSnapshot.scrollTop : messageList.scrollTop)
+        : null;
     renderHours();
     renderAll();
     updateSummaryBar();
+    updateComposer();
+    if (!preserveScroll) {
+        restoreReadingPosition(position);
+        pendingReadingPosition = null;
+    }
+    readingPositionReady = true;
+    writePositionValue('viewer-reading-last-group-v1', JSON.stringify(currentGroup));
+    if (!preserveScroll) saveReadingPosition();
     if (preserveScroll && scrollTop != null) {
-        requestAnimationFrame(() => { document.getElementById('messages').scrollTop = scrollTop; });
+        requestAnimationFrame(() => { if (loadRevision === readingLoadRevision && currentGroup === requestedGroup && selectedDate === requestedDate) messageList.scrollTop = scrollTop; });
     }
 }
 
 function updateDateToggle() {
+    renderArchiveNavigation();
     const el = document.getElementById('dateToggle');
+    el.setAttribute('aria-expanded', String(calendarOpen));
     if (!selectedDate) {
         el.textContent = '选择日期';
         return;
     }
-    el.textContent = `${selectedDate} ${getWeekday(selectedDate)} ${calendarOpen ? '▲' : '▼'}`;
+    el.textContent = `按日历选择日期 ${calendarOpen ? '▴' : '▾'}`;
 }
 
 function toggleCalendar() {
@@ -2222,6 +3172,7 @@ function toggleCalendar() {
 // 渲染日历
 function renderCalendar() {
     const el = document.getElementById('calendar');
+    if (!selectedMonth) { el.innerHTML = '<p class="research-note">暂无可浏览的日期</p>'; el.className = 'calendar' + (calendarOpen ? ' show' : ''); return; }
     const [year, month] = selectedMonth.split('-').map(Number);
     const datesWithData = new Set(monthDates[selectedMonth] || []);
     const today = new Date().toISOString().slice(0, 10);
@@ -2264,7 +3215,7 @@ function renderCalendar() {
         if (isToday && !isSelected) cls += ' today';
 
         const onclick = hasData ? `onclick="selectDate('${dateStr}')"` : '';
-        html += `<div class="${cls}" ${onclick}>${d}</div>`;
+        html += `<button class="${cls}" ${onclick} ${hasData ? '' : 'disabled'} aria-label="${dateStr}">${d}</button>`;
     }
 
     html += '</div>';
@@ -2276,21 +3227,12 @@ function changeMonth(delta) {
     const idx = months.indexOf(selectedMonth) + delta;
     if (idx < 0 || idx >= months.length) return;
     selectedMonth = months[idx];
-    const dates = monthDates[selectedMonth] || [];
-    selectedDate = dates[dates.length - 1];
-    selectedHours.clear();
-    selectedUsers.clear();
-    mediaFilter = 'all';
-    searchQuery = '';
-    const si = document.getElementById('searchInput'); if (si) si.value = '';
-    const sc = document.getElementById('searchClear'); if (sc) sc.className = 'search-clear';
     renderCalendar();
-    loadMessages();
 }
 
 function selectDate(d) {
+    resetArchiveView();
     selectedDate = d;
-    followLatest = isLatestDate(d);
     selectedHours.clear();
     selectedUsers.clear();
     mediaFilter = 'all';
@@ -2300,7 +3242,7 @@ function selectDate(d) {
     calendarOpen = false;      // 选完日期自动收起日历
     renderCalendar();
     updateDateToggle();
-    loadMessages();
+    const loaded = loadMessages();
     // Reset summary panel
     const sc2 = document.getElementById('summaryContent');
     if (sc2) { sc2.classList.remove('show'); sc2.innerHTML = ''; }
@@ -2309,6 +3251,7 @@ function selectDate(d) {
     const col = document.getElementById('summaryCollapse');
     if (col) col.style.display = 'none';
     updateSummaryBar();
+    return loaded;
 }
 
 // 小时热力条
@@ -2440,53 +3383,86 @@ let globalSearchQuery = '';
 
 function onSearchInput(value) {
     clearTimeout(searchDebounceTimer);
+    clearTimeout(globalSearchTimer);
+    searchRevision++;
+    globalSearchQuery = value.trim();
+    document.getElementById('searchAllHint').dataset.payload = '';
+    if (!value.trim()) { clearSearch(); return; }
     searchDebounceTimer = setTimeout(() => {
-        searchQuery = value.trim().toLowerCase();
-        document.getElementById('searchClear').className = 'search-clear' + (searchQuery ? ' show' : '');
+        searchQuery = document.getElementById('searchScope').value === 'day' ? value.trim().toLowerCase() : '';
+        document.getElementById('searchClear').className = 'search-clear show';
         renderAll();
     }, 150);
-    // 全量检索单独节流：它要跨 10 万条，别跟着每次按键跑
-    clearTimeout(globalSearchTimer);
+    showSearchState('正在检索…');
     globalSearchTimer = setTimeout(() => runGlobalSearch(value.trim()), 350);
 }
 
+function changeSearchScope() {
+    document.getElementById('searchInput').placeholder = document.getElementById('searchScope').value === 'day' ? '搜索当前日期的记录…' : '搜索这个群的历史…';
+    onSearchInput(document.getElementById('searchInput').value);
+}
+
+function showSearchState(message) {
+    document.getElementById('searchResults').innerHTML = `<p class="research-note">${escapeHtml(message)}</p>`;
+    document.getElementById('searchResults').classList.add('show');
+    openResearch('search');
+}
+
 async function runGlobalSearch(q) {
+    clearTimeout(globalSearchTimer);
+    const revision = ++searchRevision;
+    const group = currentGroup;
     globalSearchQuery = q;
     const hint = document.getElementById('searchAllHint');
-    if (!q) { hint.textContent = ''; closeSearchResults(); return; }
+    hint.dataset.payload = '';
+    if (!q) { clearSearch(); return; }
+    const dayOnly = document.getElementById('searchScope').value === 'day';
+    if (dayOnly) {
+        const query = q.toLowerCase();
+        const hits = allMessages.filter(message => message.date === selectedDate && `${message.user} ${message.content || ''}`.toLowerCase().includes(query));
+        hint.dataset.payload = JSON.stringify({ total: hits.length, hits: hits.map(message => ({ ...message, preview: message.content || '' })), byDate: hits.length ? [{ date: selectedDate, count: hits.length }] : [] });
+        openSearchResults();
+        return;
+    }
     try {
         const params = new URLSearchParams({ group: currentGroup || '', q, limit: '60' });
         const d = await (await fetch('/api/search?' + params)).json();
-        if (globalSearchQuery !== q) return;   // 已有更新的查询，丢弃旧结果
-        if (!d.ok || d.total === 0) { hint.textContent = ''; return; }
+        if (revision !== searchRevision || currentGroup !== group) return;
+        if (!d.ok) { showSearchState('检索失败，请按 Enter 重试。'); return; }
         hint.innerHTML = `全部日期 <b>${d.total}</b> 条`;
         hint.dataset.payload = JSON.stringify(d);
-    } catch { /* 检索失败不影响当天高亮 */ }
+        openSearchResults();
+    } catch {
+        if (revision === searchRevision && currentGroup === group) showSearchState('检索失败，请检查本地服务后按 Enter 重试。');
+    }
 }
 
 function openSearchResults() {
     const hint = document.getElementById('searchAllHint');
     let d;
     try { d = JSON.parse(hint.dataset.payload || '{}'); } catch { return; }
-    if (!d.hits || !d.hits.length) return;
-    const rows = d.hits.map(h => `<div class="sr-row" onclick="jumpFromSearch('${h.date}','${h.id}')">
+    if (!d.hits) return;
+    if (!d.hits.length) { showSearchState(`没有找到「${globalSearchQuery}」。试试其他关键词或切换搜索范围。`); return; }
+    const rows = d.hits.map(h => `<button class="sr-row" onclick="jumpFromSearch('${h.date}','${h.id}')">
         <span class="sr-date">${h.date} ${(h.time || '').split(' ')[1] || ''}</span>
         <span class="sr-user">${escapeHtml(h.user || '')}</span>
-        <span class="sr-text">${highlightText(escapeHtml(h.preview || ''), globalSearchQuery)}</span>
-    </div>`).join('');
-    const days = d.byDate.slice(0, 12).map(x => `<span class="sr-day" onclick="jumpFromSearch('${x.date}')">${x.date.slice(5)} (${x.count})</span>`).join('');
+        <span class="sr-text">${highlightText(escapeHtml(h.preview || ''), escapeHtml(globalSearchQuery))}</span>
+        <span class="sr-location">回到原文 ↗</span>
+    </button>`).join('');
+    const days = d.byDate.slice(0, 12).map(x => `<button class="sr-day" onclick="jumpFromSearch('${x.date}')">${x.date.slice(5)} (${x.count})</button>`).join('');
     document.getElementById('searchResults').innerHTML = `
         <div class="sr-head">
-            <span>共 <b>${d.total}</b> 条 · 跨 ${d.byDate.length} 天${d.truncated ? `（先显示最近 ${d.hits.length} 条）` : ''}</span>
-            <button class="summary-collapse" onclick="closeSearchResults()">✕ 关闭</button>
+            <span>${document.getElementById('searchScope').value === 'day' ? '当前日期' : '当前群 · 全部日期'}<br>共 <b>${d.total}</b> 条 · 跨 ${d.byDate.length} 天${d.truncated ? `（先显示最近 ${d.hits.length} 条）` : ''}</span>
         </div>
         ${days ? `<div class="sr-days">${days}</div>` : ''}
         <div class="sr-list">${rows}</div>`;
     document.getElementById('searchResults').classList.add('show');
+    openResearch('search');
 }
 
 function closeSearchResults() {
     document.getElementById('searchResults').classList.remove('show');
+    if (document.getElementById('researchPanel').dataset.view === 'search') closeResearch();
 }
 
 /** 点结果 → 切到那天并定位；不带 id 时只切日期。 */
@@ -2496,7 +3472,10 @@ function jumpFromSearch(date, id) {
     else { selectDate(date); }
 }
 
-function clearSearch() {
+function clearSearch(render = true) {
+    clearTimeout(searchDebounceTimer);
+    clearTimeout(globalSearchTimer);
+    searchRevision++;
     searchQuery = '';
     globalSearchQuery = '';
     searchHighlights = [];
@@ -2506,8 +3485,9 @@ function clearSearch() {
     document.getElementById('searchCountText').textContent = '';
     document.getElementById('searchNav').className = 'search-nav';
     document.getElementById('searchAllHint').textContent = '';
+    document.getElementById('searchAllHint').dataset.payload = '';
     closeSearchResults();
-    renderAll();
+    if (render) renderAll();
 }
 
 // ── 「提到我」与桌面通知 ────────────────────────────────────────────
@@ -2538,6 +3518,7 @@ function messageMentionsMe(m) {
 }
 
 async function ensureNotifyPermission() {
+    if (codeMode) return false;
     if (!('Notification' in window)) return false;
     if (Notification.permission === 'granted') return true;
     if (Notification.permission === 'denied') return false;
@@ -2546,12 +3527,14 @@ async function ensureNotifyPermission() {
 
 /** 弹出实时同步带回的通知（点击跳到那条消息）。 */
 function showNotifications(list, group) {
+    if (codeMode) return;
     if (!list || !list.length) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     for (const n of list.slice(0, 3)) {   // 一轮最多 3 条，别刷屏
         try {
             const notif = new Notification(n.title, { body: n.body, tag: n.id || (group + '-' + n.kind), silent: n.kind === 'digest' });
             notif.onclick = () => {
+                if (codeMode) return;
                 window.focus();
                 if (n.date) jumpFromSearch(n.date, n.id);
             };
@@ -2561,12 +3544,14 @@ function showNotifications(list, group) {
 
 /** 每日摘要通知（#19）：点击切到那个群并定位当日，摘要缓存已就绪即时展示。 */
 function showDigestNotifications(list, group) {
+    if (codeMode) return;
     if (!list || !list.length) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     for (const n of list.slice(0, 3)) {
         try {
             const notif = new Notification(n.title, { body: n.body, tag: `summary-${group}-${n.date}` });
             notif.onclick = () => {
+                if (codeMode) return;
                 window.focus();
                 if (group && group !== currentGroup && availableGroups.some(g => g.id === group)) {
                     document.getElementById('groupSelect').value = group;
@@ -2762,7 +3747,7 @@ function renderUserList() {
 function renderMessages(msgs) {
     const el = document.getElementById('messages');
     if (msgs.length === 0) {
-        el.innerHTML = '<div class="empty">没有消息</div>';
+        el.innerHTML = `<div class="empty">${allMessages.length ? '没有符合筛选条件的消息' : '这份档案还没有消息'}<p class="research-note">${allMessages.length ? '清除筛选，回到完整记录。' : '选择左侧其他日期，或同步获取群聊记录。'}</p></div>`;
         return;
     }
     // 构建内容索引（供引用跳转 + 显示原作者：规范化前缀 → {id, user}）
@@ -2794,6 +3779,9 @@ function renderMessages(msgs) {
             pieces.push(`<div class="time-divider"><span>${seg.label}</span></div>`);
             lastSeg = seg.key;
             brokeFlow = true;
+        } else if (prev && currentTime - prevTime >= 30 * 60 * 1000) {
+            pieces.push(`<div class="time-divider pause-divider"><span>${escapeHtml((m.time.split(' ')[1] || '').slice(0, 5))} · 间隔 ${Math.floor((currentTime - prevTime) / 60000)} 分钟</span></div>`);
+            brokeFlow = true;
         }
         // 未读分隔线（首条新消息前，且非整列表第一条）
         if (!unreadInserted && index > 0 && lastVisitTimestamp > 0 && currentTime > lastVisitTimestamp) {
@@ -2802,8 +3790,9 @@ function renderMessages(msgs) {
             brokeFlow = true;
         }
 
-        const sameUser = !brokeFlow && prev && prev.user === m.user && currentTime - prevTime <= 5 * 60 * 1000;
-        const time = m.time.split(' ')[1] || '';
+        const sameIdentity = prev && (prev.from_uid != null && m.from_uid != null ? String(prev.from_uid) === String(m.from_uid) : prev.user === m.user);
+        const sameUser = !brokeFlow && sameIdentity && currentTime >= prevTime && currentTime - prevTime <= 5 * 60 * 1000;
+        const time = (m.time.split(' ')[1] || '').slice(0, 5);
         const accent = getUserAccent(m.user);
         const continuation = sameUser ? ' msg-item-continuation' : '';
         let content = processForward(m.content);
@@ -2878,13 +3867,15 @@ function renderMessages(msgs) {
             ${continuation ? contAvatar : avatarEl}
             <div class="msg-header">
                 <span class="msg-user" title="${escapeHtml(m.user)}">${userName}</span>${newBadge}
-                <span class="msg-time">${time}</span>
+                <span class="msg-time" title="${escapeHtml(m.time)}">${time}</span>
             </div>
+            ${continuation ? `<span class="continuation-time" title="${escapeHtml(m.user + ' · ' + m.time)}">${time}</span>` : ''}
             <div class="msg-body">
                 <div class="msg-content">${content}</div>
                 ${attach ? '<div class="msg-attach">' + attach + '</div>' : ''}
             </div>
-            <span class="msg-ctx-btn" onclick="openContext('${m.id}')" title="查看这条消息的上下文"><svg class="ui-icon" aria-hidden="true"><use href="#icon-target"></use></svg>上下文</span>
+            <button class="msg-ctx-btn" onclick="openContext('${m.id}')" title="查看这条消息的上下文"><svg class="ui-icon" aria-hidden="true"><use href="#icon-target"></use></svg>上下文</button>
+            <details class="msg-menu" ontoggle="toggleMessageMenu(this)"><summary aria-label="${escapeHtml(m.user)} ${time} 的消息操作">···</summary><div class="msg-menu-body"><small>${escapeHtml(m.user)} · ${escapeHtml(m.time)}</small><button onclick="showMessageContext('${m.id}')">查看上下文</button></div></details>
         </div>`);
     });
     el.innerHTML = pieces.join('');
@@ -2965,10 +3956,12 @@ function renderAll() {
     updateSidebarIndicator(selectedUsers.size > 0);
 
     if (statsView) renderStats();
+    renderCodeLog();
 }
 
 // Statistics Panel
 function toggleStats() {
+    document.getElementById('archiveMore').open = false;
     statsView = !statsView;
     document.getElementById('statsToggle').classList.toggle('active', statsView);
     document.querySelector('.main').classList.toggle('stats-mode', statsView);
@@ -3041,30 +4034,18 @@ function restoreToolsState() {
 
 // 成员栏开关。默认展开;状态存 localStorage,跨会话保持(与筛选面板同一套做法)。
 function toggleSidebar() {
-    const el = document.getElementById('sidebar');
-    const collapsed = !el.classList.contains('collapsed');
-    if (!collapsed && window.matchMedia?.('(max-width: 1180px)')?.matches) closeContext();
-    el.classList.toggle('collapsed', collapsed);
-    document.getElementById('sidebarToggle').classList.toggle('open', !collapsed);
-    try {
-        collapsed
-            ? localStorage.setItem('viewer-sidebar-collapsed', '1')
-            : localStorage.removeItem('viewer-sidebar-collapsed');
-    } catch { /* 隐私模式 */ }
-    syncPaneBackdrop();
+    const panel = document.getElementById('researchPanel');
+    if (panel.classList.contains('open') && panel.dataset.view === 'members') closeResearch();
+    else openResearch('members');
 }
 
 function restoreSidebarState() {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem('viewer-sidebar-collapsed') === '1'; } catch { /* 隐私模式 */ }
-    if (window.matchMedia?.('(max-width: 900px)')?.matches) collapsed = true;
-    // 折叠时成员筛选可能仍生效,按钮上的小圆点由 updateSidebarIndicator 提示
-    if (collapsed) document.getElementById('sidebar').classList.add('collapsed');
-    else document.getElementById('sidebarToggle').classList.add('open');
+    document.getElementById('sidebar').classList.add('collapsed');
 }
 restoreSidebarState();
 let wasNarrowViewport = !!window.matchMedia?.('(max-width: 900px)')?.matches;
 window.addEventListener('resize', () => {
+    if (!window.matchMedia?.('(max-width: 760px)')?.matches) toggleArchive(false);
     const narrow = !!window.matchMedia?.('(max-width: 900px)')?.matches;
     // 桌面窗口被拖窄时不要让原本的固定成员栏突然盖住消息区。
     if (narrow && !wasNarrowViewport) {
@@ -3215,17 +4196,18 @@ function renderWordFrequency(msgs) {
 function updateLastVisit() {
     // 仅持久化"本次访问时间"，不改内存变量——
     // 这样整个会话内 NEW 徽章与未读分隔线稳定表示"自上次打开以来"
-    localStorage.setItem('lastVisitTimestamp', String(Date.now()));
+    try { localStorage.setItem('lastVisitTimestamp', String(Date.now())); } catch {}
 }
 
 // Update on page unload
 window.addEventListener('beforeunload', updateLastVisit);
+window.addEventListener('beforeunload', saveReadingPosition);
 
 // Update when switching date
 const origSelectDate = selectDate;
 selectDate = function(d) {
     updateLastVisit();
-    origSelectDate(d);
+    return origSelectDate(d);
 };
 
 loadData();
@@ -3237,16 +4219,18 @@ checkAiConfig();
 let lastArchivedTs = 0;
 async function checkForUpdates() {
     try {
+        const requestedGroup = currentGroup;
         const groupParam = currentGroup ? '?group=' + encodeURIComponent(currentGroup) : '';
         const resp = await fetch('/api/groups' + groupParam);
         const data = await resp.json();
+        if (requestedGroup !== currentGroup) return;
         if (data.lastArchived && data.lastArchived > lastArchivedTs) {
             lastArchivedTs = data.lastArchived;
             await loadDates();
             await loadMessages(true);
             const dt = new Date(data.lastArchived);
             const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-            setLastArchivedTime(timeStr);
+            setLastArchivedTime(timeStr, dt.toLocaleString('zh-CN', { hour12: false }));
         }
     } catch {}
 }
@@ -3257,8 +4241,9 @@ setInterval(checkForUpdates, 60000);
 // 收到事件后重新拉当天数据 —— 复用 loadMessages 这条已验证的渲染路径，
 // 不在前端另写一套消息合并/渲染逻辑（那才是状态不同步 bug 的来源）。
 let liveSource = null;
-let liveHintedDate = '';   // 跨日提示去重：同一目标日期只提示一次
 function setLiveIndicator(state) {
+    archiveSyncState = state;
+    updateArchiveFreshness();
     const el = document.getElementById('liveDot');
     el.classList.toggle('on', state !== 'off');
     el.classList.toggle('stale', state === 'stale');
@@ -3290,25 +4275,18 @@ function startLive() {
         showNotifications(event.notifications, event.groupLabel || event.group);
         // 只有当前正在看的群 + 当天有新消息才刷新，其它群静默入库
         if (event.group !== currentGroup) { checkForUpdates(); return; }
-        // 新消息不在当前查看的日期（典型场景：跨过半夜）。不自动切走视图，
-        // 但要提示一次，否则会以为实时同步停了。同一目标日期只提示一次。
+        await loadDates();
+        if (event.group !== currentGroup) return;
+        const archiveTime = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        setLastArchivedTime(archiveTime, new Date().toLocaleString('zh-CN', { hour12: false }));
         if (!event.dates?.includes(selectedDate)) {
-            await loadDates();
-            const target = event.dates?.[event.dates.length - 1];
-            if (target && target !== liveHintedDate) {
-                liveHintedDate = target;
-                showToast(`新消息已进入 ${target}（当前查看 ${selectedDate}，点日历切换）`, 'success', 6000);
-            }
             return;
         }
         await loadMessages(true);
-        const dt = new Date();
-        const pad = n => String(n).padStart(2, '0');
-        setLastArchivedTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`);
     };
 }
 function stopLive() {
-    if (!liveSource) return;
+    if (!liveSource) { setLiveIndicator('off'); return; }
     liveSource.close();     // 必须真的断开：留着连接服务端就仍算有订阅者
     liveSource = null;
     setLiveIndicator('off');
@@ -3354,11 +4332,16 @@ loadLiveConfig();
 let liveGroups = [];
 function updateComposer() {
     const canSend = liveGroups.includes(currentGroup);
-    document.getElementById('composer').classList.toggle('on', canSend && !statsView);
+    const groupName = availableGroups.find(group => group.id === currentGroup)?.name || currentGroup;
+    document.getElementById('composer').classList.toggle('on', composeOpen && canSend && !statsView);
+    document.getElementById('composeToggle').textContent = composeOpen ? '收起发送' : '向群里发消息 ↗';
+    document.getElementById('composeToggle').setAttribute('aria-expanded', String(composeOpen));
+    document.getElementById('composeToggle').disabled = !currentGroup || statsView;
+    document.getElementById('readingStatus').textContent = composeOpen ? '发送模式 · 不会修改历史记录' : '只读浏览 · 本地历史记录';
     const hint = document.getElementById('composerHint');
-    const needArchive = !canSend && !statsView && liveGroups.length >= 0 && currentGroup;
-    hint.classList.toggle('on', needArchive);
-    if (needArchive) hint.textContent = `「${currentGroup}」暂不可发送：先点「同步」跑一次归档，记录群会话 id 后即可实时收发`;
+    hint.classList.toggle('on', composeOpen && !statsView);
+    hint.textContent = canSend ? `将发送到「${groupName}」的实时群聊，而非 ${selectedDate || '当前'} 的历史记录。` : `「${groupName}」暂不可发送，请先同步归档以获取群会话。`;
+    if (!composeOpen) document.getElementById('emojiPicker').classList.remove('show');
 }
 function autoGrowComposer(el) {
     el.style.height = 'auto';
@@ -3412,7 +4395,10 @@ function sendChatImageFromInput(el) {
 }
 
 async function sendChatImage(file) {
+    if (codeMode) return;
     if (!liveGroups.includes(currentGroup)) { showToast('该群暂不可发送，先点「同步」跑一次归档', 'error', 5000); return; }
+    const targetGroup = currentGroup;
+    const revision = archiveRevision;
     const btn = document.getElementById('composerSend');
     btn.disabled = true;
     showToast(`正在发送图片（${(file.size / 1024).toFixed(0)}KB）…`, 'success', 3000);
@@ -3426,21 +4412,26 @@ async function sendChatImage(file) {
         const r = await (await fetch('/api/send-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ group: currentGroup, dataBase64, filename: file.name || 'image.png', mimeType: file.type || 'image/png' }),
+            body: JSON.stringify({ group: targetGroup, dataBase64, filename: file.name || 'image.png', mimeType: file.type || 'image/png' }),
         })).json();
+        if (revision !== archiveRevision) return;
         if (r.ok) showToast('✓ 图片已发送', 'success', 2500);
         else {
             showToast('图片发送失败：' + (r.error || '未知错误'), 'error', 6000);
             if (r.needLogin) { checkAuthStatus(); doLogin(); }
         }
     } catch (e) {
+        if (revision !== archiveRevision) return;
         showToast('图片发送出错：' + e.message, 'error', 6000);
     } finally {
-        btn.disabled = false;
+        if (revision === archiveRevision) btn.disabled = false;
     }
 }
 
 async function sendChatMessage() {
+    if (codeMode) return;
+    if (!composeOpen || !liveGroups.includes(currentGroup)) return;
+    const revision = archiveRevision;
     const input = document.getElementById('composerInput');
     const btn = document.getElementById('composerSend');
     const content = input.value.trim();
@@ -3452,6 +4443,7 @@ async function sendChatMessage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ group: currentGroup, content }),
         })).json();
+        if (revision !== archiveRevision) return;
         if (r.ok) {
             input.value = '';
             autoGrowComposer(input);
@@ -3462,10 +4454,10 @@ async function sendChatMessage() {
             if (r.needLogin) { checkAuthStatus(); doLogin(); }
         }
     } catch (e) {
+        if (revision !== archiveRevision) return;
         showToast('发送出错：' + e.message, 'error', 6000);
     } finally {
-        input.disabled = btn.disabled = false;
-        input.focus();
+        if (revision === archiveRevision) { input.disabled = btn.disabled = false; input.focus(); }
     }
 }
 </script>

@@ -178,7 +178,7 @@ async function main() {
     ) {
         throw new Error('AI 未配置时问答入口没有打开设置并说明缺失字段');
     }
-    if (els.qaQuickPanel.classList.contains('show')) {
+    if (sandbox.document.getElementById('qaQuickPanel').classList.contains('show')) {
         throw new Error('AI 未配置时不应打开不可用的问答输入框');
     }
     vm.runInContext('closeSettings();dismissToast()', sandbox);
