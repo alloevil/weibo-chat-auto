@@ -1063,6 +1063,10 @@ button { cursor: pointer; }
 .research-panel .sr-days { padding: 0 20px 12px; }
 .research-panel .sr-day { padding: 4px 7px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--surface-4); color: var(--ink-muted); font-size: 10px; }
 .research-panel .sr-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; padding: 0 12px 15px; }
+.sr-pagination { flex-shrink: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--hairline); font-size: 12px; color: var(--ink-subtle); }
+.sr-pagination button { margin-left: auto; padding: 7px 12px; border: 1px solid var(--hairline-strong); border-radius: 6px; background: var(--surface-1); color: var(--primary-hover); font-size: 12px; }
+.sr-pagination button:disabled { cursor: wait; opacity: .6; }
+.sr-page-error { flex-basis: 100%; color: var(--danger); font-size: 11px; }
 .research-panel .sr-row { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 14px 10px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--hairline); background: transparent; border-radius: 5px; }
 .research-panel .sr-row:hover { background: var(--surface-2); }
 .research-panel .sr-date { width: auto; font-size: 10px; color: var(--ink-subtle); }
@@ -3380,8 +3384,10 @@ function clearUserFilter() {
 // 此前只有前者，于是"搜索消息"实际只搜了当前选中的那一天。
 let globalSearchTimer = null;
 let globalSearchQuery = '';
+let searchPage = null;
 
 function onSearchInput(value) {
+    searchPage = null;
     clearTimeout(searchDebounceTimer);
     clearTimeout(globalSearchTimer);
     searchRevision++;
@@ -3403,12 +3409,14 @@ function changeSearchScope() {
 }
 
 function showSearchState(message) {
+    document.getElementById('searchResults').setAttribute('aria-busy', 'false');
     document.getElementById('searchResults').innerHTML = `<p class="research-note">${escapeHtml(message)}</p>`;
     document.getElementById('searchResults').classList.add('show');
     openResearch('search');
 }
 
 async function runGlobalSearch(q) {
+    searchPage = null;
     clearTimeout(globalSearchTimer);
     const revision = ++searchRevision;
     const group = currentGroup;
@@ -3429,11 +3437,70 @@ async function runGlobalSearch(q) {
         const d = await (await fetch('/api/search?' + params)).json();
         if (revision !== searchRevision || currentGroup !== group) return;
         if (!d.ok) { showSearchState('检索失败，请按 Enter 重试。'); return; }
+        searchPage = { revision, group, query: q, data: d, offset: d.hits.length, loading: false, error: '', stopped: d.hits.length === 0 };
         hint.innerHTML = `全部日期 <b>${d.total}</b> 条`;
         hint.dataset.payload = JSON.stringify(d);
         openSearchResults();
     } catch {
         if (revision === searchRevision && currentGroup === group) showSearchState('检索失败，请检查本地服务后按 Enter 重试。');
+    }
+}
+
+function searchResultRows(hits) {
+    return hits.map(h => `<button class="sr-row" onclick="jumpFromSearch('${h.date}','${h.id}')">
+        <span class="sr-date">${h.date} ${(h.time || '').split(' ')[1] || ''}</span>
+        <span class="sr-user">${escapeHtml(h.user || '')}</span>
+        <span class="sr-text">${highlightText(escapeHtml(h.preview || ''), escapeHtml(globalSearchQuery))}</span>
+        <span class="sr-location">回到原文 ↗</span>
+    </button>`).join('');
+}
+
+function updateSearchPagination() {
+    const page = searchPage;
+    const status = document.getElementById('searchPageStatus');
+    if (!page || !status) return;
+    const more = page.data.truncated && !page.stopped;
+    status.textContent = `已显示 ${page.data.hits.length} / ${page.data.total} 条${page.stopped && page.data.truncated ? ' · 结果已变化，请重新搜索' : more ? '' : ' · 已加载全部'}`;
+    const button = document.getElementById('searchMoreBtn');
+    button.hidden = !more;
+    button.disabled = page.loading;
+    button.textContent = page.loading ? '加载中…' : page.error ? '重试加载' : '加载更多';
+    document.getElementById('searchPageError').textContent = page.error;
+    document.getElementById('searchResults').setAttribute('aria-busy', String(page.loading));
+}
+
+async function loadMoreSearchResults() {
+    const page = searchPage;
+    if (!page || page.loading || page.stopped || !page.data.truncated || page.revision !== searchRevision) return;
+    const stillCurrent = () => searchPage === page && page.revision === searchRevision && currentGroup === page.group && document.getElementById('searchScope').value === 'all';
+    page.loading = true;
+    page.error = '';
+    updateSearchPagination();
+    try {
+        const params = new URLSearchParams({ group: page.group || '', q: page.query, limit: '60', offset: String(page.offset) });
+        const response = await fetch('/api/search?' + params);
+        const data = await response.json();
+        if (!stillCurrent()) return;
+        if (!response.ok || !data.ok || !Array.isArray(data.hits)) throw new Error('search page unavailable');
+        const keys = new Set(page.data.hits.map(hit => JSON.stringify([hit.date, hit.id])));
+        const added = data.hits.filter(hit => {
+            const key = JSON.stringify([hit.date, hit.id]);
+            if (keys.has(key)) return false;
+            keys.add(key);
+            return true;
+        });
+        const list = document.querySelector('#searchResults .sr-list');
+        const scrollTop = list.scrollTop;
+        list.insertAdjacentHTML('beforeend', searchResultRows(added));
+        page.offset += data.hits.length;
+        page.stopped = data.hits.length === 0;
+        page.data = { ...data, hits: [...page.data.hits, ...added] };
+        document.getElementById('searchAllHint').dataset.payload = JSON.stringify(page.data);
+        list.scrollTop = scrollTop;
+    } catch {
+        if (stillCurrent()) page.error = '加载失败，已有结果已保留。点击重试。';
+    } finally {
+        if (stillCurrent()) { page.loading = false; updateSearchPagination(); }
     }
 }
 
@@ -3443,20 +3510,18 @@ function openSearchResults() {
     try { d = JSON.parse(hint.dataset.payload || '{}'); } catch { return; }
     if (!d.hits) return;
     if (!d.hits.length) { showSearchState(`没有找到「${globalSearchQuery}」。试试其他关键词或切换搜索范围。`); return; }
-    const rows = d.hits.map(h => `<button class="sr-row" onclick="jumpFromSearch('${h.date}','${h.id}')">
-        <span class="sr-date">${h.date} ${(h.time || '').split(' ')[1] || ''}</span>
-        <span class="sr-user">${escapeHtml(h.user || '')}</span>
-        <span class="sr-text">${highlightText(escapeHtml(h.preview || ''), escapeHtml(globalSearchQuery))}</span>
-        <span class="sr-location">回到原文 ↗</span>
-    </button>`).join('');
+    const rows = searchResultRows(d.hits);
     const days = d.byDate.slice(0, 12).map(x => `<button class="sr-day" onclick="jumpFromSearch('${x.date}')">${x.date.slice(5)} (${x.count})</button>`).join('');
     document.getElementById('searchResults').innerHTML = `
         <div class="sr-head">
-            <span>${document.getElementById('searchScope').value === 'day' ? '当前日期' : '当前群 · 全部日期'}<br>共 <b>${d.total}</b> 条 · 跨 ${d.byDate.length} 天${d.truncated ? `（先显示最近 ${d.hits.length} 条）` : ''}</span>
+            <span>${document.getElementById('searchScope').value === 'day' ? '当前日期' : '当前群 · 全部日期'}<br>共 <b>${d.total}</b> 条 · 跨 ${d.byDate.length} 天</span>
         </div>
         ${days ? `<div class="sr-days">${days}</div>` : ''}
-        <div class="sr-list">${rows}</div>`;
+        <div class="sr-list">${rows}</div>
+        ${searchPage ? '<div class="sr-pagination"><span id="searchPageStatus" role="status"></span><button id="searchMoreBtn" onclick="loadMoreSearchResults()">加载更多</button><span class="sr-page-error" id="searchPageError" role="status"></span></div>' : ''}`;
     document.getElementById('searchResults').classList.add('show');
+    document.getElementById('searchResults').setAttribute('aria-busy', 'false');
+    updateSearchPagination();
     openResearch('search');
 }
 
@@ -3473,6 +3538,7 @@ function jumpFromSearch(date, id) {
 }
 
 function clearSearch(render = true) {
+    searchPage = null;
     clearTimeout(searchDebounceTimer);
     clearTimeout(globalSearchTimer);
     searchRevision++;

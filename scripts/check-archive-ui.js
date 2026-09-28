@@ -8,6 +8,7 @@ const puppeteer = require('puppeteer');
 const { resolveChromePath } = require('../lib/chrome-path');
 const { uniqueGroupKey, writeGroupMetadata } = require('../lib/group-storage');
 const { writeRegistry } = require('../lib/group-registry');
+const { searchMessages } = require('../lib/search-messages');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'weibo-archive-ui-'));
 const artifacts = path.join(__dirname, '..', 'output', 'playwright');
@@ -137,6 +138,21 @@ async function main() {
         let configured = false;
         let emptyArchive = false;
         let failSearch = false;
+        let paginationFixture = false;
+        let paginationFailure = false;
+        let paginationHold = false;
+        let paginationEmpty = false;
+        let paginationOverlap = false;
+        let finishPagination;
+        const paginationRequests = [];
+        const paginationMessages = Array.from({ length: 135 }, (_, index) => ({
+            id: `page-${index}`,
+            date: '2026-09-26',
+            user: '分页测试员',
+            content: `部署方案 第 ${index} 条记录`,
+            time: '2026/09/26 09:00:00',
+            timestamp: 1000 + index,
+        }));
         let releaseSearch;
         let holdSearch = false;
         let sends = 0;
@@ -254,6 +270,29 @@ async function main() {
                     body: '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240"><rect width="480" height="240" fill="#e7efe8"/><rect x="30" y="30" width="120" height="180" rx="12" fill="#397366"/><path d="M180 65h240M180 110h190M180 155h220" stroke="#94b1a3" stroke-width="16"/><text x="180" y="215" font-size="18" fill="#285c50">SYNTHETIC FIXTURE</text></svg>',
                 });
             if (url.origin !== base) return request.abort();
+            if (paginationFixture && url.pathname === '/api/search') {
+                const offset = Number(url.searchParams.get('offset') || 0);
+                paginationRequests.push({
+                    offset,
+                    query: url.searchParams.get('q'),
+                    group: url.searchParams.get('group'),
+                });
+                const data = searchMessages(paginationMessages, url.searchParams.get('q'), {
+                    limit: 60,
+                    offset,
+                });
+                if (offset && paginationEmpty) data.hits = [];
+                if (offset && paginationOverlap)
+                    data.hits[0] = searchMessages(paginationMessages, '部署方案', {
+                        limit: 60,
+                    }).hits[59];
+                const payload = offset && paginationFailure ? { ok: false } : { ok: true, ...data };
+                if (offset && paginationHold) {
+                    finishPagination = () => reply(payload);
+                    return;
+                }
+                return reply(payload);
+            }
             if (positionFixture && positionData.has(url.searchParams.get('group'))) {
                 const group = url.searchParams.get('group');
                 const dates = positionData.get(group);
@@ -272,6 +311,12 @@ async function main() {
                     return reply(payload);
                 }
             }
+            if (
+                paginationFixture &&
+                url.pathname === '/api/messages' &&
+                url.searchParams.get('date') === '2026-09-26'
+            )
+                return reply({ messages: paginationMessages });
             if (compactFixture) {
                 if (url.pathname === '/api/dates')
                     return reply({ dates: { '2026-09-26': compactMessages.length } });
@@ -2091,6 +2136,204 @@ async function main() {
         await page.removeScriptToEvaluateOnNewDocument(blockedStorage.identifier);
         record('存储不可用时会话内恢复仍有效，刷新安全退回默认群，页面无异常');
         positionFixture = false;
+        paginationFixture = true;
+        await page.setViewport({ width: 1280, height: 900 });
+        await page.reload({ waitUntil: 'networkidle0' });
+        await page.waitForSelector('.msg-item');
+        await search('部署方案');
+        await page.waitForSelector('#searchMoreBtn');
+        assert.equal(await page.$$eval('.sr-row', (elements) => elements.length), 60);
+        assert.match(
+            await page.$eval('#searchPageStatus', (element) => element.textContent),
+            /60 \/ 135/
+        );
+        await page.$eval('.sr-list', (element) => {
+            element.scrollTop = 160;
+            globalThis.__firstSearchRow = element.firstElementChild;
+        });
+        const searchScroll = await page.$eval('.sr-list', (element) => element.scrollTop);
+        await shot('search-pagination-first.png');
+        paginationHold = true;
+        const pendingPage = page.waitForRequest(
+            (request) => new URL(request.url()).searchParams.get('offset') === '60'
+        );
+        await page.click('#searchMoreBtn');
+        await pendingPage;
+        await page.evaluate(() => {
+            globalThis.loadMoreSearchResults();
+            globalThis.loadMoreSearchResults();
+        });
+        assert.equal(await page.$eval('#searchMoreBtn', (element) => element.disabled), true);
+        assert.equal(paginationRequests.filter((request) => request.offset === 60).length, 1);
+        await finishPagination();
+        paginationHold = false;
+        await page.waitForFunction(
+            () => globalThis.document.querySelectorAll('.sr-row').length === 120
+        );
+        assert.equal(
+            await page.$eval(
+                '.sr-list',
+                (element) => element.firstElementChild === globalThis.__firstSearchRow
+            ),
+            true
+        );
+        assert.equal(await page.$eval('.sr-list', (element) => element.scrollTop), searchScroll);
+        await page.click('#searchMoreBtn');
+        await page.waitForFunction(
+            () => globalThis.document.querySelectorAll('.sr-row').length === 135
+        );
+        assert.equal(await visible('#searchMoreBtn'), false);
+        assert.match(
+            await page.$eval('#searchPageStatus', (element) => element.textContent),
+            /135 \/ 135.*全部/
+        );
+        assert.deepEqual(
+            paginationRequests.map((request) => request.offset),
+            [0, 60, 120]
+        );
+        assert.equal(
+            await page.$$eval(
+                '.sr-row',
+                (elements) =>
+                    new Set(elements.map((element) => element.getAttribute('onclick'))).size
+            ),
+            135
+        );
+        await shot('search-pagination-complete.png');
+        await page.click('.sr-row:last-child');
+        await page.waitForSelector('#msg-page-0.msg-flash');
+        assert.equal(await visible('#researchPanel'), false);
+        record(
+            '搜索分页 60→120→135，offset 0/60/120、无重复并发、旧行 DOM 与滚动位置保留、末页隐藏加载按钮'
+        );
+
+        if (await visible('#searchClear')) await page.click('#searchClear');
+        await search('部署方案');
+        await page.waitForSelector('#searchMoreBtn');
+        paginationFailure = true;
+        await page.click('#searchMoreBtn');
+        await page.waitForFunction(
+            () => globalThis.document.querySelector('#searchMoreBtn').textContent === '重试加载'
+        );
+        assert.equal(await page.$$eval('.sr-row', (elements) => elements.length), 60);
+        assert.match(
+            await page.$eval('#searchPageError', (element) => element.textContent),
+            /已有结果已保留/
+        );
+        paginationFailure = false;
+        await page.click('#searchMoreBtn');
+        await page.waitForFunction(
+            () => globalThis.document.querySelectorAll('.sr-row').length === 120
+        );
+        record('分页失败保留首批 60 条，显式重试从同一 offset 继续');
+
+        for (const change of ['query', 'scope', 'group', 'close']) {
+            if (await visible('#searchClear')) await page.click('#searchClear');
+            await page.select('#searchScope', 'all');
+            await search('部署方案');
+            await page.waitForSelector('#searchMoreBtn');
+            paginationHold = true;
+            const pending = page.waitForRequest(
+                (request) => new URL(request.url()).searchParams.get('offset') === '60'
+            );
+            await page.click('#searchMoreBtn');
+            await pending;
+            if (change === 'query') {
+                await search('完全不匹配');
+                await page.waitForFunction(() =>
+                    globalThis.document
+                        .querySelector('#searchResults')
+                        .textContent.includes('没有找到')
+                );
+            } else if (change === 'scope') {
+                await page.select('#searchScope', 'day');
+                await page.waitForFunction(
+                    () => !globalThis.document.querySelector('#searchMoreBtn')
+                );
+            } else if (change === 'group') {
+                await chooseGroup('.archive-group:nth-child(2)');
+                await page.waitForSelector('#msg-9900020000');
+            } else {
+                await page.click('#researchPanel > .research-header .ctx-close');
+            }
+            const text = await page.$eval('#searchResults', (element) => element.innerHTML);
+            await finishPagination();
+            paginationHold = false;
+            await page.evaluate(
+                () => new Promise((resolve) => globalThis.requestAnimationFrame(resolve))
+            );
+            assert.equal(await page.$eval('#searchResults', (element) => element.innerHTML), text);
+            if (change === 'group' || change === 'close')
+                assert.equal(await visible('#researchPanel'), false);
+        }
+        record('分页在途时换关键词/范围/群或关闭面板，旧响应不追加也不重新打开面板');
+
+        await page.click('#searchClear');
+        paginationOverlap = true;
+        await search('部署方案');
+        await page.waitForSelector('#searchMoreBtn');
+        await page.click('#searchMoreBtn');
+        await page.waitForFunction(
+            () => globalThis.document.querySelectorAll('.sr-row').length === 119
+        );
+        assert.equal(
+            await page.$$eval(
+                '.sr-row',
+                (elements) =>
+                    new Set(elements.map((element) => element.getAttribute('onclick'))).size
+            ),
+            119
+        );
+        paginationOverlap = false;
+        await page.click('#searchClear');
+        await search('部署方案');
+        await page.waitForSelector('#searchMoreBtn');
+        paginationEmpty = true;
+        await page.click('#searchMoreBtn');
+        await page.waitForFunction(
+            () => globalThis.document.querySelector('#searchMoreBtn').hidden
+        );
+        assert.equal(await page.$$eval('.sr-row', (elements) => elements.length), 60);
+        assert.match(
+            await page.$eval('#searchPageStatus', (element) => element.textContent),
+            /结果已变化/
+        );
+        paginationEmpty = false;
+        record('重叠分页按日期/ID 去重，空页停止加载并提示重新搜索');
+
+        await page.click('#searchClear');
+        paginationMessages.length = 100;
+        await page.setViewport({ width: 360, height: 900 });
+        await search('部署方案');
+        await page.waitForSelector('#searchMoreBtn');
+        await shot('search-pagination-mobile.png');
+        await page.click('#searchMoreBtn');
+        await page.waitForFunction(
+            () => globalThis.document.querySelectorAll('.sr-row').length === 100
+        );
+        assert.equal(
+            await page.evaluate(
+                () => globalThis.document.body.scrollWidth <= globalThis.innerWidth
+            ),
+            true
+        );
+        assert.match(
+            await page.$eval('#searchPageStatus', (element) => element.textContent),
+            /100 \/ 100/
+        );
+        await page.click('#researchPanel > .research-header .ctx-close');
+        await page.click('#searchClear');
+        paginationMessages.length = 60;
+        await search('部署方案');
+        await page.waitForSelector('#searchPageStatus');
+        assert.equal(await visible('#searchMoreBtn'), false);
+        assert.match(
+            await page.$eval('#searchPageStatus', (element) => element.textContent),
+            /60 \/ 60.*全部/
+        );
+        paginationFixture = false;
+        assert.deepEqual(errors, []);
+        record('360px 支持 60+40 追加无溢出，恰好 60 条时不提供多余加载入口');
         emptyArchive = true;
         await page.reload({ waitUntil: 'networkidle0' });
         await page.waitForSelector('#messages .empty');
