@@ -18,12 +18,22 @@ import speakerAliases from '../lib/speaker-aliases.js';
 import textUtils from '../lib/text-utils.js';
 // 相对日期表达("上周"/"最近")→ 具体区间;同时提供本地时区的时间锚点
 import relativeDates from '../lib/relative-dates.js';
+import retrievalPolicy from '../lib/retrieval-policy.js';
 
 const { search: bm25Search } = searchBm25;
 const { loadChunkIndex, buildChunksForMessages } = chunkIndex;
 const { loadAliases, resolvePerson, expandPersonTerms } = speakerAliases;
 const { isNoise } = textUtils;
 const { resolveRelativeRange, timeAnchors } = relativeDates;
+const {
+    retrievalQueries,
+    fusedSearch,
+    recentQuery,
+    rankByTime,
+    hitExcerpt,
+    evidenceIndexes,
+    rerankExcerpt,
+} = retrievalPolicy;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -103,7 +113,7 @@ const TOOL_SPECS = [
         name: 'search_messages',
         label: '检索消息',
         description:
-            '按关键词检索聊天记录(BM25 相关性 + 时间新近度排序),返回相关片段(含对话上下文)和命中消息的 id 列表(hitIds)。适合"某人说了什么/某话题谁提过/关于 X 的讨论"这类事实检索。关键词务必同时给同义词和英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"]),单个关键词建议 2-4 字。零命中时返回的 hint 会告诉你怎么调整。不适合总结归纳型问题(用 get_recent_messages)。',
+            '按原问题和关键词多路检索聊天记录(BM25 排名融合;明确近期且未指定日期时才加时间权重),返回相关片段(含对话上下文)和命中消息的 id 列表(hitIds)。适合"某人说了什么/某话题谁提过/关于 X 的讨论"这类事实检索。关键词务必同时给同义词和英文缩写(问"大模型"→ ["大模型","LLM","GPT","AI"]),单个关键词建议 2-4 字。零命中时返回的 hint 会告诉你怎么调整。不适合总结归纳型问题(用 get_recent_messages)。',
         parameters: {
             type: 'object',
             properties: {
@@ -330,7 +340,6 @@ function dropNoise(msgs) {
 }
 
 // ─── 检索流水线共用件 ──────────────────────────────────────────────────
-const HALF_LIFE_MS = 2 * 86400000;
 
 // 消息的可检索正文(不含发言人名)。除 content 外把媒体字段也纳入,因为
 // 「上周分享过什么链接」「谁发过图」这类问题的线索不在 content 里:
@@ -394,22 +403,20 @@ function formatRun(runs) {
         .join('\n');
 }
 
-// 时间衰减加权:问"最近"时用户更关心新消息,纯相关性会让几天前的
-// 高分讨论把今天的对话挤出 top-N。半衰期 2 天,只在范围内相对衰减。
-function applyTimeDecay(hits, tsOf) {
-    const latestTs = hits.reduce((mx, h) => Math.max(mx, tsOf(h.idx) || 0), 0);
-    if (!latestTs) return hits;
-    return hits
-        .map((h) => ({
-            ...h,
-            score: h.score * Math.pow(0.5, (latestTs - (tsOf(h.idx) || 0)) / HALF_LIFE_MS),
-        }))
-        .sort((a, b) => b.score - a.score);
+function traceRetrieval(ledger, queries, candidates, messageIds, preferRecent, unit) {
+    const trace = {
+        unit,
+        queries,
+        timePolicy: preferRecent ? 'recent' : 'relevance',
+        candidates: candidates.map((hit) => ({ ...hit, messageIds: messageIds(hit.idx) })),
+        selected: [],
+        evidenceIds: [],
+    };
+    ledger.retrievalTrace ??= [];
+    ledger.retrievalTrace.push(trace);
+    return trace;
 }
 
-// LLM 语义精排:跨过词汇鸿沟(BM25 只认字面)。只做「相关性过滤」,
-// 最终顺序仍按时间衰减分——否则语义排序会覆盖新近度偏好。
-// 失败静默降级,返回原 hits。
 async function rerankFilter(hits, textOf, config, question, rerankBudget) {
     if (!config || !question || hits.length <= 3) return { hits, reranked: false };
     // 预算封顶：超额自动降级为 BM25 序（与失败同路径，静默但行为可预期）
@@ -474,7 +481,6 @@ const ZERO_HIT_HINT = (n) =>
 async function searchByChunks({
     msgs,
     keywords,
-    query,
     config,
     question,
     ledger,
@@ -485,6 +491,8 @@ async function searchByChunks({
     person,
     groupDir,
     rerankBudget,
+    queries,
+    preferRecent,
 }) {
     const msgById = new Map(msgs.map((m) => [String(m.id), m]));
     const toChunk = (msgIds, annotation, endTs, aliases) => {
@@ -539,50 +547,80 @@ async function searchByChunks({
             (c.aliases.length ? c.aliases.join(' ') + '\n' : '') +
             c.msgs.map(msgText).join('\n')
     );
-    let hits = bm25Search(chunkDocs, query, { limit: 20 });
+    let hits = fusedSearch(chunkDocs, queries, 20);
     if (!hits.length) return null;
 
-    hits = applyTimeDecay(hits, (i) => chunks[i].endTs);
-    // rerank 候选:标注优先(信息密度远高于随机截断);无标注块用块首消息,
-    // 保证降级块在精排中不被系统性歧视
+    hits = rankByTime(hits, (index) => chunks[index].endTs, preferRecent);
+    const trace = traceRetrieval(
+        ledger,
+        queries,
+        hits,
+        (index) => chunks[index].msgs.map((message) => String(message.id)),
+        preferRecent,
+        'topic_chunk'
+    );
+    const anchorsByChunk = new Map(
+        hits.map((hit) => {
+            const inner = fusedSearch(chunks[hit.idx].msgs.map(msgText), queries, 4);
+            return [hit.idx, inner.length ? inner.map((match) => match.idx) : [0]];
+        })
+    );
+    trace.rerankInputs = hits.map((hit) => ({
+        idx: hit.idx,
+        text: rerankExcerpt(
+            chunks[hit.idx].msgs,
+            anchorsByChunk.get(hit.idx),
+            queries.join(' '),
+            msgText
+        ),
+    }));
+    const rerankText = new Map(
+        trace.rerankInputs.map((candidate) => [candidate.idx, candidate.text])
+    );
     const { hits: kept, reranked } = await rerankFilter(
         hits,
-        (i) =>
-            (chunks[i].annotation || chunks[i].msgs.slice(0, 2).map(msgText).join(' ')).slice(
-                0,
-                160
-            ),
+        (index) => rerankText.get(index),
         config,
         question,
         rerankBudget
     );
     hits = kept.slice(0, 8);
+    trace.retainedCandidates = kept.map((hit) => hit.idx);
+    trace.selected = hits.map((hit) => hit.idx);
+    trace.reranked = reranked;
 
     const snippets = [];
     const windowCitations = [];
     const hitCitations = [];
     for (const h of hits) {
         const c = chunks[h.idx];
-        // 块内小 BM25 定位真正的关键词命中点(回给模型的 hitIds 用这个,精确)
-        const inner = bm25Search(c.msgs.map(msgText), query, { limit: 4 });
-        const hitIdxs = inner.length ? inner.map((x) => x.idx) : [0];
+        const hitIdxs = anchorsByChunk.get(h.idx);
         for (const i of hitIdxs) hitCitations.push(makeCitation(c.msgs[i]));
 
-        // 块即上下文;超长块取首个命中 ±8 条,防吃 token
-        let snippetMsgs = c.msgs;
+        let snippetIndexes = c.msgs.map((_, index) => index);
         if (c.msgs.length > 30) {
-            const center = hitIdxs[0];
-            snippetMsgs = c.msgs.slice(Math.max(0, center - 8), center + 9);
+            snippetIndexes = evidenceIndexes(c.msgs.length, hitIdxs, 17);
         }
+        const snippetMsgs = snippetIndexes.map((index) => c.msgs[index]);
         // ledger.citations(供最终 sources 精选)覆盖 LLM 实际读到的整个 snippet
         // 窗口，不止关键词命中的那几条——答案可能引用窗口内任意一句(同
         // get_context 的教训:只记命中点会漏掉真正被引用但不含查询词的那条)
         for (const wm of snippetMsgs) windowCitations.push(makeCitation(wm));
 
         const header = c.annotation ? `【话题标注】${c.annotation}\n` : '';
-        snippets.push(header + formatRun(collapseRepeats(snippetMsgs)));
+        const runs = [];
+        let previous = -2;
+        for (const index of snippetIndexes) {
+            if (index !== previous + 1) runs.push([]);
+            runs.at(-1).push(c.msgs[index]);
+            previous = index;
+        }
+        snippets.push(
+            header + runs.map((run) => formatRun(collapseRepeats(run))).join('\n[中间消息已省略]\n')
+        );
     }
     ledger.citations.push(...windowCitations);
+    trace.evidenceIds = [...new Set(windowCitations.map((citation) => String(citation.id)))];
     ledger.searchHistory.push({
         keywords,
         person,
@@ -612,7 +650,6 @@ async function searchByChunks({
 async function searchFlat({
     msgs,
     keywords,
-    query,
     config,
     question,
     ledger,
@@ -622,9 +659,20 @@ async function searchFlat({
     dateTo,
     person,
     rerankBudget,
+    queries,
+    preferRecent,
 }) {
     const docs = msgs.map(msgText);
-    let hits = bm25Search(docs, query, { limit: 40 });
+    let hits = fusedSearch(docs, queries, 40);
+    hits = rankByTime(hits, (index) => msgs[index].timestamp, preferRecent);
+    const trace = traceRetrieval(
+        ledger,
+        queries,
+        hits,
+        (index) => [String(msgs[index].id)],
+        preferRecent,
+        'message'
+    );
 
     if (hits.length === 0) {
         ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: 0 });
@@ -637,23 +685,36 @@ async function searchFlat({
         };
     }
 
-    hits = applyTimeDecay(hits, (i) => msgs[i].timestamp).slice(0, 40);
+    trace.rerankInputs = hits.map((hit) => ({
+        idx: hit.idx,
+        text: hitExcerpt(docs[hit.idx], queries.join(' ')),
+    }));
+    const rerankText = new Map(
+        trace.rerankInputs.map((candidate) => [candidate.idx, candidate.text])
+    );
     const { hits: kept, reranked } = await rerankFilter(
         hits,
-        (i) => docs[i].slice(0, 160),
+        (index) => rerankText.get(index),
         config,
         question,
         rerankBudget
     );
     hits = kept.slice(0, 15);
+    trace.retainedCandidates = kept.map((hit) => hit.idx);
+    trace.selected = hits.map((hit) => hit.idx);
+    trace.reranked = reranked;
 
     // 命中点 → 动态上下文片段(合并重叠区间)
-    const ranges = hits.map((h) => expandContext(msgs, h.idx)).sort((a, b) => a[0] - b[0]);
+    const ranges = hits.map((h) => expandContext(msgs, h.idx));
     const merged = [];
     for (const r of ranges) {
-        const last = merged[merged.length - 1];
-        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
-        else merged.push([...r]);
+        const overlapping = merged.filter((range) => r[0] <= range[1] && r[1] >= range[0]);
+        if (overlapping.length) {
+            const first = overlapping[0];
+            first[0] = Math.min(r[0], ...overlapping.map((range) => range[0]));
+            first[1] = Math.max(r[1], ...overlapping.map((range) => range[1]));
+            for (const range of overlapping.slice(1)) merged.splice(merged.indexOf(range), 1);
+        } else merged.push([...r]);
     }
     const snippets = merged
         .slice(0, 8)
@@ -663,10 +724,20 @@ async function searchFlat({
     // ledger.citations 则覆盖整个 snippet 窗口(供最终 sources 精选用)——
     // 答案可能引用窗口内任意一句,只记命中点会让真正被引用的内容漏出引用池
     // (同 get_context 的教训)
-    const hitCitations = hits.slice(0, 8).map((h) => makeCitation(msgs[h.idx]));
+    const hitCitations = hits
+        .filter((hit) =>
+            merged.slice(0, 8).some(([start, end]) => hit.idx >= start && hit.idx < end)
+        )
+        .slice(0, 8)
+        .map((hit) => makeCitation(msgs[hit.idx]));
+    const evidenceIds = [];
     for (const [s, e] of merged.slice(0, 8)) {
-        for (const wm of msgs.slice(s, e)) ledger.citations.push(makeCitation(wm));
+        for (const wm of msgs.slice(s, e)) {
+            ledger.citations.push(makeCitation(wm));
+            evidenceIds.push(String(wm.id));
+        }
     }
+    trace.evidenceIds = [...new Set(evidenceIds)];
 
     ledger.searchHistory.push({ keywords, person, dateFrom, dateTo, matchCount: hits.length });
     ledger.totalMatches += hits.length;
@@ -799,10 +870,11 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
         // "tombkeeper",也可能是 @tk,两边都该有分
         const personTerms = expandPersonTerms(person, loadAliases(opts?.groupDir));
         const query = [...keywords, ...personTerms].join(' ');
+        const queries = retrievalQueries(query, question, keywords);
+        const preferRecent = recentQuery(question, args);
         const common = {
             msgs,
             keywords,
-            query,
             config,
             question,
             ledger,
@@ -812,6 +884,8 @@ async function executeTool(name, args, allMessages, ledger, config, question, op
             dateTo,
             person,
             rerankBudget: opts?.rerankBudget,
+            queries,
+            preferRecent,
         };
 
         // 话题块级检索优先(检索单元是话题串而非单条短消息,BM25 更稳;
