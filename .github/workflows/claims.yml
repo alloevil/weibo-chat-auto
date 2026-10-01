@@ -16,10 +16,10 @@ jobs:
         name: published numbers still reproduce
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4  # 与 ci.yml 同一个理由：tests-green 的收据真的去跑 npm test，而 test/qa-tools.test.mjs
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4  # 与 ci.yml 同一个理由：tests-green 的收据真的去跑 npm test，而 test/qa-tools.test.mjs
             # 会 import scripts/qa-agent.mjs → @mariozechner/pi-agent-core。裸 checkout 里这行 import
             # 失败，无法复现 claims.json 声称的完整通过数量。所以先装依赖。
-            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+            - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
               with:
                   node-version: 24
                   cache: npm
