@@ -26,7 +26,7 @@
 
 ---
 
-Automatically archive message history from Weibo web group chats — as a **native desktop app** (in-app QR-code login, no manual cookie setup) or a local viewer. Supports multiple groups, scheduled archiving, per-day JSON export, and comes with AI daily summaries and agentic Q&A built in.
+Turn Weibo group chats into a searchable local archive — as a **native desktop app** (in-app QR-code login, no manual cookie setup) or a local viewer. Supports multiple groups, scheduled archiving, per-day JSON export, combined search, cross-day context, AI daily summaries, and agentic Q&A.
 
 ---
 
@@ -34,7 +34,22 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 ![Demo](docs/demo.gif?v=20260923-refined)
 
-> Usernames, group names, and avatars in the demo are anonymized samples.
+> Usernames, group names, and avatars in the demo are anonymized samples. This demo shows an earlier version; v1.29.0 interactions are described below.
+
+## 🆕 v1.29.0: Find a message, check its source, come back
+
+- **Combined search**: combine a sender, an inclusive archive-date range, and multiple words in the message body within the current group. All words must match, case-insensitively, in any order or distance. Results are deduplicated by archive date and message ID, with pagination.
+- **Find a member before choosing one**: filter candidates by a nickname fragment, then explicitly select a member. Stable IDs distinguish identical names; editing the candidate filter does not select someone or search messages.
+- **Cross-midnight context and reference checks**: load adjacent archive days only when needed, with up to 10 messages on each side of the focus. Inspect possible quote sources and reverse-reference clues within the loaded range; multiple possible sources remain visibly ambiguous.
+- **Return without losing your place**: return from a source to search or an AI answer with loaded results, conditions, answer, and position restored, without another search or AI call. Forward and reverse reference candidates also support returning to the original context.
+- **Mobile and keyboard improvements**: an explicit successful “查找” action on mobile collapses the conditions and moves to results. Chinese composition-event handling, interrupted-versus-failed loading, and keyboard focus continuity preserve your ongoing input and navigation.
+- **AI candidate quality**: limit identical-text candidates and protect exact links, domains, and identifiers from the original question within existing budgets, without adding model calls or a vector database.
+
+**Try it**: choose a group → set search scope to “组合检索” → optionally choose a member and archive dates → enter `部署 回滚` in the body query → “查找” → “回原文” → “返回搜索结果”. Leave the body query blank to search by date or member alone.
+
+> **Boundaries**: ordinary search still matches a complete text fragment in the body or nickname; spaces do not mean multi-word AND. Reading filters do not automatically become search conditions. Text-matched references are candidates, not confirmed reply relationships. Context reads at most one adjacent archive day per side, not the entire history. Records without a stable sender ID remain searchable by body/date, but are not merged by nickname.
+>
+> Return state lives only in the current page and does not survive refresh or a group switch. New behavior has synthetic regression coverage, not real IME, physical-phone, or real-model answer-quality validation. Semantic questions without lexical overlap can still be missed. See the [v1.29.0 release notes](https://github.com/alloevil/weibo-chat-auto/releases/tag/v1.29.0) and [retrieval evaluation and limits](docs/retrieval-evaluation.md).
 
 ---
 
@@ -44,13 +59,13 @@ Automatically archive message history from Weibo web group chats — as a **nati
 | --- | --- |
 | 🗂 Multi-group support (configured in `config.json`) | ⚡ Live sync (opt-in, off by default): new messages appear automatically |
 | 🖥 Native desktop app (in-app QR-code login) | 💬 **Send messages to the group**: text / emoticons / images |
-| 🍪 Automatic cookie persistence + session keep-alive | 🎨 Switchable themes: Linear dark / QQ 2000 / 2008 / 2012 |
-| 📡 Full history via paginated API fetch | 🔀 Group switching + 📅 calendar picker |
-| ➕ Incremental archiving (resumable; interrupted paginations persist a resume cursor and exit non-zero instead of silently "succeeding") | 🔍 In-place highlight for the day + search across all dates |
+| 🍪 Automatic cookie persistence + session keep-alive | 🎨 Graphite toolbar with a white reading area; dark / QQ themes retained |
+| 📡 Full history via paginated API fetch | 🔀 Searchable group picker + 📅 date navigation + per-group reading memory |
+| ➕ Incremental archiving (resumable; interrupted paginations persist a resume cursor and exit non-zero instead of silently "succeeding") | 🔍 Current-day / all-date search + combined sender, date, and body search |
 | 📆 Per-day JSON export | 📊 Statistics panel (daily activity / rankings / hours / word frequency) |
 | ⏰ Scheduled jobs + manual Sync Now | 🧹 Red-packet / noise message filtering |
-| | 🎯 Context-focus panel (trace a message's full story) |
-| | 💬 Clickable quotes with original author attribution; @mention highlighting |
+| | 🎯 Cross-day time neighborhoods; return to search / AI / original context |
+| | 💬 Forward and reverse reference candidates with ambiguity labels; @mention highlighting |
 | | 🤖 AI daily summaries + agentic Q&A |
 | | 🖼 Image proxy (bypasses hotlink protection), video links, share cards |
 | | 🔔 Desktop notifications (mentions / keywords) + `@me` filter |
@@ -61,9 +76,11 @@ Automatically archive message history from Weibo web group chats — as a **nati
 
 ### 🖥 Download the app (recommended, macOS Apple Silicon)
 
-1. Download `weibo-chat_*_aarch64.app.zip` from the \[**latest release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) and unzip it.
+1. Download `weibo-chat_*_aarch64.app.zip` from the [**latest release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) and unzip it.
 2. First launch: the app is not code-signed yet, so macOS Gatekeeper will block a normal double-click. **Right-click the .app → Open → Open** (only needed once).
 3. Click 🔑 Login, scan the QR code with the Weibo app, then pick your groups under ⚙️ Settings → 归档群聊 — done.
+
+**Upgrading an existing installation**: quit the old app, download and unzip the new package, replace the old `.app`, and reopen it. Keep your local archives and configuration. For the web version, resolve local changes before running `git pull --ff-only && npm ci`, then restart the viewer and refresh the page.
 
 > ⚠️ Currently **Apple Silicon (M1/M2/M3/M4) only** — there is no Intel or Windows/Linux build yet. The app is unsigned/un-notarized (no paid Apple Developer account), hence the right-click step. On other platforms, use the Web Version below.
 
@@ -157,9 +174,10 @@ Open http://localhost:3456 → click **Sync Now** to fetch the latest messages (
 <details>
 <summary><b>Tips for reading history</b></summary>
 
-- **🎯 Context**: a link on each message header opens a right-side panel showing its full story (the quoted original + surrounding messages + follow-up replies)
-- **Quote jumps**: quote bubbles show the original author; click to jump to the original message and highlight it
-- **Search**: typing highlights matches in-place within the current day (other messages stay visible, `n` / `N` to jump); it also searches across **all dates** — expand the results panel and click a row to jump straight to that day with the hit highlighted
+- **🎯 Context**: open a message's context to read its time neighborhood. Near midnight, adjacent archive days are loaded as needed, with actual dates and range limits visible; nearby messages are not assumed to share a topic.
+- **Check references**: expand a quote and inspect candidates, then explicitly choose one to open its original date. Even a unique text match is not a confirmed source. Use “返回原上下文” to resume reading after checking.
+- **Search**: ordinary search matches a complete fragment; combined search supports sender, archive dates, and multiple body words. Open a result's source, then return to the loaded results and position and continue loading more.
+- **Reading progress**: each group's reading position is saved in this browser. Temporary source checks from search/AI do not replace your original reading progress; new-archive notices move you only when explicitly selected.
 - **@me**: the `@me` filter in the nav bar keeps only messages that mention you. The check-in bot @-mentions every member (93% of hits in practice) and is excluded unconditionally
 - **Unread divider**: when you come back, a "new messages below" divider marks everything since your last visit
 
@@ -266,7 +284,7 @@ Indexing is **automatic**: after each archive run, a background pass annotates t
 
 Uses the Agentic Search pattern. The tool loop comes from \[`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 retrieval turns + one no-tools summarization turn when the budget runs out mid-tool-call; LLM rerank capped at 4 calls; 150s wall-clock ceiling over the whole request). Structured state accumulation follows the LedgerAgent paper.
 
-Retrieval layer: topic-chunk splitting (30-minute gaps) → bigram BM25 → time decay (2-day half-life) → LLM rerank → in-chunk hit location. Plus three preprocessing passes: noise removal, speaker-alias resolution, and relative-date resolution ("last week" is computed into a concrete range by the tools rather than inferred by the LLM). An optional offline annotation layer also generates a summary and 2–4 reworded aliases per chunk, so a question phrased "who trimmed positions" can hit a chunk that says "sold half my chip stocks".
+Retrieval layer: topic-chunk splitting (30-minute gaps) → up to 4 bigram BM25 queries from the original question and existing keywords → RRF fusion, identical-text candidate limits, and exact-clue protection → time weighting only for explicitly recent questions → reranking excerpts near actual hits → multiple in-chunk hit windows. Date/person filters still apply first, and exact-clue protection does not override reranker rejection; no online query-rewrite calls are added. Noise removal, aliases, relative-date parsing, and optional offline summaries/rewordings remain available. See the [retrieval evaluation](docs/retrieval-evaluation.md) for methods, fixed synthetic comparisons, and known failures.
 
 Note: the AI proxy must support SSE streaming responses.
 
@@ -295,11 +313,13 @@ For current numbers, run `node scripts/benchmark-qa.js --group <group>` against 
 <details>
 <summary><b>Click to expand</b></summary>
 
-**Message view** — hourly heatmap, quote bubbles (with original author), @mention highlighting, per-message 🎯 context entry
+These are screenshots of an earlier version, kept for reference; they do not show v1.29.0 combined conditions or reference candidates.
+
+**Message view** — hourly heatmap, quote bubbles, @mention highlighting, per-message 🎯 context entry
 
 ![Message view](docs/screenshot-messages.png?v=20260910)
 
-**Context focus** — click 🎯 to open the right-side panel: the quoted original + surrounding messages + follow-up replies
+**Context focus** — click 🎯 to open the right-side panel; the current version supports cross-day time neighborhoods and reference clues to check
 
 ![Context panel](docs/screenshot-context.png?v=20260910)
 
@@ -366,7 +386,7 @@ weibo-chat-auto/
 │   └── …                        # Other helpers (QA index build, render smoke test, screenshots)
 ├── config.example.json          # Group configuration template
 ├── config.json                  # Actual configuration (not committed)
-├── viewer.html                  # Viewer page (single-page app, Linear dark theme)
+├── viewer.html                  # Group archive reader (single-page app, multiple themes)
 ├── src-tauri/                   # Tauri v2 desktop app (Rust)
 │   ├── src/lib.rs               # Window, sidecar launch, in-app login
 │   └── tauri.conf.json
