@@ -1,20 +1,20 @@
 {
     "$comment": "收据:本仓库哪些数字可复现、哪些明确不可复现。核对于 2026-09-14。规则:凡对外宣称的量化结论,要么在这里给出可跑的命令,要么明确标注不可复现——不允许既不标来源也不标不可复现。每条 claim 的 check 由 .github/workflows/claims.yml 每周跑一次。",
     "project": "weibo-chat-auto",
-    "updated": "2026-09-14",
+    "updated": "2026-10-12",
     "claims": [
         {
             "id": "tests-green",
             "claim": "The test suite passes on a clean checkout.",
-            "value": "401",
+            "value": "491",
             "metric": "passing node:test cases (# fail 0)",
             "method": "node --test over the repo's test files (package.json scripts.test -> scripts/run-tests.js).",
             "repro": "npm test -- --test-reporter=tap 2>&1 | grep -E '^# (pass|fail)'",
             "evidence": "scripts/run-tests.js",
-            "as_of": "2026-09-28",
+            "as_of": "2026-10-12",
             "check": {
                 "cmd": "npm test -- --test-reporter=tap 2>&1 | grep -E '^# (pass|fail)'",
-                "expect": { "contains": ["# pass 401", "# fail 0"] },
+                "expect": { "contains": ["# pass 491", "# fail 0"] },
                 "timeout": 60
             }
         },

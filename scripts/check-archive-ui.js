@@ -11,7 +11,9 @@ const { writeRegistry } = require('../lib/group-registry');
 const { searchMessages } = require('../lib/search-messages');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'weibo-archive-ui-'));
-const artifacts = path.join(__dirname, '..', 'output', 'playwright');
+const artifacts = process.env.WEIBO_UI_ARTIFACTS
+    ? path.resolve(process.env.WEIBO_UI_ARTIFACTS)
+    : path.join(__dirname, '..', 'output', 'playwright');
 const groups = [
     {
         name: '开源茶馆 · 产品与技术',
@@ -1478,7 +1480,7 @@ async function main() {
         assert.equal(await page.$eval(quote, (element) => element.open), false);
         assert.match(
             await page.$eval(`${quote} summary`, (element) => element.textContent),
-            /阿渡/
+            /引用原文/
         );
         await page.click(`${quote} summary`);
         assert.match(
@@ -1486,6 +1488,12 @@ async function main() {
             /本地归档/
         );
         await page.click(`${quote} .quote-jump`);
+        await page.waitForSelector('#contextReferences');
+        assert.match(
+            await page.$eval('#contextReferences', (element) => element.textContent),
+            /文本匹配候选.*不确认来源/
+        );
+        await page.click('.ctx-reference-candidate[data-id="compact-4"]');
         await page.waitForSelector('#msg-compact-4.msg-flash');
         await page.click(`${quote} summary`);
         await page.click('#msg-compact-6 .msg-pics img');

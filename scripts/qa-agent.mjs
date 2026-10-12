@@ -33,6 +33,8 @@ const {
     hitExcerpt,
     evidenceIndexes,
     rerankExcerpt,
+    exactClues,
+    selectCandidates,
 } = retrievalPolicy;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -408,7 +410,11 @@ function traceRetrieval(ledger, queries, candidates, messageIds, preferRecent, u
         unit,
         queries,
         timePolicy: preferRecent ? 'recent' : 'relevance',
-        candidates: candidates.map((hit) => ({ ...hit, messageIds: messageIds(hit.idx) })),
+        candidates: candidates.map((hit) => ({
+            ...hit,
+            messageIds: messageIds(hit.idx),
+            duplicateMessageIds: (hit.duplicateIndexes || []).flatMap((index) => messageIds(index)),
+        })),
         selected: [],
         evidenceIds: [],
     };
@@ -547,10 +553,22 @@ async function searchByChunks({
             (c.aliases.length ? c.aliases.join(' ') + '\n' : '') +
             c.msgs.map(msgText).join('\n')
     );
-    let hits = fusedSearch(chunkDocs, queries, 20);
+    const originalDocs = chunks.map((chunk) => chunk.msgs.map(msgText).join('\n'));
+    const clues = exactClues(question);
+    let hits = fusedSearch(chunkDocs, queries, 20, {
+        documents: originalDocs,
+        clues,
+        preferRecent,
+        timestampOf: (index) => chunks[index].endTs,
+    });
     if (!hits.length) return null;
 
-    hits = rankByTime(hits, (index) => chunks[index].endTs, preferRecent);
+    hits = selectCandidates(
+        rankByTime(hits, (index) => chunks[index].endTs, preferRecent),
+        originalDocs,
+        20,
+        clues
+    );
     const trace = traceRetrieval(
         ledger,
         queries,
@@ -584,7 +602,7 @@ async function searchByChunks({
         question,
         rerankBudget
     );
-    hits = kept.slice(0, 8);
+    hits = selectCandidates(kept, originalDocs, 8, clues);
     trace.retainedCandidates = kept.map((hit) => hit.idx);
     trace.selected = hits.map((hit) => hit.idx);
     trace.reranked = reranked;
@@ -663,8 +681,19 @@ async function searchFlat({
     preferRecent,
 }) {
     const docs = msgs.map(msgText);
-    let hits = fusedSearch(docs, queries, 40);
-    hits = rankByTime(hits, (index) => msgs[index].timestamp, preferRecent);
+    const clues = exactClues(question);
+    let hits = fusedSearch(docs, queries, 40, {
+        documents: docs,
+        clues,
+        preferRecent,
+        timestampOf: (index) => msgs[index].timestamp,
+    });
+    hits = selectCandidates(
+        rankByTime(hits, (index) => msgs[index].timestamp, preferRecent),
+        docs,
+        40,
+        clues
+    );
     const trace = traceRetrieval(
         ledger,
         queries,
@@ -699,7 +728,7 @@ async function searchFlat({
         question,
         rerankBudget
     );
-    hits = kept.slice(0, 15);
+    hits = selectCandidates(kept, docs, 15, clues);
     trace.retainedCandidates = kept.map((hit) => hit.idx);
     trace.selected = hits.map((hit) => hit.idx);
     trace.reranked = reranked;

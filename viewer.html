@@ -299,6 +299,13 @@ button, select, input { font-family: inherit; }
 .ctx-close { width: 26px; height: 26px; border: none; background: none; cursor: pointer; font-size: 16px; color: var(--ink-subtle); border-radius: 8px; }
 .ctx-close:hover { background: var(--surface-2); color: var(--ink); }
 .ctx-body { flex: 1; overflow-y: auto; padding: 4px 0; }
+.ctx-load-status { flex-shrink: 0; border-bottom: 1px solid var(--hairline); }
+.ctx-load-status .research-note { padding: 8px 16px; }
+.ctx-reference { margin: 8px 12px 12px; padding: 10px; border: 1px solid var(--hairline); border-radius: 6px; color: var(--ink-muted); font-size: 12px; line-height: 1.7; }
+.ctx-reference blockquote { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ctx-reference summary { cursor: pointer; }
+.ctx-reference-candidate, .ctx-reverse-candidate { display: block; width: 100%; margin-top: 7px; padding: 8px; text-align: left; border: 1px solid var(--hairline); border-radius: 5px; color: var(--ink); background: var(--surface-1); overflow-wrap: anywhere; font: inherit; }
+.ctx-reference-candidate small, .ctx-reverse-candidate small { display: block; color: var(--ink-muted); }
 .ctx-section-label { padding: 7px 12px 3px; display: flex; justify-content: space-between; gap: 8px; color: var(--ink-subtle); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .ctx-section-count { font-weight: 400; letter-spacing: 0; }
 .ctx-msg { min-height: 26px; padding: 3px 8px 3px 10px; display: grid; grid-template-columns: 104px minmax(0, 1fr) 22px; align-items: center; gap: 5px; border-left: 2px solid transparent; cursor: pointer; }
@@ -1060,6 +1067,23 @@ button { cursor: pointer; }
 .research-panel .ctx-section-label { padding: 16px 18px 8px; font-size: 11px; }
 .research-panel .search-results { flex: 1; min-height: 0; max-height: none; flex-direction: column; padding: 0; border: 0; overflow: hidden; }
 .research-panel .sr-head { padding: 16px 20px; font-size: 12px; }
+.search-scope-label { display: block; color: var(--ink-muted); overflow-wrap: anywhere; }
+.combined-search { display: none; padding: 12px 20px; border-bottom: 1px solid var(--hairline); flex-shrink: 0; }
+.research-panel[data-view="search"] .combined-search:not([hidden]) { display: block; }
+.combined-search summary { cursor: pointer; font-size: 12px; color: var(--ink-muted); }
+.member-fragment-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--ink-muted); }
+.member-fragment-actions button { border: 1px solid var(--hairline); border-radius: 5px; padding: 4px 7px; background: var(--surface-1); color: inherit; font: inherit; }
+.member-selection-note { font-size: 11px; line-height: 1.5; color: var(--ink-muted); overflow-wrap: anywhere; }
+.combined-search form { display: grid; gap: 8px; padding-top: 10px; }
+.combined-search label { display: grid; gap: 4px; min-width: 0; font-size: 11px; color: var(--ink-muted); }
+.combined-search select, .combined-search input { width: 100%; min-width: 0; box-sizing: border-box; padding: 6px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--surface-1); color: var(--ink); font: inherit; }
+.combined-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.combined-actions { display: flex; gap: 8px; align-items: center; }
+.combined-actions button, .search-condition { padding: 5px 8px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--surface-1); color: var(--ink-muted); font-size: 11px; }
+.combined-actions small { color: var(--ink-subtle); font-size: 10px; }
+.search-conditions { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 20px 8px; }
+.search-condition { overflow-wrap: anywhere; text-align: left; }
+.search-match-help { margin: 0; padding: 0 20px 12px; color: var(--ink-subtle); font-size: 11px; line-height: 1.6; flex-shrink: 0; }
 .research-panel .sr-days { padding: 0 20px 12px; }
 .research-panel .sr-day { padding: 4px 7px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--surface-4); color: var(--ink-muted); font-size: 10px; }
 .research-panel .sr-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; padding: 0 12px 15px; }
@@ -1067,6 +1091,18 @@ button { cursor: pointer; }
 .sr-pagination button { margin-left: auto; padding: 7px 12px; border: 1px solid var(--hairline-strong); border-radius: 6px; background: var(--surface-1); color: var(--primary-hover); font-size: 12px; }
 .sr-pagination button:disabled { cursor: wait; opacity: .6; }
 .sr-page-error { flex-basis: 100%; color: var(--danger); font-size: 11px; }
+.task-return-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex-shrink: 0; padding: 9px 16px; background: var(--primary-tint); border-bottom: 1px solid var(--hairline); font-size: 12px; }
+.task-return-bar button, .task-return-panel { padding: 7px 10px; border: 1px solid var(--hairline-strong); border-radius: 6px; background: var(--surface-1); color: var(--primary-hover); font-size: 12px; }
+.task-return-bar button:disabled, .task-return-panel:disabled { opacity: .6; cursor: wait; }
+.task-return-panel { margin-left: auto; flex-shrink: 0; }
+.task-return-status { color: var(--ink-muted); }
+.sr-row[aria-current="true"] { box-shadow: inset 2px 0 var(--primary); }
+.workspace.task-restoring, .workspace.task-restoring * { transition: none !important; scroll-behavior: auto !important; }
+@media (max-width: 760px) {
+    .task-return-bar { padding: 8px 12px; gap: 6px; }
+    .task-return-bar .task-return-status { font-size: 11px; }
+    .research-header:has(.task-return-panel:not([hidden])) { flex-wrap: wrap; }
+}
 .research-panel .sr-row { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 14px 10px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--hairline); background: transparent; border-radius: 5px; }
 .research-panel .sr-row:hover { background: var(--surface-2); }
 .research-panel .sr-date { width: auto; font-size: 10px; color: var(--ink-subtle); }
@@ -1306,10 +1342,10 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
         </div>
         <!-- 搜索是高频内容操作，在主行中占据弹性空间；AI 问答按需从工具行展开 -->
         <div class="nav-search" id="navSearch">
-            <select class="search-scope" id="searchScope" aria-label="搜索范围" onchange="changeSearchScope()"><option value="all">全部日期</option><option value="day">当前日期</option></select>
+            <select class="search-scope" id="searchScope" aria-label="搜索范围" onchange="changeSearchScope()"><option value="all">全部日期</option><option value="day">当前日期</option><option value="combined">组合检索</option></select>
             <div class="search-input-wrap">
                 <span class="search-icon"><svg class="ui-icon" aria-hidden="true"><use href="#icon-search"></use></svg></span>
-                <input type="search" class="search-input" id="searchInput" placeholder="搜索这个群的历史…" aria-label="搜索群聊历史" oninput="onSearchInput(this.value)" onkeydown="if(event.key==='Enter')runGlobalSearch(this.value.trim())">
+                <input type="search" class="search-input" id="searchInput" placeholder="按完整文字片段搜索…" aria-label="搜索群聊历史" title="按完整文字片段匹配；空格不代表多词 AND。搜索所有成员，不受阅读筛选影响。" oninput="handleSearchInput(event)" onkeydown="searchInputKeydown(event)">
                 <button class="search-clear" id="searchClear" onclick="clearSearch()" aria-label="清空搜索">✕</button>
             </div>
             <div class="search-count" id="searchCount">
@@ -1330,11 +1366,11 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
     <div class="nav-tools">
         <div class="reading-heading"><span class="reading-indicator"></span><span id="readingDate">历史记录</span><span class="nav-stats" id="stats"></span></div>
         <div class="nav-toolset">
-            <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="时段、类型与噪声筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">筛选</span></button>
+            <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="阅读筛选：仅作用于当前日期的消息列表，不影响搜索结果" aria-label="阅读筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">阅读筛选</span></button>
             <button class="tools-toggle" id="qaToggle" onclick="toggleQaComposer()" aria-expanded="false" title="向 AI 查询群聊历史"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">AI 助读</span></button>
             <details class="archive-more" id="archiveMore"><summary aria-label="更多档案操作">更多 ···</summary><div class="archive-more-menu">
             <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="阅读/统计视图"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chart"></use></svg><span class="tool-label">查看统计</span></button>
-            <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="按成员筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-users"></use></svg><span class="tool-label">按成员筛选</span></button>
+            <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="按成员筛选当前日期的阅读列表，不影响搜索结果"><svg class="ui-icon" aria-hidden="true"><use href="#icon-users"></use></svg><span class="tool-label">阅读筛选 · 成员</span></button>
             <div class="export-menu-wrap">
                 <button class="tools-toggle" id="exportToggle" onclick="toggleExportMenu(event)" title="导出当前群当天的聊天记录"><svg class="ui-icon" aria-hidden="true"><use href="#icon-download"></use></svg><span class="tool-label">导出</span></button>
                 <div class="export-menu" id="exportMenu">
@@ -1482,6 +1518,8 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
 <div class="main">
     <button class="pane-backdrop" id="paneBackdrop" onclick="closeTransientPanels()" aria-hidden="true" tabindex="-1"></button>
     <div class="content">
+        <div class="task-return-bar" id="taskReturnBar" hidden><button id="taskReturnButton" onclick="returnToReadingTask()"></button><span class="task-return-status" id="taskReturnStatus" role="status"></span></div>
+        <div class="task-return-bar" id="contextReturnBar" hidden><button id="contextReturnButton" onclick="returnToReferenceContext()">返回原上下文</button><span class="task-return-status" id="contextReturnStatus" role="status"></span></div>
         <!-- 筛选面板：默认折叠，由导航的「🔍 筛选」开关控制 -->
         <div class="tools-panel" id="toolsPanel">
             <div class="hours-bar" id="hoursBar"></div>
@@ -1510,11 +1548,26 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
         </div>
     </div>
     <aside class="research-panel" id="researchPanel" aria-label="档案工具">
-        <div class="research-header"><div><span class="archive-eyebrow">档案工具</span><h2 id="researchTitle">检索结果</h2></div><button class="ctx-close" onclick="closeResearch()" aria-label="关闭档案工具">✕</button></div>
+        <div class="research-header"><div><span class="archive-eyebrow">档案工具</span><h2 id="researchTitle">检索结果</h2></div><button class="task-return-panel" id="taskReturnPanelButton" onclick="returnToReadingTask()" hidden></button><button class="ctx-close" onclick="closeResearch()" aria-label="关闭档案工具">✕</button></div>
+        <details class="combined-search" id="combinedSearchControls" hidden>
+        <summary>检索条件 · 展开 / 收起</summary>
+        <form id="combinedSearchForm" onsubmit="event.preventDefault();runGlobalSearch(document.getElementById('searchInput').value.trim(), event.submitter?.id === 'combinedSearchSubmit' && document.activeElement === event.submitter)">
+            <label>查找昵称片段<input type="search" id="searchMemberFragment" placeholder="例如：007，仅筛候选，不会选人" oninput="filterSearchMembers(this.value)" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();document.getElementById('searchMember').focus()}"></label>
+            <div class="member-fragment-actions"><button type="button" id="clearMemberFragment" onclick="filterSearchMembers('');document.getElementById('searchMemberFragment').focus()">清空候选词</button><span id="memberFragmentCount" role="status"></span></div>
+            <label>发言人 · 本群全部归档<select id="searchMember" onchange="changeCombinedCondition('fromUid', this.value)"><option value="">所有成员</option></select></label>
+            <div class="member-selection-note" id="searchMemberIdentity" role="status"></div>
+            <div class="combined-dates">
+                <label>起始归档日期（含）<input type="date" id="searchDateFrom" onchange="changeCombinedCondition('dateFrom', this.value)"></label>
+                <label>结束归档日期（含）<input type="date" id="searchDateTo" onchange="changeCombinedCondition('dateTo', this.value)"></label>
+            </div>
+            <div class="combined-actions"><button type="submit" id="combinedSearchSubmit">查找</button><button type="button" onclick="clearSearch()">清除全部</button><small id="searchMembersStatus" role="status"></small></div>
+            <div class="member-selection-note" id="combinedSearchFeedback" role="status" hidden></div>
+        </form>
+        </details>
         <div class="search-results" id="searchResults" aria-live="polite"></div>
         <div class="sidebar collapsed" id="sidebar">
-            <div class="sidebar-header"><span>当日成员</span><span class="sidebar-summary" id="userSummary"></span></div>
-            <p class="research-note">选择成员，仅显示他们在当前日期的发言。</p>
+            <div class="sidebar-header"><span>阅读筛选 · 当日成员</span><span class="sidebar-summary" id="userSummary"></span></div>
+            <p class="research-note">仅筛选当前日期的阅读列表；搜索结果仍包括所有成员。</p>
             <div class="user-list" id="userList"></div>
             <div class="user-clear" id="userClear"><button onclick="clearUserFilter()">清除成员筛选</button></div>
         </div>
@@ -1544,6 +1597,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
                 <button class="ctx-density-toggle" id="ctxDensityBtn" onclick="toggleContextDensity()" aria-pressed="false" title="显示全部消息正文">全文</button>
             </div>
         </div>
+        <div class="ctx-load-status" id="contextLoadStatus" role="status" hidden></div>
         <div class="ctx-body" id="contextBody"></div>
         </div>
     </aside>
@@ -1592,6 +1646,153 @@ let readingPositionReady = false;
 let readingPositionTimer = null;
 let pendingReadingPosition = null;
 let readingLoadRevision = 0;
+let readingTask = null;
+
+function updateTaskReturn(error = '') {
+    const active = readingTask?.group === currentGroup;
+    document.getElementById('taskReturnBar').hidden = !active;
+    const label = readingTask?.kind === 'ai' ? '返回AI回答' : '返回搜索结果';
+    for (const id of ['taskReturnButton', 'taskReturnPanelButton']) {
+        const button = document.getElementById(id);
+        button.hidden = !active;
+        button.disabled = !!readingTask?.restoring;
+        button.textContent = readingTask?.restoring ? '正在返回…' : label;
+    }
+    document.getElementById('taskReturnStatus').textContent = active ? error || `正在核对原文 · 原任务日期 ${readingTask.date}` : '';
+}
+
+function discardReadingTask() {
+    document.querySelector('.workspace')?.classList.remove('task-restoring');
+    readingTask = null;
+    updateTaskReturn();
+}
+
+function captureReadingTask(kind, trigger) {
+    if (readingTask || !['search', 'ai'].includes(kind)) return;
+    saveReadingPosition();
+    const list = document.getElementById('messages');
+    const panel = document.getElementById(kind === 'search' ? 'searchResults' : 'researchAi');
+    readingTask = {
+        kind, group: currentGroup, date: selectedDate, month: selectedMonth,
+        hours: [...selectedHours], users: [...selectedUsers], media: mediaFilter, hideNoise, mentionOnly,
+        searchInput: document.getElementById('searchInput').value, scope: document.getElementById('searchScope').value,
+        combinedSearch: { ...combinedSearch },
+        memberFragment: document.getElementById('searchMemberFragment').value,
+        combinedControlsOpen: document.getElementById('combinedSearchControls').open,
+        searchQuery, globalSearchQuery, searchPage: searchPage ? { ...searchPage, loading: false } : null,
+        payload: document.getElementById('searchAllHint').dataset.payload,
+        searchHtml: document.getElementById('searchResults').innerHTML,
+        question: document.getElementById('qaInput').value,
+        answerHtml: document.getElementById('qaAnswer').innerHTML,
+        answerDisplay: document.getElementById('qaAnswerWrap').style.display,
+        summaryHtml: document.getElementById('summaryContent').innerHTML,
+        summaryClass: document.getElementById('summaryContent').className,
+        summaryCollapse: document.getElementById('summaryCollapse').style.display,
+        summaryCollapseText: document.getElementById('summaryCollapse').textContent,
+        scrollTop: list.scrollTop, scrollLeft: list.scrollLeft,
+        composer: document.getElementById('composerInput').value, composeOpen,
+        panelScroll: panel.scrollTop,
+        resultScroll: document.querySelector('#searchResults .sr-list')?.scrollTop || 0,
+        answerScroll: document.getElementById('qaAnswer').scrollTop,
+        selectedIndex: trigger ? [...panel.querySelectorAll(kind === 'search' ? '.sr-row' : '.qa-source-item')].indexOf(trigger) : -1,
+        restoring: false,
+    };
+    updateTaskReturn();
+}
+
+async function returnToReadingTask() {
+    const task = readingTask;
+    if (!task || task.group !== currentGroup || task.restoring) return;
+    discardContextReturn();
+    task.restoring = true;
+    document.querySelector('.workspace').classList.add('task-restoring');
+    updateTaskReturn();
+    const revision = ++archiveRevision;
+    const current = { date: selectedDate, month: selectedMonth, messages: allMessages, hours: selectedHours, users: selectedUsers, media: mediaFilter, hideNoise, mentionOnly, searchQuery, scrollTop: document.getElementById('messages').scrollTop };
+    closeResearch();
+    selectedDate = task.date;
+    selectedMonth = task.month;
+    selectedHours = new Set(task.hours);
+    selectedUsers = new Set(task.users);
+    mediaFilter = task.media;
+    hideNoise = task.hideNoise;
+    mentionOnly = task.mentionOnly;
+    searchQuery = task.searchQuery;
+    try {
+        await loadMessages();
+        if (readingTask !== task || task.group !== currentGroup || revision !== archiveRevision) return;
+        document.getElementById('searchInput').value = task.searchInput;
+        document.getElementById('searchScope').value = task.scope;
+        combinedSearch = { ...task.combinedSearch };
+        document.getElementById('searchMemberFragment').value = task.memberFragment || '';
+        document.getElementById('combinedSearchControls').open = task.combinedControlsOpen;
+        syncSearchControls();
+        document.getElementById('searchClear').classList.toggle('show', !!task.searchInput);
+        globalSearchQuery = task.globalSearchQuery;
+        searchPage = task.searchPage ? { ...task.searchPage, revision: searchRevision } : null;
+        document.getElementById('searchAllHint').dataset.payload = task.payload;
+        document.getElementById('searchResults').innerHTML = task.searchHtml;
+        document.getElementById('searchResults').classList.toggle('show', task.kind === 'search');
+        document.getElementById('searchResults').setAttribute('aria-busy', 'false');
+        document.getElementById('qaInput').value = task.question;
+        document.getElementById('qaAnswer').innerHTML = task.answerHtml;
+        document.getElementById('qaAnswerWrap').style.display = task.answerDisplay;
+        document.getElementById('summaryContent').innerHTML = task.summaryHtml;
+        document.getElementById('summaryContent').className = task.summaryClass;
+        document.getElementById('summaryCollapse').style.display = task.summaryCollapse;
+        document.getElementById('summaryCollapse').textContent = task.summaryCollapseText;
+        document.getElementById('composerInput').value = task.composer;
+        composeOpen = task.composeOpen;
+        updateComposer();
+        renderCalendar();
+        if (task.kind === 'search') { updateSearchPagination(); openResearch('search'); }
+        else { document.getElementById('qaQuickPanel').classList.add('show'); openResearch('ai'); }
+        document.getElementById('taskReturnBar').hidden = true;
+        document.getElementById('taskReturnPanelButton').hidden = true;
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        if (readingTask !== task || task.group !== currentGroup || revision !== archiveRevision) return;
+        readingTask = null;
+        updateTaskReturn();
+        const list = document.getElementById('messages');
+        list.scrollTop = task.scrollTop;
+        list.scrollLeft = task.scrollLeft;
+        const panel = document.getElementById(task.kind === 'search' ? 'searchResults' : 'researchAi');
+        const target = panel.querySelectorAll(task.kind === 'search' ? '.sr-row' : '.qa-source-item')[task.selectedIndex];
+        if (target) {
+            if (task.kind === 'search') {
+                panel.querySelectorAll('.sr-row[aria-current]').forEach(row => row.removeAttribute('aria-current'));
+                target.setAttribute('aria-current', 'true');
+            }
+            target.focus({ preventScroll: true });
+        }
+        else document.getElementById(task.kind === 'search' ? 'searchInput' : 'qaInput').focus({ preventScroll: true });
+        panel.scrollTop = task.panelScroll;
+        const results = document.querySelector('#searchResults .sr-list');
+        if (results) results.scrollTop = task.resultScroll;
+        document.getElementById('qaAnswer').scrollTop = task.answerScroll;
+        document.querySelector('.workspace').classList.remove('task-restoring');
+        saveReadingPosition();
+    } catch {
+        if (readingTask !== task || task.group !== currentGroup || revision !== archiveRevision) return;
+        selectedDate = current.date;
+        selectedMonth = current.month;
+        allMessages = current.messages;
+        selectedHours = current.hours;
+        selectedUsers = current.users;
+        mediaFilter = current.media;
+        hideNoise = current.hideNoise;
+        mentionOnly = current.mentionOnly;
+        searchQuery = current.searchQuery;
+        document.getElementById('messages').dataset.location = JSON.stringify([currentGroup, selectedDate]);
+        renderAll();
+        renderHours();
+        renderCalendar();
+        document.getElementById('messages').scrollTop = current.scrollTop;
+        task.restoring = false;
+        document.querySelector('.workspace').classList.remove('task-restoring');
+        updateTaskReturn('返回失败，任务仍保留；可重试。');
+    }
+}
 
 function readPositionValue(key) {
     if (readingPositionMemory.has(key)) return readingPositionMemory.get(key);
@@ -1626,6 +1827,7 @@ function readingViewportTop(container) {
 
 function saveReadingPosition() {
     clearTimeout(readingPositionTimer);
+    if (readingTask?.group === currentGroup || contextReturnTask?.group === currentGroup) return;
     if (!readingPositionReady || !selectedDate || (!codeMode && statsView)) return;
     const normal = document.getElementById('messages');
     if (normal.dataset.location !== JSON.stringify([currentGroup, selectedDate])) return;
@@ -1935,11 +2137,12 @@ function chooseGroup(index) {
 }
 
 function openResearch(view) {
+    if (view !== 'context') ctxSession = null;
     const panel = document.getElementById('researchPanel');
     if (panel.dataset.view === 'search' && view !== 'search') { clearTimeout(globalSearchTimer); searchRevision++; }
     panel.dataset.view = view;
     panel.classList.add('open');
-    document.getElementById('researchTitle').textContent = { search: '检索结果', context: '消息上下文', members: '按成员筛选', ai: 'AI 助读' }[view];
+    document.getElementById('researchTitle').textContent = { search: '检索结果', context: '消息上下文', members: '阅读筛选 · 成员', ai: 'AI 助读' }[view];
     document.getElementById('archiveMore').open = false;
     document.getElementById('sidebar').classList.toggle('collapsed', view !== 'members');
     document.getElementById('sidebarToggle').classList.toggle('open', view === 'members');
@@ -1953,6 +2156,7 @@ function openResearch(view) {
 }
 
 function closeResearch() {
+    ctxSession = null;
     const panel = document.getElementById('researchPanel');
     if (panel.dataset.view === 'search') { clearTimeout(globalSearchTimer); searchRevision++; }
     const trigger = { ai: 'qaToggle', members: 'sidebarToggle', search: 'searchInput' }[panel.dataset.view];
@@ -1968,14 +2172,16 @@ function closeResearch() {
     if (trigger) document.getElementById(trigger).focus();
 }
 
-function resetArchiveView() {
+function resetArchiveView({ preserveTask = false, preserveContextReturn = false } = {}) {
+    if (!preserveContextReturn) discardContextReturn();
     saveReadingPosition();
+    if (!preserveTask) discardReadingTask();
     readingPositionReady = false;
     pendingReadingPosition = null;
     closeMessageMenus();
     archiveHistorySelection = '';
     archiveRevision++;
-    clearSearch(false);
+    clearSearch(false, preserveContextReturn);
     closeResearch();
     composeOpen = false;
     document.getElementById('composerInput').value = '';
@@ -2006,6 +2212,7 @@ document.addEventListener('keydown', e => {
     }
     if (codeMode) return;
     const messageMenu = document.querySelector('.msg-menu[open]');
+    if (e.key === 'Escape' && (e.isComposing || e.keyCode === 229)) return;
     if (e.key === 'Escape' && messageMenu) { e.preventDefault(); messageMenu.open = false; messageMenu.querySelector('summary').focus(); return; }
     if (document.getElementById('groupPickerOverlay').classList.contains('show')) {
         if (e.isComposing) return;
@@ -2122,6 +2329,194 @@ function jumpToMessage(id) {
 
 // ── 上下文聚焦面板（方向 B）──────────────────────
 let ctxFocusId = null;
+let ctxSession = null;
+let contextReturnTask = null;
+
+function updateContextReturn() {
+    const active = contextReturnTask?.group === currentGroup;
+    document.getElementById('contextReturnBar').hidden = !active;
+    document.getElementById('contextReturnButton').disabled = !!contextReturnTask?.restoring;
+    document.getElementById('contextReturnButton').textContent = contextReturnTask?.restoring ? '正在返回…' : '返回原上下文';
+    document.getElementById('contextReturnStatus').textContent = active ? `来源 ${contextReturnTask.session.date} · ID ${contextReturnTask.session.id}` : '';
+}
+
+function discardContextReturn() {
+    contextReturnTask = null;
+    updateContextReturn();
+}
+
+function captureContextReturn(session, index, candidateKind = 'reverse') {
+    if (contextReturnTask || session.group !== currentGroup || session.archive !== archiveRevision) return;
+    saveReadingPosition();
+    const cache = new Map(session.cache);
+    cache.set(selectedDate, allMessages);
+    contextReturnTask = {
+        group: currentGroup,
+        session: { ...session, cache, pending: new Set(), failed: new Set(session.failed), interrupted: new Set([...(session.interrupted || []), ...session.pending]), loading: false },
+        date: selectedDate, month: selectedMonth, messages: allMessages,
+        hours: [...selectedHours], users: [...selectedUsers], media: mediaFilter, hideNoise, mentionOnly,
+        searchQuery, globalSearchQuery, input: document.getElementById('searchInput').value,
+        scope: document.getElementById('searchScope').value, combined: { ...combinedSearch },
+        fragment: document.getElementById('searchMemberFragment').value,
+        readingScroll: document.getElementById('messages').scrollTop,
+        contextScroll: document.getElementById('contextBody').scrollTop,
+        expanded: document.getElementById('contextPanel').classList.contains('expanded'),
+        details: [...document.querySelectorAll('#contextBody details')].map(element => element.open),
+        selectedIndex: index, candidateKind, restoring: false,
+    };
+    updateContextReturn();
+}
+
+async function returnToReferenceContext() {
+    const task = contextReturnTask;
+    if (!task || task.group !== currentGroup || task.restoring) return;
+    task.restoring = true;
+    updateContextReturn();
+    const revision = ++archiveRevision;
+    document.querySelector('.workspace').classList.add('task-restoring');
+    closeResearch();
+    selectedDate = task.date;
+    selectedMonth = task.month;
+    selectedHours = new Set(task.hours);
+    selectedUsers = new Set(task.users);
+    mediaFilter = task.media;
+    hideNoise = task.hideNoise;
+    mentionOnly = task.mentionOnly;
+    searchQuery = task.searchQuery;
+    globalSearchQuery = task.globalSearchQuery;
+    document.getElementById('searchInput').value = task.input;
+    document.getElementById('searchScope').value = task.scope;
+    combinedSearch = { ...task.combined };
+    document.getElementById('searchMemberFragment').value = task.fragment;
+    syncSearchControls();
+    await loadMessages(false, task.messages);
+    if (contextReturnTask !== task || task.group !== currentGroup || revision !== archiveRevision) return;
+    renderCalendar();
+    const session = { ...task.session, archive: revision, cache: new Map(task.session.cache), pending: new Set(), failed: new Set(task.session.failed), interrupted: new Set(task.session.interrupted || []) };
+    ctxSession = session;
+    document.getElementById('contextPanel').classList.toggle('expanded', task.expanded);
+    const density = document.getElementById('ctxDensityBtn');
+    density.textContent = task.expanded ? '紧凑' : '全文';
+    density.title = task.expanded ? '只显示邻域消息摘要' : '显示全部消息正文';
+    density.setAttribute('aria-pressed', String(task.expanded));
+    renderContext(session);
+    document.querySelectorAll('#contextBody details').forEach((element, index) => { element.open = !!task.details[index]; });
+    discardContextReturn();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (task.group !== currentGroup || revision !== archiveRevision || ctxSession !== session) return;
+    document.querySelectorAll(task.candidateKind === 'forward' ? '.ctx-reference-candidate' : '.ctx-reverse-candidate')[task.selectedIndex]?.focus({ preventScroll: true });
+    document.getElementById('contextBody').scrollTop = task.contextScroll;
+    document.getElementById('messages').scrollTop = task.readingScroll;
+    document.querySelector('.workspace').classList.remove('task-restoring');
+    saveReadingPosition();
+}
+
+function contextDayMessages(messages, date) {
+    const seen = new Set();
+    return messages.filter(message => message.date === date).sort((left, right) => (left.timestamp || 0) - (right.timestamp || 0)).filter(message => {
+        const key = String(message.id);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function contextReadPlan(messages, date, id, counts) {
+    const day = contextDayMessages(messages, date);
+    const index = day.findIndex(message => String(message.id) === String(id));
+    const dates = Object.keys(counts).filter(value => counts[value] > 0).sort();
+    return {
+        day, index,
+        before: index >= 0 ? Math.max(0, 10 - index) : 0,
+        after: index >= 0 ? Math.max(0, 10 - (day.length - index - 1)) : 0,
+        previous: dates.filter(value => value < date).at(-1) || '',
+        next: dates.find(value => value > date) || '',
+    };
+}
+
+function contextNeighborhood(plan, previous = [], next = []) {
+    if (plan.index < 0) return [];
+    return [
+        ...(plan.before ? previous.slice(-plan.before) : []),
+        ...plan.day.slice(Math.max(0, plan.index - 10), plan.index + 11),
+        ...(plan.after ? next.slice(0, plan.after) : []),
+    ];
+}
+
+function contextDateGap(from, to) {
+    return Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000);
+}
+
+async function openContext(id, date = selectedDate) {
+    id = String(id);
+    const prior = ctxSession?.group === currentGroup && ctxSession.archive === archiveRevision ? ctxSession : null;
+    const cache = new Map(prior?.cache || []);
+    cache.set(selectedDate, contextDayMessages(allMessages, selectedDate));
+    const day = cache.get(date);
+    if (!day) return;
+    const plan = contextReadPlan(day, date, id, dateCounts);
+    if (plan.index < 0) return;
+    const session = { group: currentGroup, archive: archiveRevision, date, id, plan, cache, failed: new Set(), interrupted: new Set(prior?.interrupted || []), pending: new Set(), loading: false };
+    ctxSession = session;
+    ctxFocusId = id;
+    const dates = [plan.before && plan.previous, plan.after && plan.next].filter(Boolean);
+    for (const target of dates) if (!cache.has(target) && !session.interrupted.has(target)) session.pending.add(target);
+    session.loading = session.pending.size > 0;
+    renderContext(session);
+    await Promise.all([...session.pending].map(target => loadContextDay(session, target)));
+}
+
+async function loadContextDay(session, date) {
+    const current = () => ctxSession === session && session.group === currentGroup && session.archive === archiveRevision;
+    try {
+        const response = await fetch('/api/messages?' + new URLSearchParams({ date, group: session.group || '' }));
+        const data = await response.json();
+        if (!current()) return;
+        if (!response.ok || !Array.isArray(data.messages)) throw new Error('context day unavailable');
+        session.cache.set(date, contextDayMessages(data.messages, date));
+        session.failed.delete(date);
+        session.interrupted?.delete(date);
+    } catch {
+        if (current()) { session.failed.add(date); session.interrupted?.delete(date); }
+    } finally {
+        if (current()) {
+            session.pending.delete(date);
+            session.loading = session.pending.size > 0;
+            renderContext(session, true);
+        }
+    }
+}
+
+function retryContextDay(date) {
+    const session = ctxSession;
+    if (!session || !session.failed.has(date) || session.pending.has(date)) return;
+    session.explicitLoads ??= new Set();
+    session.explicitLoads.add(date);
+    session.pending.add(date);
+    session.loading = true;
+    renderContext(session, true);
+    return loadContextDay(session, date);
+}
+
+function continueContextDay(date) {
+    const session = ctxSession;
+    if (!session || !session.interrupted?.has(date) || session.pending.has(date)) return;
+    session.explicitLoads ??= new Set();
+    session.explicitLoads.add(date);
+    session.pending.add(date);
+    session.loading = true;
+    renderContext(session, true);
+    return loadContextDay(session, date);
+}
+
+function jumpFromContext(date, id) {
+    if (date === selectedDate) {
+        closeContext();
+        jumpToMessage(id);
+        return;
+    }
+    return jumpToSource(date, id);
+}
 
 function isOverlaySidebar() {
     return false;
@@ -2185,72 +2580,224 @@ function ctxMsgHtml(m, opts = {}) {
     const user = opts.continuation
         ? `<span class="ctx-msg-repeat" title="同上：${escapeHtml(m.user)}">↳</span>`
         : `<span class="ctx-msg-user">${escapeHtml(m.user)}</span>`;
-    return `<div class="${cls.join(' ')}" style="--user-accent:${accent}" onclick="openContext('${m.id}')">
+    const contextAction = escapeAttr(`openContext(${JSON.stringify(String(m.id))}, ${JSON.stringify(m.date)})`);
+    const jumpAction = escapeAttr(`event.stopPropagation();jumpFromContext(${JSON.stringify(m.date)}, ${JSON.stringify(String(m.id))})`);
+    return `<div class="${cls.join(' ')}" data-message-id="${escapeAttr(String(m.id))}" data-date="${escapeAttr(m.date)}" style="--user-accent:${accent}" role="button" tabindex="0" onclick="${contextAction}" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();this.click()}">
         <div class="ctx-msg-meta">
             ${user}
             <span class="ctx-msg-time">${time}</span>
         </div>
         <div class="ctx-msg-content" title="${escapeAttr(preview.slice(0, 300))}">${body}</div>
-        <button class="ctx-jump" onclick="event.stopPropagation();closeContext();jumpToMessage('${m.id}')" title="跳到消息列表" aria-label="跳到消息列表">↗</button>
+        <button class="ctx-jump" onclick="${jumpAction}" title="跳到 ${escapeAttr(m.date)} 原文" aria-label="跳到消息列表">↗</button>
     </div>`;
 }
 
-function openContext(id) {
-    id = String(id);
-    // 当天全量消息（按时间排序），与筛选解耦
-    const day = allMessages.filter(m => m.date === selectedDate).sort((a, b) => a.timestamp - b.timestamp);
-    const idx = day.findIndex(m => String(m.id) === id);
+function contextQuoteText(content) {
+    const text = String(content || '');
+    const separator = ' - - - - - - - - - - - - - - - ';
+    const split = text.indexOf(separator);
+    if (split < 0) return null;
+    if (!text.startsWith('「')) return text.slice(0, split);
+    let depth = 0;
+    for (let index = 0; index < text.length; index++) {
+        if (text[index] === '「') depth++;
+        if (text[index] === '」' && --depth === 0) return text.slice(1, index);
+    }
+    return text.slice(0, split);
+}
+
+function loadedReferenceMessages(session) {
+    const dates = [session.date, session.plan.previous, session.plan.next].filter(Boolean);
+    const available = [...new Set(dates)].filter(date => session.cache.has(date));
+    const seen = new Set();
+    const messages = available.flatMap(date => session.cache.get(date).filter(message => message.date === date)).filter(message => {
+        const key = JSON.stringify([message.date, String(message.id)]);
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+    });
+    return { available, messages };
+}
+
+function loadedReferenceCandidates(focus, session, scope = loadedReferenceMessages(session)) {
+    const quote = contextQuoteText(focus.content);
+    const explicit = focus.reply_to && typeof focus.reply_to === 'object' ? focus.reply_to : null;
+    if (quote === null && !explicit) return null;
+    const { available } = scope;
+    const loaded = scope.messages.filter(message => message.date !== focus.date || String(message.id) !== String(focus.id));
+    const result = { quote, explicit, available, candidates: [], kind: 'text', incomplete: session.pending.size > 0 || session.failed.size > 0 || (session.interrupted?.size || 0) > 0 };
+    if (explicit) {
+        result.kind = 'explicit';
+        if (explicit.id === undefined || explicit.id === null || !String(explicit.id) || explicit.group !== undefined && String(explicit.group) !== session.group) return result;
+        result.candidates = loaded.filter(message => String(message.id) === String(explicit.id) && (!explicit.date || message.date === explicit.date) && (explicit.from_uid === undefined || String(message.from_uid ?? '') === String(explicit.from_uid)));
+        result.verified = !!explicit.date && result.candidates.length === 1;
+        return result;
+    }
+    const normalize = text => String(text || '').replace(/[\s\u200b\u3000]+/g, ' ').trim();
+    const needle = normalize(quote);
+    result.candidates = needle ? loaded.filter(message => normalize(message.content) === needle) : [];
+    return result;
+}
+
+function renderContextReference(focus, session) {
+    const result = loadedReferenceCandidates(focus, session);
+    session.referenceCandidates = result?.candidates || [];
+    if (!result) return '';
+    const heading = result.kind === 'explicit' ? result.verified ? '显式来源日期/ID已在本次加载范围核对' : '显式来源标识待核对' : '本次已加载范围内的文本匹配候选（不确认来源）';
+    const status = result.candidates.length > 1 ? `有 ${result.candidates.length} 条候选，存在歧义；请选择要核对的原文，不默认选首条。` : result.candidates.length === 1 ? '1 条候选；只有明确选择才打开原文。' : '本次已加载范围内未定位；不代表全历史不存在。';
+    const clues = result.explicit ? Object.entries(result.explicit).filter(([key]) => ['id', 'date', 'user', 'from_uid', 'group'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · ') : '';
+    const longQuote = result.quote !== null && (result.quote.length > 180 || result.quote.split('\n').length > 3);
+    const quote = result.quote !== null ? `<details${longQuote ? '' : ' open'}><summary>引用原文（完整保留${longQuote ? '，展开查看' : ''}）</summary><blockquote>${escapeHtml(result.quote)}</blockquote></details>` : '';
+    const candidates = result.candidates.map((message, index) => `<button type="button" class="ctx-reference-candidate" data-id="${escapeAttr(String(message.id))}" data-date="${escapeAttr(message.date)}" data-uid="${escapeAttr(String(message.from_uid ?? ''))}" onclick="jumpReferenceCandidate(${index})">${escapeHtml(message.date)} · ${escapeHtml((message.time || '').split(' ')[1] || '')} · ${escapeHtml(message.user || '未记录昵称')}<small>消息 ID ${escapeHtml(String(message.id))} · 成员 ID ${escapeHtml(String(message.from_uid ?? '未记录'))}</small><small>打开此候选原文 ↗</small></button>`).join('');
+    return `<section class="ctx-reference" id="contextReferences" aria-label="引用定位"><strong>${heading}</strong>${quote}${clues ? `<p>归档携带的来源线索：${escapeHtml(clues)}</p>` : ''}<p>${status}</p><small>已加载日期：${result.available.map(escapeHtml).join('、')}${result.incomplete ? session.failed.size ? '；邻日加载失败，候选范围尚不完整。' : '；邻日尚未完成读取，候选范围尚不完整。' : ''}</small>${candidates}</section>`;
+}
+
+function jumpReferenceCandidate(index) {
+    const session = ctxSession;
+    const candidate = session?.referenceCandidates?.[index];
+    if (!candidate || session.group !== currentGroup || session.archive !== archiveRevision) return;
+    const messages = session.cache.get(candidate.date);
+    if (!messages?.some(message => String(message.id) === String(candidate.id))) return;
+    captureContextReturn(session, index, 'forward');
+    return jumpToSource(candidate.date, String(candidate.id), undefined, undefined, messages, true);
+}
+
+function loadedReverseReferences(focus, session) {
+    const scope = loadedReferenceMessages(session);
+    const clues = [];
+    for (const message of scope.messages) {
+        if (message.date === focus.date && String(message.id) === String(focus.id)) continue;
+        if (contextQuoteText(message.content) === null && !(message.reply_to && typeof message.reply_to === 'object')) continue;
+        const reference = loadedReferenceCandidates(message, session, scope);
+        if (reference.candidates.some(candidate => candidate.date === focus.date && String(candidate.id) === String(focus.id))) clues.push({ message, reference });
+    }
+    clues.sort((left, right) => (left.message.timestamp || 0) - (right.message.timestamp || 0) || left.message.date.localeCompare(right.message.date) || String(left.message.id).localeCompare(String(right.message.id)));
+    return { clues, available: scope.available, incomplete: session.pending.size > 0 || session.failed.size > 0 || (session.interrupted?.size || 0) > 0 };
+}
+
+function renderReverseReferences(focus, session) {
+    const result = loadedReverseReferences(focus, session);
+    session.reverseReferenceCandidates = result.clues.map(clue => clue.message);
+    const rows = result.clues.map(({ message, reference }, index) => {
+        const label = reference.kind === 'text' ? '文本匹配反向线索（不确认回复关系）' : reference.verified ? '显式来源日期/ID及已提供身份线索已核对' : '显式来源标识待核对（不确认回复关系）';
+        const ambiguity = reference.candidates.length > 1 ? `存在歧义：${reference.candidates.length} 条可能原文，不默认确认当前这一条。` : reference.kind === 'text' ? '本次范围只有1条文本匹配原文，仍不确认回复关系。' : '';
+        const candidates = reference.candidates.map(candidate => `${candidate.date} · 消息 ID ${String(candidate.id)} · ${candidate.user || '未记录昵称'} · 成员 ID ${String(candidate.from_uid ?? '未记录')}`).join('；');
+        const quote = reference.quote === null ? '' : `<details${reference.quote.length > 180 || reference.quote.split('\n').length > 3 ? '' : ' open'}><summary>线索中的引用原文（完整保留）</summary><blockquote class="ctx-reverse-quote">${escapeHtml(reference.quote)}</blockquote></details>`;
+        const explicit = reference.explicit ? `<p>显式线索：${escapeHtml(Object.entries(reference.explicit).filter(([key]) => ['id', 'date', 'from_uid', 'user', 'group'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · '))}</p>` : '';
+        return `<div class="ctx-reverse-item"><strong>${label}</strong>${quote}${explicit}${ambiguity ? `<p>${ambiguity}</p>` : ''}<small>可能原文：${escapeHtml(candidates)}</small><button type="button" class="ctx-reverse-candidate" data-id="${escapeAttr(String(message.id))}" data-date="${escapeAttr(message.date)}" data-uid="${escapeAttr(String(message.from_uid ?? ''))}" data-kind="${reference.kind}" onclick="jumpReverseReference(${index})">${escapeHtml(message.date)} · ${escapeHtml((message.time || '').split(' ')[1] || '')} · ${escapeHtml(message.user || '未记录昵称')}<small>线索消息 ID ${escapeHtml(String(message.id))} · 成员 ID ${escapeHtml(String(message.from_uid ?? '未记录'))}</small><small>打开此反向线索原文 ↗</small></button></div>`;
+    }).join('');
+    return `<section class="ctx-reference" id="contextReverseReferences" aria-label="反向引用线索"><strong>本次已加载范围内的反向引用线索</strong><p>${result.clues.length ? `${result.clues.length} 条线索；仅明确选择后跳转。` : '本次已加载范围未找到反向线索，不代表全历史不存在。'}</p><small>已加载日期：${result.available.map(escapeHtml).join('、')}${result.incomplete ? session.failed.size ? '；邻日加载失败，范围尚不完整。' : '；邻日尚未完成读取，范围尚不完整。' : ''}</small>${rows}</section>`;
+}
+
+function jumpReverseReference(index) {
+    const session = ctxSession;
+    const candidate = session?.reverseReferenceCandidates?.[index];
+    if (!candidate || session.group !== currentGroup || session.archive !== archiveRevision) return;
+    const messages = session.cache.get(candidate.date);
+    if (!messages?.some(message => String(message.id) === String(candidate.id))) return;
+    captureContextReturn(session, index);
+    return jumpToSource(candidate.date, String(candidate.id), undefined, undefined, messages, true);
+}
+
+function updateContextLoadStatus(session, markup) {
+    const container = document.getElementById('contextLoadStatus');
+    if (container.contextSession !== session) {
+        container.innerHTML = '';
+        container.contextSession = session;
+    }
+    const template = document.createElement('template');
+    template.innerHTML = markup;
+    const retained = new Set();
+    for (const replacement of [...template.content.children]) {
+        const date = replacement.dataset.loadDate;
+        const existing = [...container.children].find(element => element.dataset.loadDate === date);
+        if (!existing) { container.appendChild(replacement); retained.add(replacement); continue; }
+        retained.add(existing);
+        existing.firstChild.textContent = replacement.firstChild.textContent;
+        const button = existing.querySelector('button');
+        const nextButton = replacement.querySelector('button');
+        if (button && nextButton) {
+            for (const attribute of [...button.attributes]) if (!nextButton.hasAttribute(attribute.name)) button.removeAttribute(attribute.name);
+            for (const attribute of [...nextButton.attributes]) button.setAttribute(attribute.name, attribute.value);
+            button.textContent = nextButton.textContent;
+        } else if (nextButton) existing.appendChild(nextButton);
+        else button?.remove();
+    }
+    for (const element of [...container.children]) if (!retained.has(element)) element.remove();
+    container.hidden = retained.size === 0;
+}
+
+function patchFocusedContext(parent, replacement) {
+    const key = node => node.nodeType === 1 ? `${node.tagName}|${node.id}|${node.dataset.messageId || node.dataset.id || ''}|${node.dataset.date || ''}|${node.className}` : String(node.nodeType);
+    let cursor = parent.firstChild;
+    for (const next of [...replacement.childNodes]) {
+        let existing = cursor;
+        while (existing && key(existing) !== key(next)) existing = existing.nextSibling;
+        if (!existing) { parent.insertBefore(next, cursor); continue; }
+        if (existing !== cursor) parent.insertBefore(existing, cursor);
+        if (existing.nodeType === 1) {
+            for (const attribute of [...existing.attributes]) if (!next.hasAttribute(attribute.name)) existing.removeAttribute(attribute.name);
+            for (const attribute of [...next.attributes]) if (existing.getAttribute(attribute.name) !== attribute.value) existing.setAttribute(attribute.name, attribute.value);
+            patchFocusedContext(existing, next);
+        } else if (existing.nodeValue !== next.nodeValue) existing.nodeValue = next.nodeValue;
+        cursor = existing.nextSibling;
+    }
+    while (cursor) { const next = cursor.nextSibling; parent.removeChild(cursor); cursor = next; }
+}
+
+function renderContext(session, preserveView = false) {
+    if (ctxSession !== session) return;
+    const previousScroll = document.getElementById('contextBody').scrollTop;
+    const previousDetails = preserveView ? [...document.querySelectorAll('#contextBody details')].map(element => element.open) : [];
+    const { id, date, plan } = session;
+    const day = plan.day;
+    const idx = plan.index;
     if (idx === -1) return;
     const focus = day[idx];
     ctxFocusId = id;
 
     const parts = [];
+    const loadStatus = [];
+    const neighborhood = contextNeighborhood(plan, session.cache.get(plan.previous), session.cache.get(plan.next));
+    parts.push('<p class="research-note">时间邻域 · 焦点前后各最多10条；跨日不代表同一话题。<br>仅本日及按需前后各一份相邻归档日。</p>');
+    for (const [side, need, target] of [['更早', plan.before, plan.previous], ['更晚', plan.after, plan.next]]) {
+        if (!need) continue;
+        if (!target) parts.push(`<p class="research-note">没有${side}的归档日，已到本次邻域范围。</p>`);
+        else if (session.pending.has(target)) loadStatus.push(`<p class="research-note" data-load-date="${escapeAttr(target)}">正在读取${side}归档 ${escapeHtml(target)}…${session.interrupted?.has(target) ? `<button type="button" class="ctx-density-toggle" data-continue-date="${escapeAttr(target)}" aria-disabled="true">读取中…</button>` : session.failed.has(target) ? `<button type="button" class="ctx-density-toggle" data-retry-date="${escapeAttr(target)}" aria-disabled="true">重试中…</button>` : ''}</p>`);
+        else if (session.failed.has(target)) loadStatus.push(`<p class="research-note" data-load-date="${escapeAttr(target)}">${escapeHtml(target)} 邻日加载失败，当前内容已保留。<button type="button" class="ctx-density-toggle" data-retry-date="${escapeAttr(target)}" onclick="retryContextDay('${target}')">重试</button></p>`);
+        else if (session.interrupted?.has(target)) loadStatus.push(`<p class="research-note" data-load-date="${escapeAttr(target)}">${escapeHtml(target)} 尚未完成读取，当前内容已保留。<button type="button" class="ctx-density-toggle" data-continue-date="${escapeAttr(target)}" onclick="continueContextDay('${target}')">继续读取</button></p>`);
+        else if ((session.cache.get(target)?.length || 0) < need) parts.push(`<p class="research-note">${escapeHtml(target)} 已读取，${side}内容仍不足10条；已到本次邻域范围，不再继续读取。</p>`);
+        if (target && session.explicitLoads?.has(target) && !session.pending.has(target) && !session.failed.has(target) && !session.interrupted?.has(target)) loadStatus.push(`<p class="research-note" data-load-date="${escapeAttr(target)}">${escapeHtml(target)} 已完成读取，可继续核对候选。<button type="button" class="ctx-density-toggle" aria-disabled="true">已完成读取</button></p>`);
+    }
 
-    // 1. 它引用的原消息（复用内容索引）
-    let quotedId = null;
-    if (focus.content && focus.content.includes(' - - - - - - - - - - - - - - - ') && focus.content.startsWith('「')) {
-        const q = focus.content.substring(1, focus.content.indexOf('」'));
-        const hit = window.__contentIndex && window.__contentIndex[normForQuote(q)];
-        if (hit && String(hit.id) !== id) quotedId = String(hit.id);
-    }
-    if (quotedId) {
-        const qm = day.find(m => String(m.id) === quotedId);
-        if (qm) { parts.push('<div class="ctx-section-label"><span>被回复的原消息</span><span class="ctx-section-count">1 条</span></div>'); parts.push(ctxMsgHtml(qm, { sameUser: false })); }
-    }
+    parts.push(renderContextReference(focus, session));
 
     // 2. 时间邻域（紧凑模式前后各 10 条），焦点居中；同一发言人标记
-    const RADIUS = 10;
-    const from = Math.max(0, idx - RADIUS);
-    const to = Math.min(day.length - 1, idx + RADIUS);
-    parts.push(`<div class="ctx-section-label"><span>对话邻域</span><span class="ctx-section-count">${to - from + 1} 条</span></div>`);
-    for (let i = from; i <= to; i++) {
-        const m = day[i];
-        const isFocus = String(m.id) === id;
+    parts.push(`<div class="ctx-section-label"><span>对话邻域</span><span class="ctx-section-count">${neighborhood.length} 条</span></div>`);
+    for (const [index, m] of neighborhood.entries()) {
+        const previous = neighborhood[index - 1];
+        if (!previous || previous.date !== m.date) {
+            const gap = previous ? ` · 间隔 ${contextDateGap(previous.date, m.date)} 天（归档日期）` : '';
+            parts.push(`<div class="ctx-section-label ctx-date-divider">${escapeHtml(m.date)}${gap}</div>`);
+        }
+        const isFocus = m.date === date && String(m.id) === id;
         parts.push(ctxMsgHtml(m, {
             focus: isFocus,
             sameUser: m.user === focus.user && !isFocus,
-            continuation: i > from && day[i - 1].user === m.user && !isFocus,
+            continuation: previous?.date === m.date && previous.user === m.user && !isFocus,
         }));
     }
 
-    // 3. 回复了这条消息的后续消息（反向查找）
-    const myKey = focus.content ? normForQuote(focus.content) : null;
-    if (myKey) {
-        const repliers = day.filter(m => {
-            if (String(m.id) === id || !m.content || !m.content.startsWith('「')) return false;
-            const sepi = m.content.indexOf(' - - - - - - - - - - - - - - - ');
-            if (sepi === -1) return false;
-            const q = m.content.substring(1, m.content.indexOf('」'));
-            return normForQuote(q) === myKey;
-        });
-        if (repliers.length) {
-            parts.push(`<div class="ctx-section-label"><span>回复了这条的消息</span><span class="ctx-section-count">${repliers.length} 条</span></div>`);
-            repliers.forEach(m => parts.push(ctxMsgHtml(m, {})));
-        }
-    }
+    parts.push(renderReverseReferences(focus, session));
 
-    document.getElementById('contextBody').innerHTML = parts.join('');
-    document.getElementById('contextMeta').textContent = `${(focus.time || '').split(' ')[0] || selectedDate} · ${idx + 1}/${day.length}`;
+    const body = document.getElementById('contextBody');
+    if (preserveView && session.explicitLoads?.size && body.contains(document.activeElement)) {
+        const template = document.createElement('template');
+        template.innerHTML = parts.join('');
+        patchFocusedContext(body, template.content);
+    } else body.innerHTML = parts.join('');
+    if (preserveView) document.querySelectorAll('#contextBody details').forEach((element, index) => { if (index < previousDetails.length) element.open = previousDetails[index]; });
+    updateContextLoadStatus(session, loadStatus.join(''));
+    document.getElementById('contextMeta').textContent = `${date} · ${idx + 1}/${day.length}`;
     if (window.matchMedia?.('(max-width: 900px)')?.matches) {
         document.getElementById('sidebar').classList.add('collapsed');
         document.getElementById('sidebarToggle').classList.remove('open');
@@ -2260,12 +2807,14 @@ function openContext(id) {
 
     // 主列表里标记焦点
     document.querySelectorAll('.msg-item.ctx-focused').forEach(e => e.classList.remove('ctx-focused'));
-    const inList = document.getElementById('msg-' + id);
+    const inList = date === selectedDate ? document.getElementById('msg-' + id) : null;
     if (inList) inList.classList.add('ctx-focused');
 
     // 滚动面板到焦点消息
     requestAnimationFrame(() => {
-        const f = document.querySelector('.ctx-msg.focus');
+        if (ctxSession !== session) return;
+        if (preserveView) { document.getElementById('contextBody').scrollTop = previousScroll; return; }
+        const f = document.getElementById('contextReferences') || document.querySelector('.ctx-msg.focus');
         if (f) f.scrollIntoView({ block: 'center' });
     });
 }
@@ -2289,7 +2838,7 @@ async function loadEmojiMap() {
 }
 loadEmojiMap();
 
-function processForward(text) {
+function processForward(text, message) {
     const SEP = ' - - - - - - - - - - - - - - - ';
     // 统一处理流程：escape → urls → mentions → emoji
     const pipe = (s) => processEmoji(processMentions(processUrls(escapeHtml(s))), resolveEmoji);
@@ -2349,12 +2898,9 @@ function processForward(text) {
 
     const replyHtml = pipe(reply || '');
 
-    // 尝试匹配被引用的原消息：可点击跳转 + 标出原作者
-    const qKey = normForQuote(quote);
-    const hit = (quoteLabel || !qKey) ? null : (window.__contentIndex && window.__contentIndex[qKey]);
-    const targetId = hit ? hit.id : null;
-    const authorTag = (hit && hit.user) ? `<span class="quote-author">${escapeHtml(hit.user)}：</span>` : '';
-    const jump = targetId ? `<button class="quote-jump" onclick="jumpToMessage('${targetId}')">回到原消息 ↗</button>` : '';
+    const authorTag = '';
+    const action = message ? escapeAttr(`showMessageContext(${JSON.stringify(String(message.id))})`) : '';
+    const jump = message && !quoteLabel ? `<button class="quote-jump" onclick="${action}">查看引用候选（非确认来源）</button>` : '';
     const longQuote = quote.length > 180 || quote.split('\n').length > 3;
     const quoted = longQuote
         ? `<details class="forward-quote"><summary>${authorTag}<span class="quote-preview">${escapeHtml(quote.slice(0, 72))}… </span><span>引用原文</span></summary><div class="quote-full">${quoteHtml}</div>${jump}</details>`
@@ -2436,6 +2982,12 @@ async function switchGroup(groupId) {
     closeGroupPicker();
     resetArchiveView();
     currentGroup = groupId;
+    searchMembersRevision++;
+    searchMembers = [];
+    document.getElementById('searchMember').innerHTML = '<option value="">所有成员</option>';
+    document.getElementById('searchMembersStatus').textContent = '';
+    if (document.getElementById('searchScope').value === 'combined') document.getElementById('searchScope').value = 'all';
+    syncSearchControls();
     document.getElementById('groupSelect').value = groupId;
     selectedHours.clear();
     selectedUsers.clear();
@@ -2940,6 +3492,7 @@ function setQaComposer(open) {
 }
 
 async function toggleQaComposer() {
+    if (readingTask?.kind === 'ai') { await returnToReadingTask(); return; }
     const research = document.getElementById('researchPanel');
     const opening = !(research.classList.contains('open') && research.dataset.view === 'ai');
     if (opening && !(await ensureAiConfigured('问群历史'))) return;
@@ -2955,6 +3508,7 @@ async function askQuestion() {
     const input = document.getElementById('qaInput');
     const question = input.value.trim();
     if (!question) return;
+    discardReadingTask();
     if (!(await ensureAiConfigured('问群历史'))) return;
     const revision = archiveRevision;
     const btn = document.getElementById('qaSendBtn');
@@ -2989,7 +3543,7 @@ async function askQuestion() {
             html += '<div class="qa-sources"><details><summary>来源消息 (' + data.sources.length + ')</summary>';
             for (const s of data.sources) {
                 const who = s.user ? escapeHtml(s.user) + ': ' : '';
-                html += `<div class="qa-source-item" onclick="jumpToSource('${s.date || ''}', '${s.id ?? ''}')">${s.date || ''} ${who}${escapeHtml(s.preview || '')}</div>`;
+                html += `<div class="qa-source-item" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" onclick="jumpToSource('${s.date || ''}', '${s.id ?? ''}', 'ai', this)">${s.date || ''} ${who}${escapeHtml(s.preview || '')}</div>`;
             }
             html += '</details></div>';
         }
@@ -3026,31 +3580,36 @@ function jumpToDate(date) {
 }
 
 // Q&A 来源点击：先切到消息所在日期，加载完成后滚动到该消息并高亮
-async function jumpToSource(date, id) {
+async function jumpToSource(date, id, kind, trigger, cachedMessages, preserveContextReturn = false) {
+    if (readingTask?.restoring) return;
     const sourceGroup = currentGroup;
-    resetArchiveView();
+    captureReadingTask(kind, trigger);
+    resetArchiveView({ preserveTask: !!readingTask, preserveContextReturn });
+    const revision = archiveRevision;
     selectedUsers.clear();
     selectedHours.clear();
     mediaFilter = 'all';
     mentionOnly = false;
     hideNoise = false;
-    clearSearch(false);
+    clearSearch(false, preserveContextReturn);
     closeResearch();
     if (date && date !== selectedDate) {
         selectedDate = date;
         const month = date.slice(0, 7);
         if (monthDates[month]) selectedMonth = month;
         renderCalendar();
-        await loadMessages();
+        await loadMessages(false, cachedMessages);
         updateSummaryBar();
     } else {
         renderAll();
         readingPositionReady = true;
     }
-    if (id && currentGroup === sourceGroup) {
+    if (id && currentGroup === sourceGroup && revision === archiveRevision) {
         // loadMessages 渲染是同步 DOM 更新，稍等一拍再滚动
-        setTimeout(() => { if (currentGroup === sourceGroup) jumpToMessage(id); }, 150);
+        setTimeout(() => { if (currentGroup === sourceGroup && revision === archiveRevision) jumpToMessage(id); }, 150);
     }
+    if (readingTask && currentGroup === sourceGroup && revision === archiveRevision) document.getElementById('taskReturnButton').focus({ preventScroll: true });
+    else if (contextReturnTask && currentGroup === sourceGroup && revision === archiveRevision) document.getElementById('contextReturnButton').focus({ preventScroll: true });
 }
 
 function renderMarkdown(md) {
@@ -3114,7 +3673,7 @@ async function loadDates() {
     renderArchiveNavigation();
 }
 
-async function loadMessages(preserveScroll) {
+async function loadMessages(preserveScroll, cachedMessages) {
     if (!selectedDate) { readingPositionReady = false; allMessages = []; renderAll(); updateSummaryBar(); updateComposer(); return; }
     const loadRevision = ++readingLoadRevision;
     const requestedGroup = currentGroup;
@@ -3128,8 +3687,7 @@ async function loadMessages(preserveScroll) {
         messageList.innerHTML = '<div class="empty">正在读取历史记录…</div>';
     }
     const groupParam = currentGroup ? '&group=' + encodeURIComponent(currentGroup) : '';
-    const resp = await fetch('/api/messages?date=' + selectedDate + groupParam);
-    const data = await resp.json();
+    const data = Array.isArray(cachedMessages) ? { messages: cachedMessages } : await (await fetch('/api/messages?date=' + selectedDate + groupParam)).json();
     if (loadRevision !== readingLoadRevision || requestedGroup !== currentGroup || requestedDate !== selectedDate) return;
     allMessages = data.messages || [];
     dateCounts[requestedDate] = allMessages.length;
@@ -3361,6 +3919,7 @@ function toggleUser(user) {
 /** 一键清空所有筛选（状态行的「清除」入口）：只显示"已筛选"却不给出路，
     用户还得自己回筛选面板一个个取消。 */
 function clearAllFilters() {
+    discardContextReturn();
     selectedHours.clear();
     selectedUsers.clear();
     mediaFilter = 'all';
@@ -3385,15 +3944,224 @@ function clearUserFilter() {
 let globalSearchTimer = null;
 let globalSearchQuery = '';
 let searchPage = null;
+let combinedSearch = { fromUid: '', dateFrom: '', dateTo: '', keywords: '' };
+let searchMembers = [];
+let searchMembersRevision = 0;
+let searchInteractionRevision = 0;
+for (const eventName of ['pointerdown', 'keydown', 'input', 'change']) {
+    document.addEventListener(eventName, () => { searchInteractionRevision++; }, true);
+}
+
+function canEnterSearchResults(transition) {
+    const panel = document.getElementById('researchPanel');
+    return !!transition && transition.interaction === searchInteractionRevision && transition.revision === searchRevision && transition.group === currentGroup && isCombinedSearch() && window.matchMedia('(max-width: 900px)').matches && document.getElementById('combinedSearchControls').open && panel.dataset.view === 'search' && panel.classList.contains('open');
+}
+
+async function enterSearchResults(transition) {
+    if (!canEnterSearchResults(transition)) return;
+    document.getElementById('combinedSearchControls').open = false;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const panel = document.getElementById('researchPanel');
+    if (transition.interaction !== searchInteractionRevision || transition.revision !== searchRevision || transition.group !== currentGroup || document.getElementById('combinedSearchControls').open || panel.dataset.view !== 'search' || !panel.classList.contains('open')) return;
+    document.getElementById('searchResultSummary')?.focus({ preventScroll: true });
+}
+
+function searchFormFeedback(message = '') {
+    const feedback = document.getElementById('combinedSearchFeedback');
+    feedback.textContent = message;
+    feedback.hidden = !message;
+}
+
+function isCombinedSearch() {
+    return document.getElementById('searchScope').value === 'combined';
+}
+
+function syncSearchControls() {
+    const combined = isCombinedSearch();
+    document.getElementById('combinedSearchControls').hidden = !combined;
+    const input = document.getElementById('searchInput');
+    input.placeholder = combined ? '正文同时包含：部署 回滚…' : document.getElementById('searchScope').value === 'day' ? '按完整文字片段搜当日…' : '按完整文字片段搜索…';
+    input.title = combined ? '正文按空白分词，所有词同时命中，不限顺序和距离。可只选发言人或日期。' : '按完整文字片段匹配；空格不代表多词 AND。搜索所有成员，不受阅读筛选影响。';
+    renderSearchMemberOptions();
+    document.getElementById('searchDateFrom').value = combinedSearch.dateFrom;
+    document.getElementById('searchDateTo').value = combinedSearch.dateTo;
+}
+
+function searchMemberChoices(members, fragment, selectedId) {
+    const query = String(fragment || '').trim().toLocaleLowerCase();
+    const matches = members.filter(member => member.names.some(name => String(name).toLocaleLowerCase().includes(query)));
+    const selected = members.find(member => member.id === selectedId);
+    const pinned = selected && !matches.some(member => member.id === selectedId) ? selected : null;
+    return { matches, selected, pinned };
+}
+
+function renderSearchMemberOptions() {
+    const fragment = document.getElementById('searchMemberFragment').value;
+    const { matches, selected, pinned } = searchMemberChoices(searchMembers, fragment, combinedSearch.fromUid);
+    const select = document.getElementById('searchMember');
+    const option = (member, label = '') => `<option value="${escapeHtml(member.id)}">${label}${escapeHtml(member.names.join(' / '))} · ID ${escapeHtml(member.id)}</option>`;
+    select.innerHTML = '<option value="">所有成员</option>' + (pinned ? option(pinned, '已选（不匹配候选词） · ') : '') + matches.map(member => option(member)).join('');
+    if (combinedSearch.fromUid && !selected) select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(combinedSearch.fromUid)}">已选 · ID ${escapeHtml(combinedSearch.fromUid)}</option>`);
+    select.value = combinedSearch.fromUid;
+    document.getElementById('memberFragmentCount').textContent = `${matches.length} / ${searchMembers.length} 位候选${fragment.trim() && !matches.length ? ' · 无匹配昵称' : ''}`;
+    document.getElementById('clearMemberFragment').disabled = !fragment;
+    document.getElementById('searchMemberIdentity').textContent = combinedSearch.fromUid ? `已选：${selected?.name || '成员'} · ID ${combinedSearch.fromUid}${pinned ? '（不匹配当前候选词，选择仍保留）' : ''}` : '未限定发言人；输入候选词不会自动选人。';
+}
+
+function filterSearchMembers(fragment) {
+    document.getElementById('searchMemberFragment').value = fragment;
+    renderSearchMemberOptions();
+}
+
+async function loadSearchMembers() {
+    const revision = ++searchMembersRevision;
+    const group = currentGroup;
+    const select = document.getElementById('searchMember');
+    const status = document.getElementById('searchMembersStatus');
+    select.disabled = true;
+    status.textContent = '正在读取全历史成员…';
+    try {
+        const data = await (await fetch('/api/search-members?' + new URLSearchParams({ group: group || '' }))).json();
+        if (revision !== searchMembersRevision || group !== currentGroup) return;
+        if (!data.ok || !Array.isArray(data.members)) throw new Error('members unavailable');
+        searchMembers = data.members;
+        renderSearchMemberOptions();
+        status.textContent = data.unidentifiedMessages ? `${data.unidentifiedMessages}条缺少成员ID，仅参与正文/日期检索` : `${data.members.length}位归档成员`;
+        select.disabled = false;
+    } catch {
+        if (revision === searchMembersRevision && group === currentGroup) status.innerHTML = '成员读取失败 <button type="button" onclick="loadSearchMembers()">重试</button>';
+    }
+}
+
+function changeCombinedCondition(key, value) {
+    combinedSearch[key] = value;
+    syncSearchControls();
+    onSearchInput(document.getElementById('searchInput').value);
+}
+
+function removeSearchKeyword(index) {
+    const words = combinedSearch.keywords.trim().split(/\s+/).filter(Boolean);
+    words.splice(index, 1);
+    document.getElementById('searchInput').value = words.join(' ');
+    onSearchInput(words.join(' '));
+}
+
+function combinedConditionChips() {
+    if (!isCombinedSearch()) return '';
+    const member = searchMembers.find(item => item.id === combinedSearch.fromUid);
+    const fields = [['fromUid', combinedSearch.fromUid ? `发言人 ${member?.name || ''} · ID ${combinedSearch.fromUid}` : ''], ['dateFrom', combinedSearch.dateFrom ? `从 ${combinedSearch.dateFrom}` : ''], ['dateTo', combinedSearch.dateTo ? `至 ${combinedSearch.dateTo}` : '']];
+    const chips = fields.filter(([, value]) => value).map(([key, value]) => `<button class="search-condition" onclick="changeCombinedCondition('${key}', '')" aria-label="移除${escapeHtml(value)}">${escapeHtml(value)} ×</button>`);
+    combinedSearch.keywords.trim().split(/\s+/).filter(Boolean).forEach((word, index) => chips.push(`<button class="search-condition" onclick="removeSearchKeyword(${index})" aria-label="移除关键词${escapeHtml(word)}">正文 ${escapeHtml(word)} ×</button>`));
+    return `<div class="search-conditions">${chips.join('')}</div>`;
+}
+
+let searchComposition = null;
+let searchCompositionTimer = null;
+let searchCompositionFinal = null;
+let searchCompositionDiscarded = false;
+document.getElementById('searchInput').addEventListener('compositionstart', startSearchComposition);
+document.getElementById('searchInput').addEventListener('compositionend', endSearchComposition);
+document.getElementById('searchInput').addEventListener('beforeinput', prepareSearchEdit);
+for (const eventName of ['paste', 'cut', 'drop', 'pointerdown']) {
+    document.getElementById('searchInput').addEventListener(eventName, prepareSearchEdit);
+}
+
+function prepareSearchEdit(event) {
+    if (event.isComposing || searchComposition) return;
+    const input = document.getElementById('searchInput');
+    if (event.type !== 'beforeinput' || (event.inputType && !['insertText', 'insertCompositionText'].includes(event.inputType)) || input.selectionStart !== input.selectionEnd) {
+        searchCompositionFinal = null;
+        searchCompositionDiscarded = false;
+    }
+}
+
+function resetSearchComposition() {
+    if (searchComposition || searchCompositionTimer !== null) {
+        document.getElementById('searchInput').value = globalSearchQuery;
+        searchCompositionDiscarded = true;
+    }
+    clearTimeout(searchCompositionTimer);
+    searchCompositionTimer = null;
+    searchComposition = null;
+    searchCompositionFinal = null;
+}
+
+function startSearchComposition() {
+    clearTimeout(searchCompositionTimer);
+    clearTimeout(searchDebounceTimer);
+    clearTimeout(globalSearchTimer);
+    searchCompositionTimer = null;
+    searchCompositionFinal = null;
+    searchCompositionDiscarded = false;
+    searchComposition = { group: currentGroup, scope: document.getElementById('searchScope').value, ending: false };
+    searchRevision++;
+}
+
+function endSearchComposition() {
+    const composition = searchComposition;
+    if (!composition) {
+        if (searchCompositionDiscarded) document.getElementById('searchInput').value = globalSearchQuery;
+        return;
+    }
+    composition.ending = true;
+    clearTimeout(searchCompositionTimer);
+    searchCompositionTimer = setTimeout(() => {
+        searchCompositionTimer = null;
+        if (searchComposition !== composition || composition.group !== currentGroup || composition.scope !== document.getElementById('searchScope').value) return;
+        searchComposition = null;
+        const value = document.getElementById('searchInput').value;
+        searchCompositionFinal = { value, awaitingInput: true };
+        onSearchInput(value);
+    }, 0);
+}
+
+function handleSearchInput(event) {
+    if (searchCompositionDiscarded) {
+        document.getElementById('searchInput').value = globalSearchQuery;
+        if (!event.isComposing) searchCompositionDiscarded = false;
+        return;
+    }
+    if (event.isComposing) return;
+    if (searchComposition) {
+        if (!searchComposition.ending) return;
+        clearTimeout(searchCompositionTimer);
+        searchCompositionTimer = null;
+        searchComposition = null;
+        searchCompositionFinal = { value: event.target.value, awaitingInput: false };
+        onSearchInput(event.target.value);
+        return;
+    }
+    if (searchCompositionFinal?.awaitingInput) {
+        const previous = searchCompositionFinal.value;
+        searchCompositionFinal = { value: event.target.value, awaitingInput: false };
+        if (previous !== event.target.value) onSearchInput(event.target.value);
+        return;
+    }
+    if (searchCompositionFinal?.value === event.target.value) return;
+    searchCompositionFinal = null;
+    onSearchInput(event.target.value);
+}
+
+function searchInputKeydown(event) {
+    if (event.isComposing || event.keyCode === 229 || searchComposition) return;
+    searchCompositionDiscarded = false;
+    searchCompositionFinal = null;
+    if (event.key === 'Enter') runGlobalSearch(event.target.value.trim());
+}
 
 function onSearchInput(value) {
+    if (searchComposition) return;
+    discardContextReturn();
+    searchFormFeedback();
+    discardReadingTask();
     searchPage = null;
     clearTimeout(searchDebounceTimer);
     clearTimeout(globalSearchTimer);
     searchRevision++;
     globalSearchQuery = value.trim();
+    if (isCombinedSearch()) combinedSearch.keywords = value.trim();
     document.getElementById('searchAllHint').dataset.payload = '';
-    if (!value.trim()) { clearSearch(); return; }
+    if (!value.trim() && !isCombinedSearch()) { clearSearch(); return; }
     searchDebounceTimer = setTimeout(() => {
         searchQuery = document.getElementById('searchScope').value === 'day' ? value.trim().toLowerCase() : '';
         document.getElementById('searchClear').className = 'search-clear show';
@@ -3404,26 +4172,61 @@ function onSearchInput(value) {
 }
 
 function changeSearchScope() {
-    document.getElementById('searchInput').placeholder = document.getElementById('searchScope').value === 'day' ? '搜索当前日期的记录…' : '搜索这个群的历史…';
+    resetSearchComposition();
+    syncSearchControls();
+    if (isCombinedSearch()) { document.getElementById('combinedSearchControls').open = true; loadSearchMembers(); }
     onSearchInput(document.getElementById('searchInput').value);
+}
+
+function searchScopeLabel() {
+    const group = availableGroups.find(item => item.id === currentGroup)?.name || currentGroup || '未选择群聊';
+    const range = document.getElementById('searchScope').value === 'day' ? `当前日期 ${selectedDate || '未选择日期'}` : '全部日期';
+    if (isCombinedSearch()) {
+        const dates = combinedSearch.dateFrom || combinedSearch.dateTo ? '归档日期范围（含首尾）' : '全部日期';
+        const person = combinedSearch.fromUid ? '指定发言人' : '所有成员';
+        return `当前群 · ${escapeHtml(group)} · ${dates} · ${person}`;
+    }
+    return `当前群 · ${range} · 所有成员<br>${escapeHtml(group)}`;
+}
+
+function searchMatchHelp() {
+    if (isCombinedSearch()) return '<p class="search-match-help">组合检索 · 正文按空白分词，所有词同时命中（AND），不限顺序和距离。阅读筛选不影响搜索。</p>' + combinedConditionChips();
+    return '<p class="search-match-help">按完整文字片段匹配；空格不代表多词 AND。<br>阅读筛选不影响搜索结果。</p>';
 }
 
 function showSearchState(message) {
     document.getElementById('searchResults').setAttribute('aria-busy', 'false');
-    document.getElementById('searchResults').innerHTML = `<p class="research-note">${escapeHtml(message)}</p>`;
+    document.getElementById('searchResults').innerHTML = `<div class="sr-head"><span class="search-scope-label">${searchScopeLabel()}</span></div>${searchMatchHelp()}<p class="research-note" id="searchResultSummary" tabindex="-1">${escapeHtml(message)}</p>`;
     document.getElementById('searchResults').classList.add('show');
     openResearch('search');
 }
 
-async function runGlobalSearch(q) {
+async function runGlobalSearch(q, explicitSearch = false) {
+    if (searchComposition) return;
+    clearTimeout(searchCompositionTimer);
+    searchCompositionTimer = null;
+    if (explicitSearch) {
+        searchCompositionFinal = null;
+        searchCompositionDiscarded = false;
+    }
+    discardReadingTask();
     searchPage = null;
     clearTimeout(globalSearchTimer);
     const revision = ++searchRevision;
     const group = currentGroup;
+    const transition = explicitSearch && isCombinedSearch() && window.matchMedia('(max-width: 900px)').matches ? { revision, group, interaction: searchInteractionRevision } : null;
+    searchFormFeedback();
+    const fail = message => { showSearchState(message); if (explicitSearch) searchFormFeedback(message); };
     globalSearchQuery = q;
     const hint = document.getElementById('searchAllHint');
     hint.dataset.payload = '';
-    if (!q) { clearSearch(); return; }
+    const conditions = isCombinedSearch() ? { ...combinedSearch, keywords: q } : null;
+    if (conditions) {
+        combinedSearch = { ...conditions };
+        if (!conditions.fromUid && !conditions.dateFrom && !conditions.dateTo && !q) { fail('请选择发言人、归档日期或输入正文关键词，不会空查询全部历史。'); return; }
+        if (!document.getElementById('combinedSearchForm').checkValidity()) { fail('请填写有效的归档日期。'); return; }
+        if (conditions.dateFrom && conditions.dateTo && conditions.dateFrom > conditions.dateTo) { fail('起始归档日期不能晚于结束日期。'); return; }
+    } else if (!q) { clearSearch(); return; }
     const dayOnly = document.getElementById('searchScope').value === 'day';
     if (dayOnly) {
         const query = q.toLowerCase();
@@ -3434,20 +4237,23 @@ async function runGlobalSearch(q) {
     }
     try {
         const params = new URLSearchParams({ group: currentGroup || '', q, limit: '60' });
-        const d = await (await fetch('/api/search?' + params)).json();
+        if (conditions) { params.delete('q'); params.set('mode', 'combined'); for (const [key, value] of Object.entries(conditions)) if (value) params.set(key, value); }
+        const response = await fetch('/api/search?' + params);
+        const d = await response.json();
         if (revision !== searchRevision || currentGroup !== group) return;
-        if (!d.ok) { showSearchState('检索失败，请按 Enter 重试。'); return; }
-        searchPage = { revision, group, query: q, data: d, offset: d.hits.length, loading: false, error: '', stopped: d.hits.length === 0 };
+        if (!response.ok || !d.ok) { fail(d.error || '检索失败，请按 Enter 重试。'); return; }
+        searchPage = { revision, group, query: q, conditions, data: d, offset: d.hits.length, loading: false, error: '', stopped: d.hits.length === 0 };
         hint.innerHTML = `全部日期 <b>${d.total}</b> 条`;
         hint.dataset.payload = JSON.stringify(d);
         openSearchResults();
+        await enterSearchResults(transition);
     } catch {
-        if (revision === searchRevision && currentGroup === group) showSearchState('检索失败，请检查本地服务后按 Enter 重试。');
+        if (revision === searchRevision && currentGroup === group) fail('检索失败，请检查本地服务后按 Enter 重试。');
     }
 }
 
 function searchResultRows(hits) {
-    return hits.map(h => `<button class="sr-row" onclick="jumpFromSearch('${h.date}','${h.id}')">
+    return hits.map(h => `<button class="sr-row" onclick="jumpFromSearch('${h.date}','${h.id}', this)">
         <span class="sr-date">${h.date} ${(h.time || '').split(' ')[1] || ''}</span>
         <span class="sr-user">${escapeHtml(h.user || '')}</span>
         <span class="sr-text">${highlightText(escapeHtml(h.preview || ''), escapeHtml(globalSearchQuery))}</span>
@@ -3472,12 +4278,13 @@ function updateSearchPagination() {
 async function loadMoreSearchResults() {
     const page = searchPage;
     if (!page || page.loading || page.stopped || !page.data.truncated || page.revision !== searchRevision) return;
-    const stillCurrent = () => searchPage === page && page.revision === searchRevision && currentGroup === page.group && document.getElementById('searchScope').value === 'all';
+    const stillCurrent = () => searchPage === page && page.revision === searchRevision && currentGroup === page.group && document.getElementById('searchScope').value === (page.conditions ? 'combined' : 'all');
     page.loading = true;
     page.error = '';
     updateSearchPagination();
     try {
         const params = new URLSearchParams({ group: page.group || '', q: page.query, limit: '60', offset: String(page.offset) });
+        if (page.conditions) { params.delete('q'); params.set('mode', 'combined'); for (const [key, value] of Object.entries(page.conditions)) if (value) params.set(key, value); }
         const response = await fetch('/api/search?' + params);
         const data = await response.json();
         if (!stillCurrent()) return;
@@ -3509,13 +4316,14 @@ function openSearchResults() {
     let d;
     try { d = JSON.parse(hint.dataset.payload || '{}'); } catch { return; }
     if (!d.hits) return;
-    if (!d.hits.length) { showSearchState(`没有找到「${globalSearchQuery}」。试试其他关键词或切换搜索范围。`); return; }
+    if (!d.hits.length) { showSearchState(isCombinedSearch() ? '没有同时满足这些条件的消息。可逐项移除条件后再查找。' : `没有找到「${globalSearchQuery}」。试试其他关键词或切换搜索范围。`); return; }
     const rows = searchResultRows(d.hits);
-    const days = d.byDate.slice(0, 12).map(x => `<button class="sr-day" onclick="jumpFromSearch('${x.date}')">${x.date.slice(5)} (${x.count})</button>`).join('');
+    const days = d.byDate.slice(0, 12).map(x => `<button class="sr-day" onclick="jumpFromSearch('${x.date}', null, this)">${x.date.slice(5)} (${x.count})</button>`).join('');
     document.getElementById('searchResults').innerHTML = `
-        <div class="sr-head">
-            <span>${document.getElementById('searchScope').value === 'day' ? '当前日期' : '当前群 · 全部日期'}<br>共 <b>${d.total}</b> 条 · 跨 ${d.byDate.length} 天</span>
+        <div class="sr-head" id="searchResultSummary" tabindex="-1">
+            <span><span class="search-scope-label">${searchScopeLabel()}</span>共 <b>${d.total}</b> 条 · 跨 ${d.byDate.length} 天</span>
         </div>
+        ${searchMatchHelp()}
         ${days ? `<div class="sr-days">${days}</div>` : ''}
         <div class="sr-list">${rows}</div>
         ${searchPage ? '<div class="sr-pagination"><span id="searchPageStatus" role="status"></span><button id="searchMoreBtn" onclick="loadMoreSearchResults()">加载更多</button><span class="sr-page-error" id="searchPageError" role="status"></span></div>' : ''}`;
@@ -3531,19 +4339,24 @@ function closeSearchResults() {
 }
 
 /** 点结果 → 切到那天并定位；不带 id 时只切日期。 */
-function jumpFromSearch(date, id) {
-    closeSearchResults();
-    if (id) jumpToSource(date, id);
-    else { selectDate(date); }
+function jumpFromSearch(date, id, trigger) {
+    return jumpToSource(date, id, trigger && document.getElementById('searchResults').contains(trigger) ? 'search' : undefined, trigger);
 }
 
-function clearSearch(render = true) {
+function clearSearch(render = true, preserveContextReturn = false) {
+    if (!preserveContextReturn) discardContextReturn();
+    resetSearchComposition();
+    searchFormFeedback();
+    if (render) discardReadingTask();
     searchPage = null;
     clearTimeout(searchDebounceTimer);
     clearTimeout(globalSearchTimer);
     searchRevision++;
     searchQuery = '';
     globalSearchQuery = '';
+    combinedSearch = { fromUid: '', dateFrom: '', dateTo: '', keywords: '' };
+    document.getElementById('searchMemberFragment').value = '';
+    syncSearchControls();
     searchHighlights = [];
     searchNavIndex = -1;
     document.getElementById('searchInput').value = '';
@@ -3553,6 +4366,7 @@ function clearSearch(render = true) {
     document.getElementById('searchAllHint').textContent = '';
     document.getElementById('searchAllHint').dataset.payload = '';
     closeSearchResults();
+    if (render && isCombinedSearch()) { document.getElementById('combinedSearchControls').open = true; showSearchState('请选择发言人、归档日期或输入正文关键词，不会空查询全部历史。'); }
     if (render) renderAll();
 }
 
@@ -3861,7 +4675,7 @@ function renderMessages(msgs) {
         const time = (m.time.split(' ')[1] || '').slice(0, 5);
         const accent = getUserAccent(m.user);
         const continuation = sameUser ? ' msg-item-continuation' : '';
-        let content = processForward(m.content);
+        let content = processForward(m.content, m);
         if (searchQuery) {
             content = highlightText(content, escapeHtml(searchQuery));
         }
@@ -3972,7 +4786,7 @@ function renderAll() {
         document.getElementById('searchNav').className = 'search-nav' + (hits.length ? ' show' : '');
         if (hits.length) {
             searchNavIndex = -1;
-            navigateSearch(1); // 跳到第一处并更新计数
+            if (!readingTask?.restoring) navigateSearch(1); // 跳到第一处并更新计数
         } else {
             document.getElementById('searchCountText').textContent = '无匹配';
         }
@@ -4013,7 +4827,7 @@ function renderAll() {
     // 这行是筛选生效时的唯一解释，顺手给出"清除"与"导出"两个动作 ——
     // 只显示状态不给出路，用户还得自己回筛选面板一个个取消。
     bar.innerHTML = parts.length
-        ? `<span class="filter-summary">已筛选：${parts.join(' · ')}</span>`
+        ? `<span class="filter-summary" title="仅影响阅读列表，不影响搜索结果">阅读筛选：${parts.join(' · ')}</span>`
             + '<span class="filter-export" onclick="clearAllFilters()">清除</span>'
             + '<span class="filter-export" onclick="exportMessages()">导出</span>'
         : '';

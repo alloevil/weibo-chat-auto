@@ -52,7 +52,11 @@ const { findArchiveAgents, describeSchedule } = require('../lib/launch-agents');
 // 表情清单：内置 Unicode 表只覆盖 83%，其余靠微博官方清单渲染成图片
 const { loadEmotions } = require('../lib/emotions');
 // 跨日期全量搜索（子串命中 + 时间倒序，与 AI 问答的 BM25 刻意分开）
-const { searchMessages } = require('../lib/search-messages');
+const {
+    searchMessages,
+    normalizeCombinedSearch,
+    listSearchMembers,
+} = require('../lib/search-messages');
 // 「提到我」与通知规则（纯判定，见 lib/notify-rules）
 const { buildNotifications } = require('../lib/notify-rules');
 // 应用内选群（#18）：会话列表拉取/解析 + config.json 的 groups 写入口（均有单测）
@@ -801,9 +805,53 @@ function requestHandler(req, res) {
         const limit = Math.min(Number(url.searchParams.get('limit')) || 60, 200);
         const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
         const t0 = Date.now();
-        const r = searchMessages(loadMessages(group), q, { limit, offset });
+        const options = { limit, offset };
+        if (url.searchParams.get('mode') === 'combined') {
+            Object.assign(options, {
+                mode: 'combined',
+                fromUid: url.searchParams.get('fromUid'),
+                dateFrom: url.searchParams.get('dateFrom'),
+                dateTo: url.searchParams.get('dateTo'),
+                keywords: url.searchParams.get('keywords'),
+            });
+            try {
+                const conditions = normalizeCombinedSearch(options);
+                if (
+                    !conditions.fromUid &&
+                    !conditions.dateFrom &&
+                    !conditions.dateTo &&
+                    !conditions.keywords.length
+                ) {
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(
+                        JSON.stringify({
+                            ok: true,
+                            total: 0,
+                            byDate: [],
+                            hits: [],
+                            truncated: false,
+                            ms: Date.now() - t0,
+                        })
+                    );
+                    return;
+                }
+            } catch (error) {
+                res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: false, error: error.message }));
+                return;
+            }
+        }
+        const r = searchMessages(loadMessages(group), q, options);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, ...r, ms: Date.now() - t0 }));
+        return;
+    }
+
+    if (url.pathname === '/api/search-members') {
+        const group = url.searchParams.get('group') || '';
+        const candidates = listSearchMembers(loadMessages(group));
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, ...candidates }));
         return;
     }
 

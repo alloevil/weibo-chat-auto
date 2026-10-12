@@ -6,6 +6,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { retrievalCases } from '../test/fixtures/qa-retrieval-cases.mjs';
 import { retrievalValidationCases } from '../test/fixtures/qa-retrieval-validation.mjs';
+import { candidateCases } from '../test/fixtures/qa-candidate-cases.mjs';
 
 const option = (name) => {
     const index = process.argv.indexOf(name);
@@ -15,6 +16,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const samples = [
     ...retrievalCases().map((sample) => ({ ...sample, suite: 'mechanism' })),
     ...retrievalValidationCases().map((sample) => ({ ...sample, suite: 'validation' })),
+    ...candidateCases().map((sample) => ({ ...sample, suite: 'candidate' })),
 ];
 const arm = option('--arm');
 const arms = [
@@ -24,6 +26,7 @@ const arms = [
     'unconditional-time',
     'head-preview',
     'single-window',
+    'no-candidate-quality',
 ];
 const baselineRoot = option('--baseline-root');
 if (arm) {
@@ -31,6 +34,12 @@ if (arm) {
     const targetRoot = arm === 'baseline' ? path.resolve(baselineRoot) : root;
     if (arm !== 'baseline') {
         const { default: policy } = await import('../lib/retrieval-policy.js');
+        if (arm === 'no-candidate-quality') {
+            const originalSearch = policy.fusedSearch;
+            policy.fusedSearch = (documents, queries, limit) =>
+                originalSearch(documents, queries, limit);
+            policy.selectCandidates = (hits, _documents, limit) => hits.slice(0, limit);
+        }
         if (arm === 'keywords-only') policy.retrievalQueries = (query) => (query ? [query] : []);
         if (arm === 'raw-question') {
             const { default: lexical } = await import('../lib/search-bm25.js');
@@ -148,6 +157,7 @@ if (arm) {
                     previews.some((text) => text.includes(term))
                 ).length,
                 previewRequired: sample.previewNeedles?.length || 0,
+                previewSkipped: mockCalls === 0 ? sample.previewNeedles?.length || 0 : 0,
                 maxPreviewChars: Math.max(0, ...previews.map((text) => text.length)),
             };
             if (observation && JSON.stringify(state) !== JSON.stringify(observation))
@@ -164,7 +174,7 @@ if (arm) {
         });
     }
     const suites = {};
-    for (const suite of ['mechanism', 'validation']) {
+    for (const suite of ['mechanism', 'validation', 'candidate']) {
         const subset = rows.filter((row) => row.suite === suite);
         const times = subset.map((row) => row.medianMs).sort((left, right) => left - right);
         suites[suite] = {
@@ -176,6 +186,7 @@ if (arm) {
             noEvidenceCases: subset.filter((row) => row.noEvidence).length,
             previewFound: subset.reduce((sum, row) => sum + row.previewFound, 0),
             previewRequired: subset.reduce((sum, row) => sum + row.previewRequired, 0),
+            previewSkipped: subset.reduce((sum, row) => sum + row.previewSkipped, 0),
             totalSnippetChars: subset.reduce((sum, row) => sum + row.snippetChars, 0),
             mockCalls: subset.reduce((sum, row) => sum + row.mockCalls, 0),
             p50Ms: times[Math.floor(times.length / 2)],

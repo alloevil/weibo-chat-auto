@@ -18,6 +18,7 @@ function makeEl(id) {
         id,
         style: {},
         dataset: {},
+        children: [],
         classList: {
             add(...names) {
                 names.forEach((name) => classes.add(name));
@@ -105,8 +106,10 @@ async function main() {
                 return [];
             },
             addEventListener() {},
-            createElement() {
-                return makeEl('');
+            createElement(tagName) {
+                const element = makeEl('');
+                if (tagName === 'template') element.content = { children: [] };
+                return element;
             },
             documentElement: { dataset: {} },
             body: makeEl('body'),
