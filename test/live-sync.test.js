@@ -311,7 +311,111 @@ test('createLiveSync: 关闭时即使有订阅者也不启动轮询', () => {
     live.stop();
 });
 // ── 突发回补 ──────────────────────────────────────────────────────
+test('createLiveSync: 关闭期间的在途响应不写盘、不续翻页、不请求下一群', async (context) => {
+    const directory = tmpdir();
+    context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    let enabled = true;
+    let release;
+    let calls = 0;
+    const events = [];
+    const live = ls.createLiveSync({
+        resolveGroups: () =>
+            ['first', 'second'].map((name) => ({
+                name,
+                groupId: name,
+                dir: path.join(directory, name),
+            })),
+        cookieHeader: () => 'synthetic',
+        isEnabled: () => enabled,
+        emit: (event) => events.push(event),
+        fetchImpl: async () => {
+            calls++;
+            if (calls === 3)
+                await new Promise((resolve) => {
+                    release = resolve;
+                });
+            return { json: async () => ({ messages: [raw(calls, T0 + calls)] }) };
+        },
+    });
+    context.after(() => live.stop());
+    await live.tick();
+    const pending = live.tick();
+    enabled = false;
+    live.refresh();
+    const requestsAtDisable = calls;
+    release();
+    await pending;
+    assert.equal(calls, requestsAtDisable);
+    assert.deepEqual(events, []);
+    assert.deepEqual(fs.readdirSync(directory), []);
+});
+
 // 固定只拉最近一页会在突发时丢消息（实测茧房有 67 个 20 秒窗口超过 20 条）。
+test('pollGroupOnce: 关闭后的迟到页不更新游标、不写盘、不继续回补', async (context) => {
+    const directory = tmpdir();
+    context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const group = mkGroup(directory);
+    group.primed = true;
+    group.seen.add('old');
+    let active = true;
+    let release;
+    let calls = 0;
+    const pending = ls.pollGroupOnce(group, {
+        cookieHeader: () => 'synthetic',
+        isActive: () => active,
+        fetchImpl: async () => {
+            calls++;
+            await new Promise((resolve) => {
+                release = resolve;
+            });
+            return { json: async () => ({ messages: [raw(2, T0)] }) };
+        },
+    });
+    active = false;
+    release();
+    const result = await pending;
+    assert.equal(result.status, 'cancelled');
+    assert.equal(calls, 1);
+    assert.deepEqual([...group.seen], ['old']);
+    assert.deepEqual(fs.readdirSync(directory), []);
+});
+
+test('createLiveSync: 关闭后立刻重开不使旧轮次恢复或并发请求', async (context) => {
+    const directory = tmpdir();
+    context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    let enabled = true;
+    let release;
+    let calls = 0;
+    const live = ls.createLiveSync({
+        resolveGroups: () =>
+            ['one', 'two'].map((name) => ({ name, groupId: name, dir: directory })),
+        cookieHeader: () => 'synthetic',
+        isEnabled: () => enabled,
+        emit: () => {},
+        fetchImpl: async () => {
+            calls++;
+            if (calls === 1)
+                await new Promise((resolve) => {
+                    release = resolve;
+                });
+            return { json: async () => ({ messages: [] }) };
+        },
+    });
+    context.after(() => live.stop());
+    live.addSubscriber();
+    const pending = live.tick();
+    enabled = false;
+    live.refresh();
+    enabled = true;
+    live.refresh();
+    assert.equal(calls, 1);
+    release();
+    await pending;
+    assert.equal(calls, 1);
+    await live.tick();
+    assert.equal(calls, 3);
+});
+
 // 这里用"按 max_mid 分页的假接口"验证：整页都是新消息时必须继续往回翻。
 
 /** 模拟真实接口的 max_mid 语义：返回比 max_mid 更老的最近 count 条（升序）。 */
