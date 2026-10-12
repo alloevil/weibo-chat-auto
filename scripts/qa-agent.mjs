@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import runtimePaths from '../lib/runtime-paths.js';
 // 编排(工具循环 / 迭代预算 / 重试 / 超时 / provider 适配)交给 pi-agent-core,
 // 本仓只保留检索层与提示词。原先手写的 IterationBudget / AgentState /
 // withRetry / withTimeout / callLLM 共约 230 行由 runAgentLoop 替代。
@@ -37,8 +37,6 @@ const {
     selectCandidates,
 } = retrievalPolicy;
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 // LLM 调用总上限。前 6 轮用于检索迭代,第 7 轮是收尾轮——预算耗尽时仍让模型
 // 有一次机会把已检索到的内容总结成答案,而不是停在一次工具调用上。
 const MAX_LLM_CALLS = 7;
@@ -59,7 +57,7 @@ const QA_GLOBAL_TIMEOUT_MS = 150000;
 const MAX_RERANK_CALLS = 4;
 
 function loadAiConfig() {
-    const cfgPath = path.join(__dirname, '..', 'ai-config.json');
+    const cfgPath = path.join(runtimePaths.dataRoot, 'ai-config.json');
     if (!fs.existsSync(cfgPath)) return null;
     return JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
 }

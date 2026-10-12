@@ -25,6 +25,9 @@ com.allo.weibo-chat-archive.plist
 src-tauri/target/
 src-tauri/binaries/
 sidecar/dist/
+sidecar/resources/viewer.html
+sidecar/resources/lib/
+sidecar/resources/archive-worker*
 
 # Third-party design reference (clone from github.com/voltagent/awesome-design-md)
 design-md/

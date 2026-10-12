@@ -107,7 +107,8 @@ npm run desktop
 <summary><b>桌面应用架构</b></summary>
 
 - **Tauri v2** 原生窗口 + WKWebView
-- **Sidecar**：Bun 编译 `scripts/viewer-server.js` 为 ~60MB 独立二进制，app 启动时自动拉起
+- **运行资源**：Bun 编译查看器服务和归档/索引辅助程序，应用显式携带 `viewer.html` 及浏览器模块。下载版运行无需 Node 或 Bun，归档仍需安装 Chrome。
+- **本地数据**：macOS 安装包将配置、Cookie、归档和缓存放在 `~/Library/Application Support/com.alloevil.weibo-chat/`，不写入 `.app`。源码网页版仍使用仓库内数据，本版不自动迁移这些数据。
 - **登录**：Rust 打开 WebView → 扫码 → `cookies_for_url()` 提取 HttpOnly Cookie → 自动保存
 - **IPC**：WKWebView 不注入 Tauri IPC，改用 HTTP 信号中转
 - **图片**：微博 CDN 检查 Referer，本地 `/api/sinaimg?url=` 代理绕过

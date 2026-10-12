@@ -36,5 +36,6 @@ test('package script: npm run setup 显式通过 bash 执行', () => {
 test('run-desktop: viewer、server 或 lib 更新后自动重建 sidecar', () => {
     assert.match(runDesktop, /viewer\.html" -nt "\$SIDECAR/);
     assert.match(runDesktop, /scripts\/viewer-server\.js" -nt "\$SIDECAR/);
-    assert.match(runDesktop, /find lib .* -newer "\$SIDECAR"/);
+    assert.match(runDesktop, /find lib scripts sidecar .* -newer "\$SIDECAR"/);
+    assert.match(runDesktop, /sidecar\/resources\/archive-worker/);
 });

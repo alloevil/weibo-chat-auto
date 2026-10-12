@@ -43,10 +43,11 @@ fi
 # Build sidecar binary
 SIDECAR="src-tauri/binaries/viewer-server-$(rustc --print host-tuple)"
 SIDECAR_STALE=0
-if [ ! -f "$SIDECAR" ]; then
+if [ ! -f "$SIDECAR" ] || [ ! -f "sidecar/resources/archive-worker" ] \
+    || [ ! -f "sidecar/resources/viewer.html" ]; then
     SIDECAR_STALE=1
 elif [ "viewer.html" -nt "$SIDECAR" ] || [ "scripts/viewer-server.js" -nt "$SIDECAR" ] \
-    || find lib -type f -name '*.js' -newer "$SIDECAR" -print -quit | grep -q .; then
+    || find lib scripts sidecar -type f \( -name '*.js' -o -name '*.mjs' \) -newer "$SIDECAR" -print -quit | grep -q .; then
     SIDECAR_STALE=1
 fi
 if [ "$SIDECAR_STALE" -eq 1 ]; then

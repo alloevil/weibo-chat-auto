@@ -14,18 +14,16 @@
 //   - <3 条的碎块不值得标注,annotation 恒为 null。
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
-import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
+import runtimePaths from '../lib/runtime-paths.js';
+import messageStore from '../lib/load-messages.js';
+import chatChunks from '../lib/chat-chunks.js';
+import chunkIndex from '../lib/chunk-index.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, '..');
-const require = createRequire(import.meta.url);
-
-const { loadMessagesByDate, listDates, getGroupDir } = require(
-    path.join(ROOT, 'lib/load-messages.js')
-);
-const { splitIntoChunks, chunkKey } = require(path.join(ROOT, 'lib/chat-chunks.js'));
-const { indexPathFor, dayFilePathFor, INDEX_DIR } = require(path.join(ROOT, 'lib/chunk-index.js'));
+const { dataRoot: ROOT } = runtimePaths;
+const { loadMessagesByDate, listDates, getGroupDir } = messageStore;
+const { splitIntoChunks, chunkKey } = chatChunks;
+const { indexPathFor, dayFilePathFor, INDEX_DIR } = chunkIndex;
 
 const BATCH_SIZE = 8; // 每次 LLM 调用打包的块数
 const MIN_MSGS_TO_ANNOTATE = 3;
@@ -152,8 +150,7 @@ export async function annotateBatch(config, chunkTexts, { retries = 2 } = {}) {
     throw lastErr;
 }
 
-async function main() {
-    const args = process.argv.slice(2);
+export async function main(args = process.argv.slice(2)) {
     const opt = (name) => {
         const i = args.indexOf(`--${name}`);
         return i !== -1 ? args[i + 1] : null;
@@ -328,7 +325,11 @@ async function main() {
     );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+    process.argv[2] !== 'index' &&
+    process.argv[1] &&
+    import.meta.url === pathToFileURL(process.argv[1]).href
+) {
     main().catch((e) => {
         console.error(e);
         process.exit(1);

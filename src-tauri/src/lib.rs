@@ -221,6 +221,11 @@ async fn do_extract_cookies(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn find_cookie_path(app: &tauri::AppHandle) -> PathBuf {
+    if let (Ok(resources), Ok(data)) = (app.path().resource_dir(), app.path().app_data_dir()) {
+        if resources.join("runtime").join("viewer.html").is_file() {
+            return data.join("cookies.json");
+        }
+    }
     // 开发形态：从可执行文件向上找仓库根（scripts/viewer-server.js 为标记）
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
@@ -276,15 +281,44 @@ pub fn run() {
             // cookies.json 的唯一约定路径：与 Rust 侧 find_cookie_path 一致，
             // 通过环境变量交给 sidecar（打包形态下两边都落在应用数据目录）
             let cookie_path = find_cookie_path(app.handle());
+            let data_root = cookie_path.parent().ok_or("无法确定应用数据目录")?;
+            std::fs::create_dir_all(data_root)?;
+            let packaged_root = app.path().resource_dir()?.join("runtime");
+            let resource_root = if packaged_root.join("viewer.html").is_file() {
+                packaged_root
+            } else if cfg!(debug_assertions) {
+                data_root.to_path_buf()
+            } else {
+                return Err("安装包缺少runtime/viewer.html".into());
+            };
+            let worker_name = if cfg!(windows) {
+                "archive-worker.exe"
+            } else {
+                "archive-worker"
+            };
+            let worker = resource_root.join(worker_name);
             let sidecar_command = match app
                 .shell()
                 .sidecar("viewer-server")
             {
-                Ok(cmd) => cmd
-                    .env("WEIBO_COOKIE_FILE", cookie_path.to_string_lossy().as_ref())
+                Ok(cmd) => {
+                    let cmd = cmd
+                        .env("WEIBO_COOKIE_FILE", cookie_path.to_string_lossy().as_ref())
+                        .env("WEIBO_DATA_ROOT", data_root.to_string_lossy().as_ref())
+                        .env("WEIBO_RESOURCE_ROOT", resource_root.to_string_lossy().as_ref())
                     // 端口固定：Rust 轮询器按 3456 连接，不允许宿主环境的
                     // WEIBO_PORT 泄漏进来让两边各说各话
-                    .env("WEIBO_PORT", "3456"),
+                        .env("WEIBO_PORT", "3456")
+                        .env("NO_OPEN", "1")
+                        .current_dir(data_root);
+                    if worker.is_file() {
+                        cmd.env("WEIBO_TASK_EXECUTABLE", worker.to_string_lossy().as_ref())
+                    } else if cfg!(debug_assertions) {
+                        cmd
+                    } else {
+                        return Err("安装包缺少归档辅助程序".into());
+                    }
+                }
                 Err(e) => {
                     eprintln!("[tauri] 找不到 sidecar 可执行文件: {}", e);
                     std::process::exit(1);

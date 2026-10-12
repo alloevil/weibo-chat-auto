@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const distDir = path.join(__dirname, 'dist');
 const binDir = path.join(root, 'src-tauri', 'binaries');
+const resourceDir = path.join(__dirname, 'resources');
 
 const ext = process.platform === 'win32' ? '.exe' : '';
 const targetTriple = execSync('rustc --print host-tuple').toString().trim();
@@ -33,3 +34,15 @@ fs.chmodSync(dst, 0o755);
 
 console.log(`[sidecar] Done: ${dst}`);
 console.log(`[sidecar] Size: ${(fs.statSync(dst).size / 1024 / 1024).toFixed(1)} MB`);
+
+fs.mkdirSync(path.join(resourceDir, 'lib'), { recursive: true });
+for (const file of ['viewer.html', 'lib/text-utils.js', 'lib/viewer-filters.js']) {
+    fs.copyFileSync(path.join(root, file), path.join(resourceDir, file));
+}
+const worker = path.join(resourceDir, `archive-worker${ext}`);
+execSync(
+    `bun build "${path.join(__dirname, 'archive-worker.mjs')}" --compile --outfile "${worker}"`,
+    { cwd: root, stdio: 'inherit' }
+);
+fs.chmodSync(worker, 0o755);
+console.log(`[sidecar] Runtime resources: ${resourceDir}`);

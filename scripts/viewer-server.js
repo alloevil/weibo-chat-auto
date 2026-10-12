@@ -6,9 +6,8 @@ const { exec } = require('child_process');
 
 const PORT = process.env.WEIBO_PORT ? Number(process.env.WEIBO_PORT) : 3456;
 // 仓库根目录（本脚本在 scripts/ 下,运行时数据仍存根目录）
-const ROOT = path.join(__dirname, '..');
+const { resourceRoot: ROOT, dataRoot: DATA_ROOT, taskCommand } = require('../lib/runtime-paths');
 // 测试/演示可把所有可变数据隔离到临时目录；生产缺省仍是仓库根。
-const DATA_ROOT = process.env.WEIBO_DATA_ROOT ? path.resolve(process.env.WEIBO_DATA_ROOT) : ROOT;
 const OUTPUT_DIR = process.env.WEIBO_OUTPUT_DIR
     ? path.resolve(process.env.WEIBO_OUTPUT_DIR)
     : path.join(DATA_ROOT, 'output');
@@ -1339,9 +1338,7 @@ function requestHandler(req, res) {
 
             // Invalidate all message caches
             messageStore.clearCaches();
-            const isBundled =
-                !process.execPath.endsWith('node') && !process.execPath.endsWith('bun');
-            const jsRuntime = isBundled ? 'node' : process.execPath;
+            const command = taskCommand('archive');
 
             // 进度状态：spawn 增量读 stdout，前端轮询 /api/sync-progress 获取
             const progress = {
@@ -1354,7 +1351,8 @@ function requestHandler(req, res) {
             global.__syncProgress = progress;
 
             const { spawn } = require('child_process');
-            const child = spawn(jsRuntime, [path.join(ROOT, 'scripts', 'auto-archive-simple.js')], {
+            const child = spawn(command.executable, command.args, {
+                cwd: DATA_ROOT,
                 env: { ...process.env, PATH: process.env.PATH },
             });
             let out = '';
@@ -2094,8 +2092,7 @@ function requestHandler(req, res) {
             res.end(JSON.stringify(result));
         };
         try {
-            const modPath = require('path').join(ROOT, 'lib', 'browser-login.js');
-            const { browserLogin } = require(modPath);
+            const { browserLogin } = require('../lib/browser-login');
             // 扫码成功后立即保活一次：拿到全新会话的同时把 24h 滚动 Cookie 也续上
             browserLogin()
                 .then(async (r) => {

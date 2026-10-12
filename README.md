@@ -107,7 +107,8 @@ One command does it all: detect environment → install dependencies (Rust/Bun/n
 <summary><b>Desktop app architecture</b></summary>
 
 - **Tauri v2** native window + WKWebView
-- **Sidecar**: Bun compiles `scripts/viewer-server.js` into a ~60MB standalone binary, launched automatically on app start
+- **Runtime**: Bun compiles the viewer server and an archive/index helper; the app carries `viewer.html` and its browser modules as explicit resources. Running the downloaded app does not require Node or Bun, but archiving still requires Chrome.
+- **Local data**: packaged macOS builds store configuration, cookies, archives, and caches in `~/Library/Application Support/com.alloevil.weibo-chat/`, outside the `.app`. Source-based web usage keeps its repository-local data; this release does not automatically migrate it.
 - **Login**: Rust opens a WebView → scan QR code → `cookies_for_url()` extracts HttpOnly cookies → saved automatically
 - **IPC**: WKWebView does not inject Tauri IPC; HTTP signaling is used instead
 - **Images**: Weibo CDN checks the Referer header; the local `/api/sinaimg?url=` proxy bypasses it

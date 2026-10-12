@@ -11,7 +11,8 @@
         "active": true,
         "targets": "all",
         "icon": ["icons/icon.png"],
-        "externalBin": ["binaries/viewer-server"]
+        "externalBin": ["binaries/viewer-server"],
+        "resources": { "../sidecar/resources/": "runtime/" }
     },
     "app": {
         "windows": [

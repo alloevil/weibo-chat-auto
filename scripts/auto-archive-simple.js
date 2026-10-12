@@ -19,25 +19,17 @@ const { paginateMessages } = require('../lib/paginate');
 const { buildPageScript } = require('../lib/page-hook');
 
 // 仓库根目录（本脚本在 scripts/ 下,运行时数据仍存根目录）
-const ROOT = path.join(__dirname, '..');
+const { dataRoot: ROOT, taskCommand } = require('../lib/runtime-paths');
+const configData = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
 
 // 配置
 const CONFIG = {
     chatUrl: 'https://api.weibo.com/chat#/chat',
     outputDir: path.join(ROOT, 'output'),
-    chromePath: resolveChromePath(
-        (() => {
-            try {
-                return require('../config.json').chromePath;
-            } catch {
-                return '';
-            }
-        })()
-    ),
+    chromePath: resolveChromePath(configData.chromePath || ''),
     launchDelay: 3000,
 };
 
-const configData = require('../config.json');
 const GROUPS = configData.groups || [configData.groupName || '茧房建筑师协会'];
 const {
     resolveGroupStorageKey,
@@ -861,17 +853,17 @@ async function main() {
                         // 没跑成也无妨——qa-agent 检测到索引过期会自动降级为即时切块)
                         try {
                             const updatedDates = Object.keys(groups).join(',');
-                            spawn(
-                                process.execPath,
-                                [
-                                    path.join(ROOT, 'scripts', 'build-qa-index.mjs'),
-                                    '--group',
-                                    storageKey,
-                                    '--dates',
-                                    updatedDates,
-                                ],
-                                { detached: true, stdio: 'ignore' }
-                            ).unref();
+                            const command = taskCommand('index', [
+                                '--group',
+                                storageKey,
+                                '--dates',
+                                updatedDates,
+                            ]);
+                            spawn(command.executable, command.args, {
+                                cwd: ROOT,
+                                detached: true,
+                                stdio: 'ignore',
+                            }).unref();
                             console.log(`已触发 QA 索引更新 (${Object.keys(groups).length} 天)`);
                         } catch (e) {
                             console.warn('QA 索引更新触发失败(不影响归档):', e.message);
