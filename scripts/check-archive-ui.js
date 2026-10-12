@@ -863,6 +863,29 @@ async function main() {
         for (const theme of ['', 'qq2000', 'qq2008', 'qq2012', 'archive']) {
             await page.select('#themeSelect', theme);
             assert.equal(await page.$eval('html', (element) => element.dataset.theme || ''), theme);
+            const searchChrome = await page.$eval('#searchInput', (element) => {
+                const style = globalThis.getComputedStyle(element);
+                const input = element.getBoundingClientRect();
+                const scope = globalThis.document
+                    .querySelector('#searchScope')
+                    .getBoundingClientRect();
+                return {
+                    border: style.borderLeftWidth,
+                    shadow: style.boxShadow,
+                    background: style.backgroundColor,
+                    overlap: input.left < scope.right,
+                };
+            });
+            assert.deepEqual(
+                searchChrome,
+                {
+                    border: '0px',
+                    shadow: 'none',
+                    background: 'rgba(0, 0, 0, 0)',
+                    overlap: false,
+                },
+                `${theme || 'dark'} 搜索只使用容器外框，不叠加主题输入框边框`
+            );
         }
         await page.keyboard.press('Escape');
         assert.deepEqual(errors, []);
