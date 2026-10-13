@@ -860,7 +860,7 @@ async function main() {
         );
         record('导航打开时从窄屏拉宽，恢复主界面交互');
         await page.click('#settingsBtn');
-        for (const theme of ['', 'qq2000', 'qq2008', 'qq2012', 'archive']) {
+        for (const theme of ['', 'qq2000', 'qq2008', 'qq2012', 'qqmodern', 'archive']) {
             await page.select('#themeSelect', theme);
             assert.equal(await page.$eval('html', (element) => element.dataset.theme || ''), theme);
             const searchChrome = await page.$eval('#searchInput', (element) => {
@@ -1839,7 +1839,7 @@ async function main() {
             await page.$eval('#toast', (element) => element.classList.contains('show')),
             false
         );
-        for (const theme of ['', 'qq2000', 'qq2008', 'qq2012', 'archive']) {
+        for (const theme of ['', 'qq2000', 'qq2008', 'qq2012', 'qqmodern', 'archive']) {
             await page.select('#themeSelect', theme);
             await pressCodeShortcut();
             assert.equal(await visible('#codeModeView'), true);

@@ -1244,6 +1244,84 @@ html[data-theme="archive"] .user-avatar { background: var(--surface-3) !importan
     html[data-theme="archive"] .messages .msg-content { font-size: 13px; }
     html[data-theme="archive"] .messages .msg-item .msg-avatar { width: 28px; height: 28px; }
 }
+html[data-theme="qq2012"] {
+    --primary: #126999; --primary-hover: #096496; --primary-focus: #07567f;
+    --ink: #233746; --ink-muted: #405969; --ink-subtle: #566c7c; --ink-tertiary: #697d8c;
+    --canvas: #ffffff; --surface-1: #ffffff; --surface-2: #eef7fd; --surface-3: #e5f3ff; --surface-4: #f7fbfe;
+    --hairline: #d7e5ee; --hairline-strong: #b8cfde; --primary-tint: #e7f5fe; --primary-tint-strong: #d1eafa;
+    --qq-header: linear-gradient(115deg, #eaf6fd, #cae8f8 58%, #e5f4fc);
+    --qq-toolbar: #f5faff; --qq-bubble: linear-gradient(180deg, #ffffff, #f4faff);
+    --qq-bubble-border: #d6e6f0; --qq-radius: 7px; --qq-shadow: 0 1px 2px #16456a0c;
+}
+html[data-theme="qqmodern"] {
+    color-scheme: light;
+    --primary: #2463db; --primary-hover: #205ac9; --primary-focus: #194aa9; --on-primary: #ffffff;
+    --ink: #252b38; --ink-muted: #454f60; --ink-subtle: #626b7c; --ink-tertiary: #6c7585;
+    --canvas: #f7f8fa; --surface-1: #ffffff; --surface-2: #f0f3f8; --surface-3: #eaf0ff; --surface-4: #ffffff;
+    --hairline: #e2e6ed; --hairline-strong: #bfc9d8; --primary-tint: #eef3ff; --primary-tint-strong: #dce7ff;
+    --success: #277a50; --danger: #bb3d34;
+    --qq-header: #ffffff; --qq-toolbar: #ffffff; --qq-bubble: #ffffff;
+    --qq-bubble-border: #e2e6ed; --qq-radius: 12px; --qq-shadow: none;
+}
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; letter-spacing: 0; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(330px, 1fr); background: var(--qq-header); box-shadow: none; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar { min-width: 0; min-height: 72px; padding: 12px 20px 12px 28px; gap: 12px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar .archive-brand { flex: 0 0 auto; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-brand strong { display: none; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-mark { background: var(--primary); color: var(--on-primary); border: 0; border-radius: var(--qq-radius); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-picker-trigger { flex: 1; min-width: 0; max-width: none; border: 0; background: transparent; font-size: 17px; font-weight: 650; padding: 6px 0; gap: 8px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-picker-trigger > .ui-icon { display: none; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar .ai-btn { margin-left: 0; width: 32px; height: 32px; border: 0; border-radius: var(--qq-radius); color: var(--ink-subtle); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-context { display: none; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-top { min-width: 0; min-height: 72px; padding: 12px 28px 12px 8px; background: transparent; flex-wrap: nowrap; gap: 12px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search { flex: 1 1 0; min-width: 0; max-width: none; height: 36px; order: 0; flex-wrap: nowrap; background: var(--surface-1); border-radius: var(--qq-radius); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search .search-input { height: 34px; color: var(--ink); border: 0; background: transparent; box-shadow: none; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .search-input::placeholder { color: var(--ink-subtle); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search:focus-within { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search .search-count { top: 38px; right: 0; background: var(--surface-1); color: var(--ink-subtle); z-index: 2; pointer-events: auto; border-radius: 4px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions { gap: 6px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .nav-last-archived { display: none !important; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .sync-btn { height: 34px; padding: 0 10px; border: 0; background: var(--primary); color: var(--on-primary); box-shadow: var(--qq-shadow); border-radius: var(--qq-radius); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-tools { grid-column: 1 / -1; min-height: 44px; padding: 6px 28px; background: var(--qq-toolbar); border-top: 1px solid var(--hairline); gap: 8px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .reading-heading { font-size: 12px; gap: 8px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-toolset > .tools-toggle { border-radius: var(--qq-radius); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-freshness { grid-column: 1 / -1; padding: 0 28px 8px; background: var(--qq-toolbar); font-size: 10px; gap: 5px 10px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .auth-banner { grid-column: 1 / -1; margin: 0 14px 8px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .content { background: var(--canvas); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages { padding: 14px 28px 26px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item { padding: 5px 38px 5px 50px; margin-bottom: 8px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item .msg-avatar { width: 36px; height: 36px; left: 0; top: 5px; border-radius: var(--qq-radius); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-header { gap: 10px; margin-bottom: 4px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-user { color: var(--primary); font-size: 12px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-body { max-width: 1050px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-content { width: fit-content; max-width: 100%; padding: 8px 13px; border: 1px solid var(--qq-bubble-border); border-radius: var(--qq-radius); background: var(--qq-bubble); box-shadow: var(--qq-shadow); color: var(--ink); font-size: 14px; line-height: 1.65; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item:hover .msg-content { border: 1px solid var(--qq-bubble-border); background: var(--qq-bubble); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item-continuation { margin-top: -6px; padding-top: 0; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .forward-quote { background: var(--primary-tint); border-left-color: var(--primary); border-radius: 3px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .time-divider { margin: 6px 0 18px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .time-divider span { background: transparent; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .research-panel { background: var(--surface-4); box-shadow: none; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .reading-footer { padding: 9px 28px; background: var(--qq-toolbar); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .msg-menu > summary { font-family: Arial, sans-serif; line-height: 1; }
+@media (max-width: 1100px) {
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav { grid-template-columns: minmax(0, 1fr); }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar { min-height: 56px; padding-bottom: 6px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-top { min-height: 48px; padding: 0 28px 12px; }
+}
+@media (max-width: 760px) {
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar { padding: 10px 14px 6px; gap: 8px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-picker-trigger { font-size: 15px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-top { padding: 0 14px 10px; gap: 8px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .sync-btn { width: 32px; padding: 0; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .sync-btn .button-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-tools { padding: 5px 14px; min-height: 40px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-freshness { padding: 0 14px 8px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages { padding: 12px 14px 22px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item { padding-left: 40px; padding-right: 24px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item .msg-avatar { width: 30px; height: 30px; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-content { padding: 8px 10px; font-size: 13px; line-height: 1.7; }
+    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .reading-footer { padding: 8px 14px; }
+}
 .group-bar .code-mode-toggle { margin-left: 0; }
 .code-mode-view { display: none; }
 body.code-mode { background: #1e2229; }
@@ -1400,7 +1478,8 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
                     <option value="">深色（Linear）</option>
                     <option value="qq2000">QQ 2000 复古</option>
                     <option value="qq2008">QQ 2008 玻璃</option>
-                    <option value="qq2012">QQ 2012 轻白</option>
+                    <option value="qq2012">QQ 2012 · 经典精修</option>
+                    <option value="qqmodern">现代 QQ · 简洁蓝白</option>
                 </select>
             </div>
             <div class="settings-hint">代码日志模式：顶部 &lt;/&gt; 或 Alt+Shift+X 切换。隐藏群名、头像和聊天控件，正文仍可读（不会自动脱敏），不是隐私屏障。模式内不发新的应用通知；无法撤回已有系统通知，也不隐藏浏览器地址、历史或原生窗口名称。刷新后恢复普通视图。</div>

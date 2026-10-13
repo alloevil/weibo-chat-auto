@@ -64,6 +64,11 @@ async function main() {
         for (const width of [1440, 360]) {
             const context = await browser.createBrowserContext();
             const page = await context.newPage();
+            if (process.env.WEIBO_UI_THEME) {
+                await page.evaluateOnNewDocument((theme) => {
+                    globalThis.localStorage.setItem('viewer-theme', theme);
+                }, process.env.WEIBO_UI_THEME);
+            }
             await page.setViewport({ width, height: width === 360 ? 800 : 960 });
             await page.emulateMediaFeatures([
                 {
