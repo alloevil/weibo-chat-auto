@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const puppeteer = require('puppeteer');
+const { clickNavAction } = require('./browser-nav-test');
 const { resolveChromePath } = require('../lib/chrome-path');
 const { searchMessages } = require('../lib/search-messages');
 
@@ -386,7 +387,7 @@ async function main() {
             }
             await page.reload({ waitUntil: 'networkidle0' });
             await page.waitForSelector('.msg-item');
-            await page.click('#qaToggle');
+            await clickNavAction(page, '#qaToggle');
             await page.waitForSelector('#qaQuickPanel.show');
             await page.type('#qaInput', '部署方案最后怎么定的？');
             await page.click('#qaSendBtn');
@@ -455,7 +456,7 @@ async function main() {
                 await shot('ai-return');
                 await page.click('.qa-source-item');
                 await page.waitForSelector('#taskReturnButton', { visible: true });
-                await page.click('#qaToggle');
+                await clickNavAction(page, '#qaToggle');
                 await page.waitForFunction('readingTask === null');
                 await page.waitForSelector('.qa-source-item');
                 assert.equal(

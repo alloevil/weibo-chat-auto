@@ -1322,6 +1322,48 @@ html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .msg-menu > summary { fo
     html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-content { padding: 8px 10px; font-size: 13px; line-height: 1.7; }
     html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .reading-footer { padding: 8px 14px; }
 }
+html .workspace > .nav.compact-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 24px; min-height: 64px; background: var(--qq-header, var(--canvas)); border-bottom: 1px solid var(--hairline); }
+html[data-theme="archive"] .workspace > .nav.compact-nav { background: var(--chrome); color: var(--chrome-text); }
+html .compact-nav .nav-top, html .compact-nav .nav-tools, html .compact-nav .nav-toolset { display: contents; }
+html .compact-nav .nav-context { display: none; }
+html .compact-nav .group-bar { display: flex; padding: 0; min-height: 0; min-width: 0; max-width: 320px; flex: 0 1 auto; gap: 0; }
+html .compact-nav .group-picker-trigger { flex: 0 1 auto; max-width: 100%; min-width: 0; gap: 8px; border: 0; background: transparent; padding: 6px 0; font-size: 15px; }
+html .compact-nav .group-picker-trigger > .ui-icon { display: block; color: var(--primary-hover); }
+html .compact-nav .group-picker-trigger .picker-chevron { margin-left: 0; flex-shrink: 0; }
+html .compact-nav #navSearch { flex: 1 1 260px; min-width: 160px; max-width: 460px; height: 36px; order: 0; flex-wrap: nowrap; }
+html .compact-nav #navSearch .search-input { height: 34px; }
+html .compact-nav #navSearch .search-input-wrap { min-width: 0; }
+html .compact-nav #navSearch .search-count { top: 38px; right: 0; pointer-events: auto; }
+html .compact-nav #toolsToggle { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 6px 8px; height: 34px; border: 0; background: transparent; color: inherit; font-size: 12px; }
+html .compact-nav #toolsToggle .tool-label { display: inline; position: static; width: auto; height: auto; margin: 0; clip: auto; overflow: visible; }
+html .compact-nav .reading-heading { margin-left: auto; display: flex; flex-wrap: nowrap; gap: 10px; white-space: nowrap; font-size: 12px; }
+html .compact-nav #archiveNavToggle { display: inline-flex; align-items: center; gap: 8px; padding: 7px 4px; border: 0; background: transparent; color: inherit; white-space: nowrap; font-size: 12px; }
+html .compact-nav .nav-stats { font-size: 11px; color: inherit; opacity: .75; margin: 0; }
+html .compact-nav .archive-more { flex: none; }
+html .compact-nav .archive-more > summary { white-space: nowrap; color: inherit; font-size: 12px; padding: 7px 8px; }
+html .compact-nav .archive-more-menu { width: 272px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 84px); overflow-y: auto; background: var(--surface-1); color: var(--ink); top: 40px; right: 0; }
+html .compact-nav .archive-more:not([open]) > .archive-more-menu { display: none; }
+html .compact-nav .archive-more-menu :is(button.ai-btn,button.sync-btn,button.tools-toggle,button.stats-toggle,#latestArchiveBtn) { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: auto; min-height: 36px; gap: 9px; padding: 8px 10px; margin: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 12px; text-align: left; box-shadow: none; }
+html .compact-nav .archive-more-menu button:hover { background: var(--surface-2); }
+html .compact-nav .archive-more-menu button small { display: block; color: var(--ink-subtle); font-size: 10px; line-height: 1.6; margin-top: 3px; }
+html .compact-nav .archive-more-menu .archive-freshness { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px; padding: 10px; border-top: 1px solid var(--hairline); background: transparent; color: var(--ink-subtle); font-size: 10px; }
+html .compact-nav .archive-more-menu #lastArchived { display: none !important; }
+html .compact-nav .auth-banner { flex: 1 0 100%; margin: 0; }
+@media (max-width: 1280px) { html .compact-nav .nav-stats { display: none; } html .compact-nav .group-bar { max-width: 260px; } }
+@media (max-width: 900px) {
+    html .workspace > .nav.compact-nav { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 8px; padding: 10px 14px; }
+    html .compact-nav .group-bar { grid-column: 1; grid-row: 1; }
+    html .compact-nav .reading-heading { grid-column: 2; grid-row: 1; margin: 0; }
+    html .compact-nav .archive-more { grid-column: 3; grid-row: 1; }
+    html .compact-nav #navSearch { grid-column: 1 / 3; grid-row: 2; width: 100%; max-width: none; min-width: 0; }
+    html .compact-nav #toolsToggle { grid-column: 3; grid-row: 2; padding: 5px 2px; }
+    html .compact-nav #toolsToggle .ui-icon { display: none; }
+    html .compact-nav #archiveNavToggle { font-size: 10px; gap: 3px; }
+    html .compact-nav .group-picker-trigger { font-size: 13px; }
+    html .compact-nav .group-picker-trigger > .ui-icon { display: none; }
+    html .compact-nav .archive-more-menu { position: fixed; top: 52px; right: 12px; max-height: calc(100dvh - 68px); }
+    html .compact-nav .auth-banner { grid-column: 1 / -1; }
+}
 .group-bar .code-mode-toggle { margin-left: 0; }
 .code-mode-view { display: none; }
 body.code-mode { background: #1e2229; }
@@ -1411,8 +1453,8 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
     <div class="archive-footer"><svg class="ui-icon" aria-hidden="true"><use href="#icon-list"></use></svg><span>仅显示有归档记录的日期</span></div>
 </aside>
 <div class="workspace">
-<div class="nav">
-    <div class="group-bar"><div class="archive-brand"><span class="archive-mark"><svg class="ui-icon" aria-hidden="true"><use href="#icon-list"></use></svg></span><strong>群聊档案馆</strong></div><button class="group-picker-trigger" id="groupPickerToggle" onclick="openGroupPicker()" aria-haspopup="dialog" aria-controls="groupPickerDialog" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chat"></use></svg><span id="groupPickerLabel">选择群聊</span><span class="picker-chevron" aria-hidden="true">▾</span></button><span id="archiveGroupCount" hidden></span><button class="ai-btn code-mode-toggle" id="codeModeToggle" onclick="toggleCodeMode()" aria-pressed="false" title="代码日志模式（Alt+Shift+X）：正文仍可见，不是隐私屏障" aria-label="切换代码日志模式">&lt;/&gt;</button><button class="ai-btn" id="settingsBtn" onclick="openSettings()" title="设置" aria-label="设置"><svg class="ui-icon" aria-hidden="true"><use href="#icon-settings"></use></svg></button></div>
+<div class="nav compact-nav">
+    <div class="group-bar"><button class="group-picker-trigger" id="groupPickerToggle" onclick="openGroupPicker()" aria-haspopup="dialog" aria-controls="groupPickerDialog" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chat"></use></svg><span id="groupPickerLabel">选择群聊</span><span class="picker-chevron" aria-hidden="true">▾</span></button><span id="archiveGroupCount" hidden></span></div>
     <div class="nav-top">
         <div class="nav-context">
             <div class="nav-title"><span class="archive-eyebrow">群聊档案</span><strong id="archiveTitle">正在打开档案…</strong></div>
@@ -1435,18 +1477,17 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
                 </div>
             </div>
         </div>
-        <div class="nav-actions">
-            <div class="nav-last-archived" id="lastArchived" title="上次归档时间" style="display:none"><svg class="ui-icon" aria-hidden="true"><use href="#icon-clock"></use></svg><span class="button-label"></span></div>
-            <span class="live-dot" id="liveDot" title="实时同步：新消息自动出现，无需点同步">实时</span>
-            <button class="sync-btn" id="syncBtn" onclick="syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="button-label">同步归档</span></button>
-        </div>
+<button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="阅读筛选：仅作用于当前日期的消息列表，不影响搜索结果" aria-label="阅读筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">阅读筛选</span></button>
     </div>
     <div class="nav-tools">
-        <div class="reading-heading"><span class="reading-indicator"></span><span id="readingDate">历史记录</span><span class="nav-stats" id="stats"></span></div>
+        <div class="reading-heading"><button class="archive-nav-toggle" id="archiveNavToggle" onclick="toggleArchive()" aria-label="选择日期" aria-controls="archiveNav" aria-expanded="false"><span id="readingDate">选择日期</span><span aria-hidden="true">▾</span></button><span class="nav-stats" id="stats"></span></div>
         <div class="nav-toolset">
-            <button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="阅读筛选：仅作用于当前日期的消息列表，不影响搜索结果" aria-label="阅读筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">阅读筛选</span></button>
-            <button class="tools-toggle" id="qaToggle" onclick="toggleQaComposer()" aria-expanded="false" title="向 AI 查询群聊历史"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">AI 助读</span></button>
-            <details class="archive-more" id="archiveMore"><summary aria-label="更多档案操作">更多 ···</summary><div class="archive-more-menu">
+            <details class="archive-more" id="archiveMore"><summary id="archiveMoreToggle" aria-label="更多档案操作">更多 ▾</summary><div class="archive-more-menu">
+            <button class="sync-btn" id="syncBtn" onclick="closeNavMore();syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="button-label">同步归档</span></button>
+            <button id="latestArchiveBtn" onclick="closeNavMore();jumpToLatestArchive()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-clock"></use></svg>查看最新归档</button>
+            <button class="tools-toggle" id="qaToggle" onclick="closeNavMore();toggleQaComposer()" aria-expanded="false" title="向 AI 查询群聊历史"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">AI 助读</span></button>
+            <button class="ai-btn" id="settingsBtn" onclick="closeNavMore();openSettings()" aria-label="设置"><svg class="ui-icon" aria-hidden="true"><use href="#icon-settings"></use></svg><span>设置与皮肤</span></button>
+            <button class="ai-btn code-mode-toggle" id="codeModeToggle" onclick="closeNavMore();toggleCodeMode()" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-list"></use></svg><span>代码日志外观<small>仅改变显示，不会脱敏 · Alt+Shift+X</small></span></button>
             <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="阅读/统计视图"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chart"></use></svg><span class="tool-label">查看统计</span></button>
             <button class="tools-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="按成员筛选当前日期的阅读列表，不影响搜索结果"><svg class="ui-icon" aria-hidden="true"><use href="#icon-users"></use></svg><span class="tool-label">阅读筛选 · 成员</span></button>
             <div class="export-menu-wrap">
@@ -1457,10 +1498,10 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
                 </div>
             </div>
             <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none"><svg class="ui-icon" aria-hidden="true"><use href="#icon-at"></use></svg><span class="tool-label">我</span></button>
+            <div class="archive-freshness"><span id="archiveFreshness" role="status">正在读取同步状态</span><span>归档记录不代表微博实时最新</span><span>定时归档与实时同步分别设置</span><div class="nav-last-archived" id="lastArchived" title="上次归档时间" style="display:none"><span class="button-label"></span></div><span class="live-dot" id="liveDot" title="实时同步状态">实时</span></div>
             </div></details>
         </div>
     </div>
-    <div class="archive-freshness"><button class="archive-nav-toggle" id="archiveNavToggle" onclick="toggleArchive()" aria-label="选择日期" aria-controls="archiveNav" aria-expanded="false">选择日期 ▾</button><button id="latestArchiveBtn" onclick="jumpToLatestArchive()">最新归档 ↘</button><span id="archiveFreshness" role="status">正在读取同步状态</span><span>归档记录不代表微博实时最新</span></div>
     <div class="auth-banner" id="authBanner" style="display:none" onclick="doLogin()">⚠ 微博登录已失效，定时归档已停摆 — 点此重新扫码</div>
 </div>
 
@@ -1482,7 +1523,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
                     <option value="qqmodern">现代 QQ · 简洁蓝白</option>
                 </select>
             </div>
-            <div class="settings-hint">代码日志模式：顶部 &lt;/&gt; 或 Alt+Shift+X 切换。隐藏群名、头像和聊天控件，正文仍可读（不会自动脱敏），不是隐私屏障。模式内不发新的应用通知；无法撤回已有系统通知，也不隐藏浏览器地址、历史或原生窗口名称。刷新后恢复普通视图。</div>
+            <div class="settings-hint">代码日志外观：通过“更多 → 代码日志外观”或 Alt+Shift+X 切换。隐藏群名、头像和聊天控件，正文仍可读（不会自动脱敏），不是隐私屏障。模式内不发新的应用通知；无法撤回已有系统通知，也不隐藏浏览器地址、历史或原生窗口名称。刷新后恢复普通视图。</div>
         </div>
 
         <div class="settings-section">
@@ -1977,6 +2018,24 @@ function renderCodeLog() {
     document.title = 'workspace.log — Editor';
 }
 
+function closeNavMore(restoreFocus = true) {
+    const menu = document.getElementById('archiveMore');
+    if (!menu.open) return;
+    menu.open = false;
+    if (restoreFocus) document.getElementById('archiveMoreToggle').focus({ preventScroll: true });
+}
+
+function focusNavTrigger(targetOrId) {
+    const target = typeof targetOrId === 'string' ? document.getElementById(targetOrId) : targetOrId;
+    if (target?.closest?.('#archiveMore') && !document.getElementById('archiveMore').open) {
+        document.getElementById('archiveMoreToggle').focus({ preventScroll: true });
+    } else target?.focus({ preventScroll: true });
+}
+
+document.addEventListener('pointerdown', event => {
+    if (!event.target.closest?.('#archiveMore')) closeNavMore(false);
+});
+
 function toggleCodeMode() {
     saveReadingPosition();
     const messages = document.getElementById('messages');
@@ -2018,7 +2077,7 @@ function toggleCodeMode() {
             messages.scrollLeft = snapshot.scrollLeft;
         }
         const target = snapshot?.focused?.isConnected && snapshot.focused.getBoundingClientRect().height ? snapshot.focused : document.getElementById('codeModeToggle');
-        target.focus({ preventScroll: true });
+        focusNavTrigger(target);
         if (snapshot?.selectionStart != null && target === snapshot.focused) target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
         codeModeSnapshot = null;
     }
@@ -2142,6 +2201,7 @@ async function jumpToNewArchive() {
 }
 
 function toggleArchive(force) {
+    closeNavMore(false);
     const panel = document.getElementById('archiveNav');
     const wasOpen = panel.classList.contains('open');
     const open = force === undefined ? !panel.classList.contains('open') : force;
@@ -2189,6 +2249,7 @@ function renderGroupOptions() {
 }
 
 function openGroupPicker() {
+    closeNavMore(false);
     toggleArchive(false);
     document.getElementById('groupPickerSearch').value = '';
     renderGroupOptions();
@@ -2248,7 +2309,7 @@ function closeResearch() {
     document.getElementById('qaToggle').setAttribute('aria-expanded', 'false');
     document.querySelectorAll('.msg-item.ctx-focused').forEach(element => element.classList.remove('ctx-focused'));
     syncPaneBackdrop();
-    if (trigger) document.getElementById(trigger).focus();
+    if (trigger) focusNavTrigger(trigger);
 }
 
 function resetArchiveView({ preserveTask = false, preserveContextReturn = false } = {}) {
@@ -2292,6 +2353,7 @@ document.addEventListener('keydown', e => {
     if (codeMode) return;
     const messageMenu = document.querySelector('.msg-menu[open]');
     if (e.key === 'Escape' && (e.isComposing || e.keyCode === 229)) return;
+    if (e.key === 'Escape' && document.getElementById('archiveMore').open) { e.preventDefault(); closeNavMore(); return; }
     if (e.key === 'Escape' && messageMenu) { e.preventDefault(); messageMenu.open = false; messageMenu.querySelector('summary').focus(); return; }
     if (document.getElementById('groupPickerOverlay').classList.contains('show')) {
         if (e.isComposing) return;
@@ -3288,6 +3350,7 @@ function friendlyAiError(error) {
 }
 
 function openSettings(options = {}) {
+    closeNavMore(false);
     toggleArchive(false);
     document.getElementById('settingsModal').classList.add('show');
     if (options.aiMessage) revealAiConfig(options.aiMessage, options.missingFields);
@@ -3456,6 +3519,7 @@ window.addEventListener('cookies-saved', (e) => {
 function closeSettings() {
     document.getElementById('settingsModal').classList.remove('show');
     clearAiConfigAttention();
+    focusNavTrigger('settingsBtn');
 }
 
 async function saveAiSettings() {

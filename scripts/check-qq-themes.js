@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const puppeteer = require('puppeteer');
+const { clickNavAction } = require('./browser-nav-test');
 const { resolveChromePath } = require('../lib/chrome-path');
 const { uniqueGroupKey, writeGroupMetadata } = require('../lib/group-storage');
 
@@ -94,7 +95,7 @@ async function main() {
                 });
                 const base = `http://127.0.0.1:${server.address().port}`;
                 await page.goto(base, { waitUntil: 'networkidle0' });
-                await page.click('#settingsBtn');
+                await clickNavAction(page, '#settingsBtn');
                 await page.select('#themeSelect', theme);
                 await page.keyboard.press('Escape');
                 await page.reload({ waitUntil: 'networkidle0' });
@@ -325,7 +326,7 @@ async function main() {
                     path: path.join(artifacts, `${theme}-${width}-context.png`),
                 });
                 await page.keyboard.press('Escape');
-                await page.click('#settingsBtn');
+                await clickNavAction(page, '#settingsBtn');
                 await page.select('#themeSelect', 'archive');
                 await page.keyboard.press('Escape');
                 assert.equal(

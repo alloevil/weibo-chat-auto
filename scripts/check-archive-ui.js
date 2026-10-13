@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const puppeteer = require('puppeteer');
+const { clickNavAction } = require('./browser-nav-test');
 const { resolveChromePath } = require('../lib/chrome-path');
 const { uniqueGroupKey, writeGroupMetadata } = require('../lib/group-storage');
 const { writeRegistry } = require('../lib/group-registry');
@@ -505,10 +506,10 @@ async function main() {
                 ['#searchInput', '#navSearch'],
                 ['#searchInput', '#navSearch', '::placeholder'],
                 ['#searchScope', '#navSearch'],
-                ['#syncBtn', '.nav-top'],
-                ['#qaToggle', '.nav-tools'],
+                ['#syncBtn', '.archive-more-menu'],
+                ['#qaToggle', '.archive-more-menu'],
                 ['#archiveFreshness', '.archive-freshness'],
-                ['#readingDate', '.nav-tools'],
+                ['#readingDate', '.compact-nav'],
             ];
             const background = (element) => {
                 while (element) {
@@ -742,7 +743,7 @@ async function main() {
         await page.keyboard.press('Escape');
         record('上下文、全文切换、成员筛选和关闭面板');
 
-        await page.click('#qaToggle');
+        await clickNavAction(page, '#qaToggle');
         await page.waitForSelector('#settingsModal.show');
         assert.match(
             await page.$eval('#aiConfigAlert', (element) => element.textContent),
@@ -758,7 +759,7 @@ async function main() {
             );
         });
         await page.click('#toast');
-        await page.click('#qaToggle');
+        await clickNavAction(page, '#qaToggle');
         await page.waitForSelector('#qaQuickPanel.show');
         await page.type('#qaInput', '最后决定了什么？');
         await page.click('#qaSendBtn');
@@ -840,7 +841,7 @@ async function main() {
         await page.waitForSelector('#msg-9900012000');
         await page.click('#archiveNavToggle');
         await page.click('#dateDrawerClose');
-        await page.click('#settingsBtn');
+        await clickNavAction(page, '#settingsBtn');
         assert.equal(
             await page.$eval('#settingsModal', (element) => !!element.closest('[inert]')),
             false
@@ -859,7 +860,7 @@ async function main() {
             false
         );
         record('导航打开时从窄屏拉宽，恢复主界面交互');
-        await page.click('#settingsBtn');
+        await clickNavAction(page, '#settingsBtn');
         for (const theme of ['', 'qq2000', 'qq2008', 'qq2012', 'qqmodern', 'archive']) {
             await page.select('#themeSelect', theme);
             assert.equal(await page.$eval('html', (element) => element.dataset.theme || ''), theme);
@@ -960,7 +961,7 @@ async function main() {
             await page.$eval('#newArchiveBtn', (element) => element.textContent),
             /新增 1 条/
         );
-        await page.click('#latestArchiveBtn');
+        await clickNavAction(page, '#latestArchiveBtn');
         await page.waitForSelector('[id="msg-new-2026-09-24-1"]');
         assert.match(await page.$eval('#readingDate', (element) => element.textContent), /24/);
         assert.equal(await visible('#newArchiveBtn'), false);
@@ -1004,10 +1005,11 @@ async function main() {
         );
         assert.deepEqual(errors, []);
         record('切群提示隔离、正文左对齐、窄屏布局与同步状态');
-        await page.setViewport({ width: 1280, height: 900 });
+        await page.setViewport({ width: 1280, height: 600 });
         await page.$eval('#messages', (element) => {
             element.scrollTop = 100;
         });
+        assert.equal(await page.$eval('#messages', (element) => element.scrollTop), 100);
         extraMessages['2026-09-21'] = [
             newMessage('2026-09-21', 1),
             newMessage('2026-09-21', 2),
@@ -1052,7 +1054,7 @@ async function main() {
         record('合成实时事件：同日/跨日保持位置，连接与断开状态准确');
 
         extraMessages['2026-09-21'].push(newMessage('2026-09-21', 4));
-        await page.click('#syncBtn');
+        await clickNavAction(page, '#syncBtn');
         await page.waitForFunction(() => !globalThis.document.querySelector('#syncBtn').disabled);
         await page.waitForSelector('[id="msg-new-2026-09-21-4"]');
         assert.equal(await page.$eval('#messages', (element) => element.scrollTop), 100);
@@ -1077,7 +1079,7 @@ async function main() {
         await page.setViewport({ width: 1440, height: 960 });
         await page.reload({ waitUntil: 'networkidle0' });
         await page.waitForSelector('.msg-item');
-        await page.click('#latestArchiveBtn');
+        await clickNavAction(page, '#latestArchiveBtn');
         await page.waitForSelector('[id="msg-history-2026-09-26"]');
         assert.equal(await page.$$eval('.archive-day', (elements) => elements.length), 7);
         assert.equal(
@@ -1242,7 +1244,7 @@ async function main() {
             ),
             'true'
         );
-        await page.click('#latestArchiveBtn');
+        await clickNavAction(page, '#latestArchiveBtn');
         await page.waitForSelector('[id="msg-history-2026-09-26"]');
         await clickDateControl('#archive-date-2026-09-20');
         await page.waitForSelector('[id="msg-history-2026-09-20"]');
@@ -1747,7 +1749,7 @@ async function main() {
             '代码模式：快捷键从输入框切换、匿名编号与纯文本、标题/favicon、通知/发送抑制、Escape 不暴露、草稿/选择区/阅读位置恢复'
         );
 
-        await page.click('#codeModeToggle');
+        await clickNavAction(page, '#codeModeToggle');
         const logPosition = await page.$eval('#codeLog', (element) => {
             element.scrollTop = 80;
             return element.scrollTop;
@@ -1807,7 +1809,7 @@ async function main() {
         await page.$eval('#messages', (element) => {
             element.scrollTop = 100;
         });
-        await page.click('#codeModeToggle');
+        await clickNavAction(page, '#codeModeToggle');
         await page.evaluate(async () => {
             const originalFrame = globalThis.requestAnimationFrame;
             const pending = [];
@@ -1829,7 +1831,7 @@ async function main() {
             '退出模式后的延迟刷新不得覆盖阅读位置'
         );
         record('代码模式退出与后台延迟滚动任务交错时，普通阅读位置不被覆盖');
-        await page.click('#settingsBtn');
+        await clickNavAction(page, '#settingsBtn');
         await pressCodeShortcut();
         assert.equal(await visible('#settingsModal'), false);
         await page.evaluate(() => globalThis.showToast('晚到提示', 'error'));
@@ -1877,7 +1879,7 @@ async function main() {
         await pressCodeShortcut();
         assert.equal(await visible('#researchPanel'), true);
         await page.keyboard.press('Escape');
-        await page.click('#codeModeToggle');
+        await clickNavAction(page, '#codeModeToggle');
         await page.reload({ waitUntil: 'networkidle0' });
         assert.equal(await visible('#codeModeView'), false);
         assert.equal(await page.evaluate(() => globalThis.Notification.permission), 'granted');
@@ -2020,7 +2022,7 @@ async function main() {
             '每群阅读记忆：跨日切群、最后访问群刷新恢复；前插 5 条后仍定位原消息，行内偏移误差 <1px，仅存元数据'
         );
 
-        await page.click('#codeModeToggle');
+        await clickNavAction(page, '#codeModeToggle');
         const codeAnchor = 'resume-1-2026-09-26-16';
         await page.$eval(
             '#codeLog',
@@ -2046,7 +2048,7 @@ async function main() {
         await page.reload({ waitUntil: 'networkidle0' });
         await assertAnchor(codeAnchor, 0);
         assert.equal(await visible('#codeModeView'), false);
-        await page.click('#latestArchiveBtn');
+        await clickNavAction(page, '#latestArchiveBtn');
         await page.waitForFunction(() => {
             const list = globalThis.document.querySelector('#messages');
             return list.scrollHeight - list.scrollTop - list.clientHeight < 2;
@@ -2382,7 +2384,7 @@ async function main() {
             /还没有归档/
         );
         await page.keyboard.press('Escape');
-        await page.click('#codeModeToggle');
+        await clickNavAction(page, '#codeModeToggle');
         assert.match(await page.$eval('#codeLog', (element) => element.textContent), /No records/);
         await page.click('#codeModeExit');
         assert.equal(await visible('#codeModeView'), false);
