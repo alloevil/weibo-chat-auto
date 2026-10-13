@@ -4,8 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const assert = require('node:assert/strict');
-const puppeteer = require('puppeteer');
-const { resolveChromePath } = require('../lib/chrome-path');
+const { launchTestBrowser, newTestPage, handleNonLocalRequest } = require('./browser-test-utils');
 const { clickNavAction } = require('./browser-nav-test');
 
 const artifacts = path.resolve(process.env.WEIBO_UI_ARTIFACTS || 'output/playwright/compact-nav');
@@ -37,22 +36,13 @@ async function main() {
     const external = [];
     try {
         await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-        browser = await puppeteer.launch({
-            executablePath: resolveChromePath(),
-            headless: true,
-            args: ['--no-sandbox'],
-        });
-        const page = await browser.newPage();
-        page.on('pageerror', (error) => errors.push(error.message));
+        browser = await launchTestBrowser();
+        const page = await newTestPage(browser, errors);
         await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
         await page.setRequestInterception(true);
         page.on('request', (request) => {
             const url = new URL(request.url());
-            if (!['http:', 'https:'].includes(url.protocol)) return request.continue();
-            if (url.hostname !== '127.0.0.1') {
-                external.push(request.url());
-                return request.abort();
-            }
+            if (handleNonLocalRequest(request, external)) return;
             const reply = (body) =>
                 request.respond({ contentType: 'application/json', body: JSON.stringify(body) });
             if (url.pathname === '/api/version') return reply({ current: '1.30.0' });
@@ -314,7 +304,16 @@ async function main() {
             );
         });
         await page.setViewport({ width: 1280, height: 900 });
+        await page.waitForFunction(
+            () =>
+                globalThis.document.querySelector('#toolsToggle').parentElement.id ===
+                'navQuickActions'
+        );
         await page.focus('#toolsToggle');
+        assert.equal(
+            await page.evaluate(() => globalThis.document.activeElement.id),
+            'toolsToggle'
+        );
         await page.setViewport({ width: 360, height: 800 });
         await page.waitForFunction(
             () => globalThis.document.activeElement.id === 'archiveMoreToggle'
@@ -353,7 +352,10 @@ async function main() {
             await page.$eval('#syncBtn', (element) => element.getAttribute('aria-label')),
             '同步中…'
         );
-        assert.equal(await page.$eval('#syncBtnTip', (element) => element.textContent), '同步中…');
+        assert.match(
+            await page.$eval('#syncBtnTip', (element) => element.textContent),
+            /^同步中…\n尚未成功同步/
+        );
         assert.equal(
             await page.$eval(
                 '#syncBtn .ui-icon',

@@ -34,6 +34,7 @@ const messageStore = require('../lib/load-messages');
 const weiboAuth = require('../lib/weibo-auth');
 // 归档器输出 → 同步结果/进度 的解析规则统一在 lib/sync-report（有对应单测）
 const syncReport = require('../lib/sync-report');
+const { readLastSuccessfulSync, recordSuccessfulSync } = require('../lib/sync-state');
 // 实时同步（lib/live-sync）：查看器常驻期间轮询 webim，把新消息并入日文件并
 // 通过 SSE 推给页面。只在有订阅者时轮询，没人看不打接口。
 const { createLiveSync, DEFAULT_INTERVAL_MS: LIVE_INTERVAL_MS } = require('../lib/live-sync');
@@ -1303,6 +1304,22 @@ function requestHandler(req, res) {
     }
 
     // Sync: trigger archiver
+    if (url.pathname === '/api/sync-status' && req.method === 'GET') {
+        try {
+            const lastSuccessfulSyncAt = readLastSuccessfulSync(STATE_DIR);
+            res.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'no-store',
+            });
+            res.end(JSON.stringify({ ok: true, lastSuccessfulSyncAt }));
+        } catch (error) {
+            console.error('[sync] 读取上次同步时间失败:', error.message);
+            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: false, error: '上次同步时间读取失败' }));
+        }
+        return;
+    }
+
     if (url.pathname === '/api/sync' && req.method === 'POST') {
         // 并发防护（#14）：进行中（本进程 spawn 的归档器）或跨进程锁被持有
         // （定时任务正在归档）都直接 409，绝不 spawn 第二个 puppeteer ——
@@ -1372,6 +1389,17 @@ function requestHandler(req, res) {
                 clearTimeout(timer);
                 progress.running = false;
                 const result = syncReport.buildSyncResult(code, out);
+                if (result.ok) {
+                    const completedAt = new Date();
+                    result.lastSuccessfulSyncAt = completedAt.toISOString();
+                    try {
+                        recordSuccessfulSync(STATE_DIR, completedAt);
+                        result.syncTimeSaved = true;
+                    } catch (error) {
+                        console.error('[sync] 保存上次同步时间失败:', error.message);
+                        result.syncTimeSaved = false;
+                    }
+                }
                 if (result.ok) console.log(`[sync] done (archived=${result.archived})`);
                 else console.error('[sync] archiver exited with code', code);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

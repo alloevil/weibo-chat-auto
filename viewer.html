@@ -54,33 +54,19 @@ button, select, input { font-family: inherit; }
 .ui-icon { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .ui-icon.brand-icon { width: 19px; height: 19px; stroke-width: 1.7; }
 .sync-btn, .ai-btn, .tools-toggle, .stats-toggle, .summary-btn, .composer-icon { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.nav-stats, .nav-last-archived, .user-count, .ctx-meta, .ctx-msg-time, .msg-time, .stats-kpi-value, .stats-bar-val { font-variant-numeric: tabular-nums; }
+.nav-stats, .user-count, .ctx-meta, .ctx-msg-time, .msg-time, .stats-kpi-value, .stats-bar-val { font-variant-numeric: tabular-nums; }
 
 /* Top nav */
 .nav { border-bottom: 1px solid var(--hairline); flex-shrink: 0; background: var(--canvas); position: relative; z-index: 20; }
-/* 主导航分两层：第一层只放当前上下文、搜索与主操作；视图工具独立在第二层。
-   旧布局把十几个控件全塞进同一个 flex-wrap，换行位置随文字长度漂移。 */
-.nav-top { display: flex; align-items: center; padding: 8px 16px; min-height: 52px; gap: 12px; }
-.nav-context { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
-.nav-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
-.nav-actions .ai-btn { width: 32px; height: 32px; margin-left: 0; padding: 0; }
-.nav-search { display: flex; align-items: center; gap: 8px; flex: 1 1 480px; min-width: 280px; max-width: 760px; }
-.nav-search .search-input-wrap { flex: 1 1 auto; max-width: none; min-width: 140px; }
-.nav-search .qa-inline { flex: 1 1 auto; margin-left: 0; min-width: 150px; }
-.nav-search .qa-inline .qa-input { flex: 1 1 auto; width: auto; min-width: 0; }
-.nav-search .qa-inline .qa-input:focus { width: auto; }
-.nav-tools { min-height: 42px; padding: 5px 16px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--hairline); background: var(--surface-1); overflow-x: auto; }
-.nav-toolset { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
 .nav-tools .nav-stats { margin-left: auto; flex-shrink: 0; }
-/* 标题只留标识色块：文字占 90px 而窗口标题已经写着了 */
-.nav-title { display: flex; align-items: center; white-space: nowrap; }
-.nav-title .brand-icon { color: var(--primary-hover); }
+
 .nav-date { height: 32px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
 .nav-date:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
 .nav-group-select { height: 32px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
 .nav-group-select:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
 .nav-stats { font-size: 13px; color: var(--ink-subtle); }
-.nav-last-archived { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-subtle); white-space: nowrap; }
+
 .sync-btn { height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: 8px; background: var(--primary); color: var(--on-primary); cursor: pointer; font-size: 12px; font-weight: 600; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
 .sync-btn:hover { background: var(--primary-hover); }
 .sync-btn.syncing { background: var(--surface-2); color: var(--ink-subtle); border-color: var(--hairline); cursor: wait; }
@@ -586,8 +572,7 @@ button, select, input { font-family: inherit; }
 .stats-word .count { font-size: 12px; color: var(--ink-subtle); }
 
 @media (max-width: 1180px) {
-    .nav-top { flex-wrap: wrap; }
-    .nav-search { order: 3; flex-basis: 100%; max-width: none; }
+
     .sidebar { width: 210px; }
     .user-item { padding-inline: 8px; gap: 7px; }
     .user-avatar { width: 30px; height: 30px; font-size: 12px; }
@@ -599,10 +584,9 @@ button, select, input { font-family: inherit; }
 }
 
 @media (max-width: 900px) {
-    .nav-top { padding: 7px 10px; gap: 8px; }
-    .nav-context { flex: 1 1 auto; }
+
     .nav-group-select { min-width: 0; max-width: 46vw; }
-    .nav-tools { padding-inline: 10px; }
+
     .nav-tools .nav-stats { margin-left: 0; }
     .sidebar { position: absolute; inset: 0 auto 0 0; z-index: 16; width: min(260px, 82vw); box-shadow: 10px 0 30px rgba(0,0,0,.18); }
     .sidebar.collapsed { width: 0; box-shadow: none; }
@@ -610,12 +594,9 @@ button, select, input { font-family: inherit; }
 }
 
 @media (max-width: 640px) {
-    .nav-title { display: none; }
-    .nav-actions .nav-last-archived, .nav-actions .live-dot { display: none; }
-    .nav-search { min-width: 100%; flex-wrap: wrap; }
+
     .nav-search .search-input-wrap { min-width: 100%; }
-    .nav-tools { gap: 6px; }
-    .nav-toolset { gap: 6px; }
+
     .tools-toggle, .stats-toggle { padding-inline: 9px; }
     .stats-panel.show { gap: 10px; }
     .stats-section { padding: 12px; }
@@ -626,8 +607,7 @@ button, select, input { font-family: inherit; }
 }
 
 @media (max-width: 480px) {
-    .nav-tools { overflow-x: hidden; }
-    .nav-toolset { width: 100%; justify-content: space-between; gap: 4px; }
+
     .nav-tools .nav-stats { display: none; }
     .nav-toolset .tools-toggle, .nav-toolset .stats-toggle { min-width: 36px; padding-inline: 8px; }
     .nav-toolset .tool-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
@@ -664,10 +644,8 @@ html[data-theme="qq2000"] * { border-radius: 0 !important; }
 html[data-theme="qq2000"] body { font-family: Tahoma, "MS Sans Serif", SimSun, "Songti SC", sans-serif; letter-spacing: 0; -webkit-font-smoothing: auto; }
 html[data-theme="qq2000"] .modal, html[data-theme="qq2000"] .toast { box-shadow: none; }
 /* 经典蓝色标题栏 */
-html[data-theme="qq2000"] .nav-top { background: linear-gradient(90deg, #0a246a, #a6caf0); }
-html[data-theme="qq2000"] .nav-title { color: #fff; }
-html[data-theme="qq2000"] .nav-title .brand-icon { color: #fff; }
-html[data-theme="qq2000"] .nav-stats, html[data-theme="qq2000"] .nav-last-archived { color: #d8e4f8; }
+
+html[data-theme="qq2000"] .nav-stats { color: #d8e4f8; }
 /* 银色斜面按钮（按下翻转为凹陷） */
 html[data-theme="qq2000"] .sync-btn, html[data-theme="qq2000"] .ai-btn,
 html[data-theme="qq2000"] .nav-date, html[data-theme="qq2000"] .nav-group-select,
@@ -735,11 +713,10 @@ html[data-theme="qq2008"] {
 html[data-theme="qq2008"] * { border-radius: 4px !important; }
 html[data-theme="qq2008"] body { font-family: "Microsoft YaHei", "微软雅黑", Verdana, Tahoma, sans-serif; letter-spacing: 0; }
 /* Vista 玻璃标题栏：上亮下渐变 + 中缝高光 */
-html[data-theme="qq2008"] .nav-top { background: linear-gradient(180deg, #f4fbff 0%, #d3eafc 45%, #aed7f6 46%, #c9e6fa 100%); }
+
 html[data-theme="qq2008"] .nav { border-bottom-color: var(--hairline-strong); }
-html[data-theme="qq2008"] .nav-title { color: #113f6d; text-shadow: 0 1px 0 rgba(255,255,255,.85); }
-html[data-theme="qq2008"] .nav-title .brand-icon { color: #113f6d; }
-html[data-theme="qq2008"] .nav-stats, html[data-theme="qq2008"] .nav-last-archived { color: #35608c; }
+
+html[data-theme="qq2008"] .nav-stats { color: #35608c; }
 /* 玻璃光泽按钮/下拉（顶部高光 + 中缝分界） */
 html[data-theme="qq2008"] .ai-btn, html[data-theme="qq2008"] .nav-date,
 html[data-theme="qq2008"] .nav-group-select, html[data-theme="qq2008"] .schedule-select,
@@ -812,11 +789,9 @@ html[data-theme="qq2012"] {
 }
 html[data-theme="qq2012"] body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", sans-serif; letter-spacing: 0; }
 /* 标志性天空皮肤只留在顶栏；内容区使用更安静的现代层级。 */
-html[data-theme="qq2012"] .nav-top { background: linear-gradient(155deg, #d8ecf7 0%, #a8d5ed 58%, #c4e3f3 100%); }
+
 html[data-theme="qq2012"] .nav { border-bottom-color: var(--hairline-strong); box-shadow: 0 1px 4px rgba(60, 100, 130, .12); }
-html[data-theme="qq2012"] .nav-title { color: #176f9f; text-shadow: none; }
-html[data-theme="qq2012"] .nav-title .brand-icon { color: #176f9f; }
-html[data-theme="qq2012"] .nav-last-archived { color: #176f9f; }
+
 html[data-theme="qq2012"] .nav-stats { color: var(--ink-subtle); text-shadow: none; }
 /* 普通控件扁平化，渐变只保留给主操作。 */
 html[data-theme="qq2012"] .ai-btn, html[data-theme="qq2012"] .nav-date,
@@ -855,7 +830,7 @@ html[data-theme="qq2012"] .modal-field input[type="text"], html[data-theme="qq20
 /* 三层表面：页面底色 / 白色工作区 / 有阴影的浮层。 */
 html[data-theme="qq2012"] .content { background: var(--surface-1); }
 html[data-theme="qq2012"] .sidebar, html[data-theme="qq2012"] .context-panel,
-html[data-theme="qq2012"] .nav-tools, html[data-theme="qq2012"] .composer { background: var(--surface-4); }
+html[data-theme="qq2012"] .composer { background: var(--surface-4); }
 html[data-theme="qq2012"] .sidebar-header, html[data-theme="qq2012"] .ctx-header { background: var(--surface-1); }
 html[data-theme="qq2012"] .modal, html[data-theme="qq2012"] .export-menu,
 html[data-theme="qq2012"] .qa-answer { box-shadow: 0 10px 32px rgba(60, 100, 130, .16); }
@@ -901,12 +876,7 @@ button { cursor: pointer; }
 .date-drawer-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .date-drawer-heading h2 { font-size: 18px; font-weight: 600; }
 .date-drawer-heading p { font-size: 12px; color: var(--ink-subtle); margin-top: 7px; }
-.group-bar { display: flex; align-items: center; gap: 20px; padding: 18px 32px 0; }
-.group-bar .archive-brand { margin: 0; flex-shrink: 0; }
-.group-bar .archive-brand strong { font-size: 14px; letter-spacing: .04em; }
-.group-bar .archive-mark { width: 28px; height: 30px; border-radius: 7px; }
-.group-bar .archive-mark .ui-icon { width: 17px; height: 17px; }
-.group-bar .ai-btn { margin: 0 0 0 auto; flex-shrink: 0; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; background: transparent; }
+
 .group-picker-trigger { display: flex; align-items: center; gap: 9px; min-width: 0; max-width: 420px; padding: 10px 13px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); color: var(--ink); font-size: 13px; text-align: left; }
 .group-picker-trigger:hover { background: var(--surface-2); border-color: var(--hairline-strong); }
 .group-picker-trigger #groupPickerLabel { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -925,11 +895,6 @@ button { cursor: pointer; }
 .group-picker-dialog .archive-group .group-option-name { flex: 1; white-space: normal; overflow-wrap: anywhere; }
 .group-picker-dialog .archive-group small { flex-shrink: 0; font-size: 11px; color: var(--primary-hover); }
 .group-picker-help { padding: 12px 20px; border-top: 1px solid var(--hairline); font-size: 11px; color: var(--ink-subtle); }
-.archive-brand { display: flex; align-items: center; gap: 12px; margin: 0 4px 34px; }
-.archive-mark { display: grid; place-items: center; width: 38px; height: 42px; color: var(--on-primary); background: var(--primary); border-radius: 10px; }
-.archive-mark .ui-icon { width: 22px; height: 22px; }
-.archive-brand strong { display: block; font-size: 18px; letter-spacing: 1px; }
-.archive-brand small { display: block; margin-top: 6px; color: var(--ink-subtle); font-size: 11px; }
 .archive-section-label { display: flex; justify-content: space-between; padding: 0 10px; color: var(--ink-subtle); font-size: 11px; letter-spacing: .08em; margin-bottom: 12px; }
 .archive-groups { max-height: 28vh; overflow-y: auto; flex-shrink: 0; }
 .archive-group { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; background: transparent; border: 1px solid transparent; padding: 12px 10px; border-radius: 9px; margin-bottom: 5px; color: var(--ink-muted); }
@@ -964,29 +929,24 @@ button { cursor: pointer; }
 .archive-backdrop { display: none; }
 .archive-nav-toggle { display: inline-flex; }
 .nav { z-index: 10; }
-.nav-top { padding: 18px 32px 12px; gap: 24px; min-height: 76px; }
-.nav-context { flex: 1; overflow: hidden; }
-.nav-title { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; overflow: hidden; }
+
 .archive-eyebrow { font-size: 10px; font-weight: 500; letter-spacing: .14em; color: var(--ink-subtle); }
-.nav-title strong { font-size: 21px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.nav-search { position: relative; flex: 0 1 350px; min-width: 240px; max-width: 420px; gap: 0; height: 40px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); }
+
+.nav-search { display: flex; align-items: center; position: relative; gap: 0; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-1); }
 .search-scope { width: 92px; flex-shrink: 0; padding: 0 8px; border: 0; border-right: 1px solid var(--hairline); background: transparent; font-size: 11px; color: var(--ink-muted); height: 22px; }
-.nav-search .search-input-wrap { min-width: 0; }
+.nav-search .search-input-wrap { flex: 1 1 auto; max-width: none; min-width: 0; }
 .nav-search .search-input, html[data-theme] .nav-search .search-input { height: 38px; border: 0; background: transparent; font-size: 12px; box-shadow: none; padding-left: 30px; width: 100%; }
 .nav-search .search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .nav-search .search-icon { left: 9px; }
 .nav-search .search-count { position: absolute; top: 43px; right: 0; font-size: 10px; white-space: nowrap; }
 .nav-search .search-all-hint { display: none; }
-.nav-actions { margin-left: 0; gap: 10px; }
-.nav-actions .sync-btn { font-size: 12px; height: 36px; background: transparent; color: var(--ink-muted); border: 1px solid var(--hairline); padding: 0 10px; }
-.nav-last-archived, .live-dot { font-size: 10px; }
-.nav-tools { min-height: 58px; padding: 10px 32px; background: transparent; border-top: 0; overflow: visible; justify-content: space-between; gap: 10px; }
+
+.live-dot { font-size: 10px; }
+
 .reading-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13px; }
 .reading-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
 .reading-heading .nav-stats { margin-left: 6px; font-size: 11px; }
-.nav-toolset { gap: 4px; }
-.nav-toolset > .tools-toggle { font-size: 12px; background: transparent; border-color: transparent; }
-.nav-toolset > #qaToggle { color: var(--primary-hover); background: var(--primary-tint); border: 1px solid transparent; }
+
 .archive-more { position: relative; font-size: 12px; }
 .archive-more summary { list-style: none; cursor: pointer; padding: 9px 10px; color: var(--ink-subtle); border-radius: 6px; }
 .archive-more summary::-webkit-details-marker { display: none; }
@@ -1118,17 +1078,12 @@ button { cursor: pointer; }
 .research-panel .summary-bar { padding: 0 20px 16px; }
 .pane-backdrop { z-index: 15; }
 @media (max-width: 1300px) {
-    .group-bar { padding-inline: 24px; }
-    .nav-top { padding: 22px 24px; gap: 14px; }
-    .nav-tools { padding-inline: 24px; }
-    .nav-title strong { font-size: 18px; }
-    .nav-last-archived { display: none !important; }
+
     .research-panel { width: 320px; flex-basis: 320px; }
 }
 @media (max-width: 1100px) {
     .research-panel { position: absolute; inset: 0 0 0 auto; width: min(370px, 100%); z-index: 20; box-shadow: -12px 0 35px #00000012; }
-    .nav-top { flex-wrap: wrap; gap: 12px; }
-    .nav-search { order: 3; flex: 1 0 100%; max-width: none; }
+
     .nav-search .search-count { top: 10px; right: 30px; pointer-events: none; }
     .reading-heading .nav-stats { display: none; }
 }
@@ -1137,22 +1092,14 @@ button { cursor: pointer; }
     .archive-nav.open { display: flex; }
     .archive-backdrop.show { display: block; position: fixed; inset: 0; background: #18251c66; border: 0; z-index: 45; }
     .archive-nav-toggle { display: inline-flex; flex-shrink: 0; }
-    .group-bar { padding: 12px 16px 0; gap: 8px; }
-    .group-bar .archive-brand { display: none; }
+
     .group-picker-trigger { flex: 1; max-width: none; }
     .group-picker-dialog { margin-top: 0; max-height: calc(100dvh - 48px); }
-    .nav-context { gap: 10px; }
-    .nav-top { min-height: 0; padding: 18px 16px 10px; }
-    .nav-title strong { font-size: 16px; }
-    .nav-actions { gap: 0; }
-    .nav-actions .sync-btn { padding: 0 8px; font-size: 10px; }
-    .nav-actions .live-dot { display: none; }
-    .nav-tools { padding: 10px 16px; min-height: 52px; flex-wrap: nowrap; }
+
     .reading-heading { font-size: 11px; gap: 6px; flex-shrink: 0; white-space: nowrap; }
-    .nav-toolset { gap: 0; width: auto; justify-content: flex-end; }
+
     .nav-toolset .tool-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; }
-    .nav-toolset > .tools-toggle { padding: 0 8px; font-size: 11px; }
-    .nav-toolset > #toolsToggle .tool-label { display: none; }
+
     .archive-more summary { padding: 8px; font-size: 11px; }
     .messages { padding: 0 12px 20px; }
     .messages .msg-item { padding-left: 44px; padding-right: 32px; }
@@ -1173,17 +1120,13 @@ button { cursor: pointer; }
     .composer-send { padding: 0 10px; }
 }
 html[data-theme="archive"] body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; letter-spacing: 0; }
-html[data-theme="archive"] .nav { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(330px, 1fr); background: var(--chrome); color: var(--chrome-text); border: 0; }
-html[data-theme="archive"] .group-bar { min-height: 70px; padding: 12px 24px; gap: 22px; min-width: 0; }
-html[data-theme="archive"] .group-bar .archive-brand strong { font-size: 13px; letter-spacing: .02em; }
-html[data-theme="archive"] .group-bar .archive-mark { color: var(--chrome-accent); background: transparent; border: 0; }
+html[data-theme="archive"] .nav { background: var(--chrome); color: var(--chrome-text); border: 0; }
+
 html[data-theme="archive"] .group-picker-trigger { font-family: inherit; font-size: 15px; font-weight: 600; border: 0; border-left: 1px solid var(--chrome-line); border-radius: 0; padding: 7px 0 7px 20px; color: var(--chrome-text); background: transparent; max-width: none; }
 html[data-theme="archive"] .group-picker-trigger > .ui-icon { display: none; }
 html[data-theme="archive"] .group-picker-trigger .picker-chevron { color: var(--chrome-muted); }
-html[data-theme="archive"] .group-bar .ai-btn { border: 0; color: var(--chrome-muted); }
-html[data-theme="archive"] .nav-context { display: none; }
-html[data-theme="archive"] .nav-top { min-height: 70px; padding: 12px 24px 12px 8px; flex-wrap: nowrap; gap: 12px; }
-html[data-theme="archive"] .nav-search { flex: 1; flex-wrap: nowrap; order: 0; min-width: 0; max-width: none; height: 36px; border: 1px solid var(--chrome-line); border-radius: 7px; background: var(--chrome-input); }
+
+html[data-theme="archive"] .nav-search { border: 1px solid var(--chrome-line); border-radius: 7px; background: var(--chrome-input); }
 html[data-theme="archive"] .nav-search .search-input-wrap { min-width: 0; }
 html[data-theme="archive"] .nav-search .search-input { height: 34px; color: var(--chrome-text); background: transparent; }
 html[data-theme="archive"] .nav-search .search-input::placeholder { color: var(--chrome-muted); }
@@ -1191,20 +1134,19 @@ html[data-theme="archive"] .nav-search .search-icon, html[data-theme="archive"] 
 html[data-theme="archive"] .search-scope { color: var(--chrome-text); border-right-color: var(--chrome-line); color-scheme: dark; }
 html[data-theme="archive"] .search-scope option { color: var(--chrome-text); background: var(--chrome-input); }
 html[data-theme="archive"] .nav-search .search-count { top: 38px; color: var(--chrome-muted); background: var(--chrome-secondary); border-radius: 3px; z-index: 2; }
-html[data-theme="archive"] .nav-actions .nav-last-archived { display: none !important; }
-html[data-theme="archive"] .nav-actions .sync-btn { border-color: transparent; background: transparent; color: var(--chrome-text); border-radius: 5px; }
+
 html[data-theme="archive"] .live-dot { color: var(--chrome-muted); }
-html[data-theme="archive"] .nav-tools { grid-column: 1 / -1; min-height: 46px; padding: 7px 24px; background: var(--chrome-secondary); }
+
 html[data-theme="archive"] .reading-heading .nav-stats { color: var(--chrome-muted); }
 html[data-theme="archive"] .reading-heading .nav-stats span { color: var(--chrome-accent) !important; }
 html[data-theme="archive"] .reading-indicator { background: var(--chrome-accent); }
-html[data-theme="archive"] .nav-toolset > .tools-toggle, html[data-theme="archive"] .archive-more summary { color: var(--chrome-muted); }
-html[data-theme="archive"] .nav-toolset > #qaToggle { color: var(--chrome-accent); background: transparent; }
-html[data-theme="archive"] .nav-toolset > .tools-toggle.open { background: var(--chrome-hover); border-color: var(--chrome-line); }
+html[data-theme="archive"] .archive-more summary { color: var(--chrome-muted); }
+
 html[data-theme="archive"] .archive-freshness { grid-column: 1 / -1; background: var(--chrome-secondary); color: var(--chrome-muted); padding: 0 24px 10px; gap: 6px 14px; }
 html[data-theme="archive"] .archive-freshness button { background: transparent; color: var(--chrome-accent); padding-inline: 0; }
+html[data-theme="archive"] .nav :is(.ai-btn:hover, .sync-btn:hover, .group-picker-trigger:hover, .archive-more > summary:hover, .search-clear:hover) { background: var(--chrome-hover); color: var(--chrome-text); }
 html[data-theme="archive"] .nav .auth-banner { grid-column: 1 / -1; margin-bottom: 8px; }
-html[data-theme="archive"] .nav :is(.ai-btn:hover, .sync-btn:hover, .group-picker-trigger:hover, .nav-toolset > .tools-toggle:hover, .archive-more > summary:hover, .search-clear:hover) { background: var(--chrome-hover); color: var(--chrome-text); }
+
 html[data-theme="archive"] .nav :focus-visible { outline-color: var(--chrome-accent); }
 html[data-theme="archive"] .archive-more-menu, html[data-theme="archive"] .export-menu { color: var(--ink); background: var(--surface-1); }
 html[data-theme="archive"] .archive-more-menu .tools-toggle, html[data-theme="archive"] .archive-more-menu .stats-toggle { color: var(--ink-muted); }
@@ -1227,19 +1169,13 @@ html[data-theme="archive"] .reading-actions #newArchiveBtn { color: var(--on-pri
 html[data-theme="archive"] .reading-footer { background: var(--surface-1); }
 html[data-theme="archive"] .user-avatar { background: var(--surface-3) !important; color: var(--ink-muted) !important; }
 @media (max-width: 1100px) {
-    html[data-theme="archive"] .nav { grid-template-columns: minmax(0, 1fr); }
-    html[data-theme="archive"] .nav-top { min-height: 48px; padding: 0 24px 12px; }
+
     html[data-theme="archive"] .nav-search .search-count { top: 36px; }
 }
 @media (max-width: 760px) {
-    html[data-theme="archive"] .group-bar { padding: 12px 16px 6px; min-height: 56px; gap: 10px; }
-    html[data-theme="archive"] .group-bar .archive-brand { display: flex; }
-    html[data-theme="archive"] .group-bar .archive-brand strong { display: none; }
+
     html[data-theme="archive"] .group-picker-trigger { border: 0; padding: 6px 0; font-size: 14px; }
-    html[data-theme="archive"] .nav-top { padding: 0 16px 10px; gap: 6px; }
-    html[data-theme="archive"] .nav-actions .sync-btn { width: 32px; padding: 0; }
-    html[data-theme="archive"] .nav-actions .sync-btn .button-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-    html[data-theme="archive"] .nav-tools { padding: 6px 16px; min-height: 40px; }
+
     html[data-theme="archive"] .archive-freshness { padding: 0 16px 10px; font-size: 10px; }
     html[data-theme="archive"] .messages .msg-content { font-size: 13px; }
     html[data-theme="archive"] .messages .msg-item .msg-avatar { width: 28px; height: 28px; }
@@ -1264,27 +1200,19 @@ html[data-theme="qqmodern"] {
     --qq-bubble-border: #e2e6ed; --qq-radius: 12px; --qq-shadow: none;
 }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; letter-spacing: 0; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(330px, 1fr); background: var(--qq-header); box-shadow: none; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar { min-width: 0; min-height: 72px; padding: 12px 20px 12px 28px; gap: 12px; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar .archive-brand { flex: 0 0 auto; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-brand strong { display: none; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-mark { background: var(--primary); color: var(--on-primary); border: 0; border-radius: var(--qq-radius); }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav { background: var(--qq-header); box-shadow: none; }
+
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-picker-trigger { flex: 1; min-width: 0; max-width: none; border: 0; background: transparent; font-size: 17px; font-weight: 650; padding: 6px 0; gap: 8px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-picker-trigger > .ui-icon { display: none; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar .ai-btn { margin-left: 0; width: 32px; height: 32px; border: 0; border-radius: var(--qq-radius); color: var(--ink-subtle); }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-context { display: none; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-top { min-width: 0; min-height: 72px; padding: 12px 28px 12px 8px; background: transparent; flex-wrap: nowrap; gap: 12px; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search { flex: 1 1 0; min-width: 0; max-width: none; height: 36px; order: 0; flex-wrap: nowrap; background: var(--surface-1); border-radius: var(--qq-radius); }
+
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search { background: var(--surface-1); border-radius: var(--qq-radius); }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search .search-input { height: 34px; color: var(--ink); border: 0; background: transparent; box-shadow: none; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .search-input::placeholder { color: var(--ink-subtle); }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search:focus-within { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-search .search-count { top: 38px; right: 0; background: var(--surface-1); color: var(--ink-subtle); z-index: 2; pointer-events: auto; border-radius: 4px; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions { gap: 6px; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .nav-last-archived { display: none !important; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .sync-btn { height: 34px; padding: 0 10px; border: 0; background: var(--primary); color: var(--on-primary); box-shadow: var(--qq-shadow); border-radius: var(--qq-radius); }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-tools { grid-column: 1 / -1; min-height: 44px; padding: 6px 28px; background: var(--qq-toolbar); border-top: 1px solid var(--hairline); gap: 8px; }
+
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .reading-heading { font-size: 12px; gap: 8px; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-toolset > .tools-toggle { border-radius: var(--qq-radius); }
+
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-freshness { grid-column: 1 / -1; padding: 0 28px 8px; background: var(--qq-toolbar); font-size: 10px; gap: 5px 10px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .auth-banner { grid-column: 1 / -1; margin: 0 14px 8px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .content { background: var(--canvas); }
@@ -1303,18 +1231,10 @@ html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .time-divider 
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .research-panel { background: var(--surface-4); box-shadow: none; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .reading-footer { padding: 9px 28px; background: var(--qq-toolbar); }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .msg-menu > summary { font-family: Arial, sans-serif; line-height: 1; }
-@media (max-width: 1100px) {
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav { grid-template-columns: minmax(0, 1fr); }
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar { min-height: 56px; padding-bottom: 6px; }
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-top { min-height: 48px; padding: 0 28px 12px; }
-}
+
 @media (max-width: 760px) {
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-bar { padding: 10px 14px 6px; gap: 8px; }
     html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .group-picker-trigger { font-size: 15px; }
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-top { padding: 0 14px 10px; gap: 8px; }
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .sync-btn { width: 32px; padding: 0; }
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-actions .sync-btn .button-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
-    html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .nav-tools { padding: 5px 14px; min-height: 40px; }
+
     html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .archive-freshness { padding: 0 14px 8px; }
     html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages { padding: 12px 14px 22px; }
     html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item { padding-left: 40px; padding-right: 24px; }
@@ -1325,8 +1245,8 @@ html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .msg-menu > summary { fo
 html .workspace > .nav.compact-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 24px; min-height: 64px; background: var(--qq-header, var(--canvas)); border-bottom: 1px solid var(--hairline); }
 html[data-theme="archive"] .workspace > .nav.compact-nav { background: var(--chrome); color: var(--chrome-text); }
 html .compact-nav .nav-top, html .compact-nav .nav-tools, html .compact-nav .nav-toolset { display: contents; }
-html .compact-nav .nav-context { display: none; }
-html .compact-nav .group-bar { display: flex; padding: 0; min-height: 0; min-width: 0; max-width: 320px; flex: 0 1 auto; gap: 0; }
+
+html .compact-nav .group-bar { display: flex; align-items: center; padding: 0; min-height: 0; min-width: 0; max-width: 320px; flex: 0 1 auto; gap: 0; }
 html .compact-nav .group-picker-trigger { flex: 0 1 auto; max-width: 100%; min-width: 0; gap: 8px; border: 0; background: transparent; padding: 6px 0; font-size: 15px; }
 html .compact-nav .group-picker-trigger > .ui-icon { display: block; color: var(--primary-hover); }
 html .compact-nav .group-picker-trigger .picker-chevron { margin-left: 0; flex-shrink: 0; }
@@ -1347,7 +1267,7 @@ html .compact-nav .archive-more-menu :is(button.ai-btn,button.sync-btn,button.to
 html .compact-nav .archive-more-menu button:hover { background: var(--surface-2); }
 html .compact-nav .archive-more-menu button small { display: block; color: var(--ink-subtle); font-size: 10px; line-height: 1.6; margin-top: 3px; }
 html .compact-nav .archive-more-menu .archive-freshness { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px; padding: 10px; border-top: 1px solid var(--hairline); background: transparent; color: var(--ink-subtle); font-size: 10px; }
-html .compact-nav .archive-more-menu #lastArchived { display: none !important; }
+
 html .compact-nav .auth-banner { flex: 1 0 100%; margin: 0; }
 @media (max-width: 1280px) { html .compact-nav .nav-stats { display: none; } html .compact-nav .group-bar { max-width: 260px; } }
 @media (max-width: 900px) {
@@ -1364,11 +1284,11 @@ html .compact-nav .auth-banner { flex: 1 0 100%; margin: 0; }
     html .compact-nav .archive-more-menu { position: fixed; top: 52px; right: 12px; max-height: calc(100dvh - 68px); }
     html .compact-nav .auth-banner { grid-column: 1 / -1; }
 }
-.group-bar .code-mode-toggle { margin-left: 0; }
+
 html .compact-nav #navQuickActions { display: flex; align-items: center; gap: 4px; flex: none; }
 html .compact-nav #navQuickActions > button { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 34px; height: 34px; margin: 0; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; box-shadow: none; color: inherit; cursor: pointer; }
 html .compact-nav #navQuickActions > button .ui-icon { display: block; width: 18px; height: 18px; }
-html .compact-nav #navQuickActions > button :is(.button-label,.tool-label) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+html .compact-nav #navQuickActions > button :is(.sync-action-copy,.button-label,.tool-label) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 html .compact-nav #navQuickActions > button:is(:hover,.open,.filtered) { background: var(--primary-tint); color: var(--primary-hover); border-color: var(--primary-focus); }
 html[data-theme="archive"] .compact-nav #navQuickActions > button:is(:hover,.open,.filtered) { background: var(--chrome-hover); color: var(--chrome-accent); border-color: var(--chrome-line); }
 html .compact-nav #navQuickActions > button.needs-config { border-style: dashed; border-color: var(--hairline-strong); }
@@ -1379,6 +1299,9 @@ html .compact-nav #navMobileActions { border-bottom: 1px solid var(--hairline); 
 html .compact-nav #navMobileActions:empty { display: none; }
 html .compact-nav #navMobileActions #toolsToggle { width: 100%; height: auto; padding: 8px 10px; justify-content: flex-start; color: var(--ink); }
 html .compact-nav #navMobileActions .open, html .compact-nav #navMobileActions .filtered { background: var(--primary-tint); color: var(--primary-hover); }
+html .compact-nav #navQuickActions > #syncBtn > .nav-tooltip { white-space: pre-line; }
+html .compact-nav #navMobileActions .sync-action-copy { min-width: 0; }
+html .compact-nav #navMobileActions #lastSyncMobile { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 10px; color: var(--ink-subtle); margin-top: 3px; }
 @media (max-width: 900px) {
     html .compact-nav #navQuickActions { display: none; }
     html .compact-nav #navSearch { grid-column: 1 / -1; }
@@ -1475,10 +1398,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
 <div class="nav compact-nav">
     <div class="group-bar"><button class="group-picker-trigger" id="groupPickerToggle" onclick="openGroupPicker()" aria-haspopup="dialog" aria-controls="groupPickerDialog" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chat"></use></svg><span id="groupPickerLabel">选择群聊</span><span class="picker-chevron" aria-hidden="true">▾</span></button><span id="archiveGroupCount" hidden></span></div>
     <div class="nav-top">
-        <div class="nav-context">
-            <div class="nav-title"><span class="archive-eyebrow">群聊档案</span><strong id="archiveTitle">正在打开档案…</strong></div>
             <select class="nav-group-select" id="groupSelect" onchange="switchGroup(this.value)" aria-label="切换群聊" hidden></select>
-        </div>
         <!-- 搜索是高频内容操作，在主行中占据弹性空间；AI 问答按需从工具行展开 -->
         <div class="nav-search" id="navSearch">
             <select class="search-scope" id="searchScope" aria-label="搜索范围" onchange="changeSearchScope()"><option value="all">全部日期</option><option value="day">当前日期</option><option value="combined">组合检索</option></select>
@@ -1503,7 +1423,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
         <div class="nav-toolset">
             <details class="archive-more" id="archiveMore"><summary id="archiveMoreToggle" aria-label="更多档案操作">更多 ▾</summary><div class="archive-more-menu">
             <div id="navMobileActions">
-            <button class="sync-btn" id="syncBtn" data-nav-shortcut aria-label="同步归档" aria-describedby="syncBtnTip" onclick="closeNavMore();syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="button-label">同步归档</span><span class="nav-tooltip" id="syncBtnTip" role="tooltip">同步归档：手动获取最新消息，不会开启实时同步</span></button>
+            <button class="sync-btn" id="syncBtn" data-nav-shortcut aria-label="同步归档" aria-describedby="syncBtnTip" onclick="closeNavMore();syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="sync-action-copy"><span class="button-label">同步归档</span><small id="lastSyncMobile">正在读取上次同步时间…</small></span><span class="nav-tooltip" id="syncBtnTip" role="tooltip">同步归档：手动获取最新消息，不会开启实时同步</span></button>
 <button class="tools-toggle" id="toolsToggle" aria-expanded="false" data-nav-shortcut aria-label="阅读筛选" aria-describedby="toolsToggleTip" onclick="closeNavMore();toggleTools()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">阅读筛选</span><span class="nav-tooltip" id="toolsToggleTip" role="tooltip">阅读筛选：只影响当前阅读列表，不影响搜索</span></button>
             <button class="tools-toggle" id="qaToggle" data-nav-shortcut aria-label="AI 助读" aria-describedby="qaToggleTip" onclick="closeNavMore();toggleQaComposer()" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">AI 助读</span><span class="nav-tooltip" id="qaToggleTip" role="tooltip">AI 助读：向 AI 查询群聊历史，需要配置模型</span></button>
             </div>
@@ -1520,7 +1440,7 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
                 </div>
             </div>
             <button class="tools-toggle" id="mentionBtn" onclick="toggleMentionOnly()" title="只看提到我的消息" style="display:none"><svg class="ui-icon" aria-hidden="true"><use href="#icon-at"></use></svg><span class="tool-label">我</span></button>
-            <div class="archive-freshness"><span id="archiveFreshness" role="status">正在读取同步状态</span><span>归档记录不代表微博实时最新</span><span>定时归档与实时同步分别设置</span><div class="nav-last-archived" id="lastArchived" title="上次归档时间" style="display:none"><span class="button-label"></span></div><span class="live-dot" id="liveDot" title="实时同步状态">实时</span></div>
+            <div class="archive-freshness"><span id="archiveFreshness" role="status">正在读取同步状态</span><span>归档记录不代表微博实时最新</span><span>定时归档与实时同步分别设置</span><span class="live-dot" id="liveDot" title="实时同步状态">实时</span></div>
             </div></details>
         </div>
     </div>
@@ -1764,16 +1684,11 @@ function setButtonLabel(button, text) {
     else if (button) button.textContent = text;
     if (button?.id === 'syncBtn') {
         button.setAttribute('aria-label', text);
-        const tip = document.getElementById('syncBtnTip');
-        if (tip) tip.textContent = text === '同步归档' ? '同步归档：手动获取最新消息，不会开启实时同步' : text;
+        renderLastSyncTime();
     }
 }
 
-function setLastArchivedTime(text, fullText = text) {
-    const container = document.getElementById('lastArchived');
-    const label = container?.querySelector('.button-label');
-    if (label) label.textContent = text;
-    if (container) container.style.display = text ? '' : 'none';
+function setLastArchivedTime(fullText) {
     archiveUpdatedAt = fullText;
     updateArchiveFreshness();
 }
@@ -2269,7 +2184,6 @@ function renderArchiveNavigation() {
     const groupName = availableGroups.find(group => group.id === currentGroup)?.name || '群聊档案馆';
     document.getElementById('groupPickerLabel').textContent = availableGroups.length ? groupName : '选择群聊';
     document.getElementById('groupPickerToggle').title = `切换群聊：${groupName}（${availableGroups.length} 个群）`;
-    document.getElementById('archiveTitle').textContent = groupName;
     document.getElementById('dateDrawerGroup').textContent = groupName;
     document.title = codeMode ? 'workspace.log — Editor' : `${groupName} · 群聊档案馆`;
     const dates = Object.keys(dateCounts).sort().reverse();
@@ -3150,8 +3064,7 @@ async function loadGroups() {
         const dt = new Date(data.lastArchived);
         const pad = n => String(n).padStart(2, '0');
         const timeStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-        // 导航只显示 HH:MM；完整语义由时钟图标和 title 提供。
-        setLastArchivedTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`, timeStr);
+        setLastArchivedTime(timeStr);
     }
 
     const sel = document.getElementById('groupSelect');
@@ -3223,6 +3136,53 @@ function dismissToast() {
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
 }
 
+let lastSuccessfulSyncAt = null;
+let lastSyncReadState = 'loading';
+let lastSyncTimeSaved = true;
+let lastSyncStatusRevision = 0;
+
+function renderLastSyncTime() {
+    let detail = '尚未成功同步';
+    if (lastSyncReadState === 'loading') detail = '正在读取上次同步时间…';
+    else if (lastSyncReadState === 'error') detail = '上次同步时间读取失败';
+    else if (lastSuccessfulSyncAt) {
+        const date = new Date(lastSuccessfulSyncAt);
+        const pad = value => String(value).padStart(2, '0');
+        detail = `上次同步成功：${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        if (!lastSyncTimeSaved) detail += '（时间未保存）';
+    }
+    const mobile = document.getElementById('lastSyncMobile');
+    if (mobile) mobile.textContent = detail;
+    const tip = document.getElementById('syncBtnTip');
+    const label = document.querySelector('#syncBtn .button-label')?.textContent || '同步归档';
+    if (tip) tip.textContent = `${label}\n${detail}\n手动获取最新消息，不会开启实时同步。仅记录本机手动同步。`;
+}
+
+function applyLastSyncTime(timestamp, saved = true) {
+    if (timestamp === null || (typeof timestamp === 'string' && Number.isFinite(Date.parse(timestamp)))) {
+        lastSuccessfulSyncAt = timestamp;
+        lastSyncReadState = 'ready';
+        lastSyncTimeSaved = saved;
+    } else lastSyncReadState = 'error';
+    renderLastSyncTime();
+}
+
+async function loadLastSyncTime() {
+    const revision = ++lastSyncStatusRevision;
+    try {
+        const response = await fetch('/api/sync-status', { cache: 'no-store' });
+        const data = await response.json();
+        if (revision !== lastSyncStatusRevision) return;
+        if (!response.ok || data.ok !== true) throw new Error('Invalid sync status');
+        applyLastSyncTime(data.lastSuccessfulSyncAt);
+    } catch {
+        if (revision !== lastSyncStatusRevision) return;
+        applyLastSyncTime(undefined);
+    }
+}
+
+loadLastSyncTime();
+
 async function syncNow() {
     const btn = document.getElementById('syncBtn');
     setButtonLabel(btn, '同步中…');
@@ -3241,14 +3201,15 @@ async function syncNow() {
         const resp = await fetch('/api/sync', { method: 'POST' });
         const data = await resp.json();
         if (data.ok) {
+            ++lastSyncStatusRevision;
+            applyLastSyncTime(data.lastSuccessfulSyncAt ?? undefined, data.syncTimeSaved === true);
             await loadGroups();
             await loadDates();
             await loadMessages(true);
             const dt = new Date();
-            const pad = n => String(n).padStart(2, '0');
-            setLastArchivedTime(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`, dt.toLocaleString('zh-CN', { hour12: false }));
+            setLastArchivedTime(dt.toLocaleString('zh-CN', { hour12: false }));
             const skipNote = data.skipped ? `（${data.skipped} 个群跳过）` : '';
-            showToast(`✓ 同步完成，归档 ${data.archived} 个群${skipNote}`, 'success');
+            showToast(`✓ 同步完成，归档 ${data.archived} 个群${skipNote}${data.syncTimeSaved === false ? '；同步时间未能保存，刷新后可能仍显示旧记录' : ''}`, data.syncTimeSaved === false ? 'error' : 'success');
         } else {
             showToast('同步失败：' + (data.error || '未知错误'), 'error', 8000);
             // Cookie 失效 → 直接拉起对应端的扫码流程（桌面端开登录窗，浏览器端开可见 Chrome）
@@ -5310,8 +5271,7 @@ async function checkForUpdates() {
             await loadDates();
             await loadMessages(true);
             const dt = new Date(data.lastArchived);
-            const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-            setLastArchivedTime(timeStr, dt.toLocaleString('zh-CN', { hour12: false }));
+            setLastArchivedTime(dt.toLocaleString('zh-CN', { hour12: false }));
         }
     } catch {}
 }
@@ -5358,8 +5318,7 @@ function startLive() {
         if (event.group !== currentGroup) { checkForUpdates(); return; }
         await loadDates();
         if (event.group !== currentGroup) return;
-        const archiveTime = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        setLastArchivedTime(archiveTime, new Date().toLocaleString('zh-CN', { hour12: false }));
+        setLastArchivedTime(new Date().toLocaleString('zh-CN', { hour12: false }));
         if (!event.dates?.includes(selectedDate)) {
             return;
         }

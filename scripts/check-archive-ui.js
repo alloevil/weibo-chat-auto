@@ -377,7 +377,13 @@ async function main() {
             }
             if (url.pathname === '/api/auth-status') return reply({ ok: true });
             if (url.pathname === '/api/version') return reply({ ok: true, updateAvailable: false });
-            if (url.pathname === '/api/sync') return reply({ ok: true, archived: 1 });
+            if (url.pathname === '/api/sync')
+                return reply({
+                    ok: true,
+                    archived: 1,
+                    lastSuccessfulSyncAt: '2026-10-13T08:40:12.000Z',
+                    syncTimeSaved: true,
+                });
             if (url.pathname === '/api/ai-config')
                 return reply({
                     ok: true,
@@ -637,7 +643,8 @@ async function main() {
         await chooseGroup('.archive-group:nth-child(2)');
         await page.waitForFunction(
             () =>
-                globalThis.document.querySelector('#archiveTitle').textContent === '周末读书会' &&
+                globalThis.document.querySelector('#groupPickerLabel').textContent ===
+                    '周末读书会' &&
                 globalThis.document.querySelector('#messages').textContent.includes('读书笔记')
         );
         assert.equal(await visible('#composer'), false);
@@ -702,7 +709,8 @@ async function main() {
         assert.equal(typeof releaseSearch, 'function');
         await chooseGroup('.archive-group:nth-child(2)');
         await page.waitForFunction(
-            () => globalThis.document.querySelector('#archiveTitle').textContent === '周末读书会'
+            () =>
+                globalThis.document.querySelector('#groupPickerLabel').textContent === '周末读书会'
         );
         await releaseSearch();
         holdSearch = false;
@@ -2007,7 +2015,7 @@ async function main() {
         await page.reload({ waitUntil: 'networkidle0' });
         await assertAnchor(groupBAnchor, 9);
         assert.equal(
-            await page.$eval('#archiveTitle', (element) => element.textContent),
+            await page.$eval('#groupPickerLabel', (element) => element.textContent),
             groups[1].name
         );
         const saved = await readStored(groups[0].key);

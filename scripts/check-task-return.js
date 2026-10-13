@@ -158,6 +158,8 @@ async function main() {
                 if (url.pathname === '/api/live-config')
                     return reply({ enabled: false, groups: [] });
                 if (url.pathname === '/api/schedule') return reply({ supported: false });
+                if (url.pathname === '/api/sync-status')
+                    return reply({ ok: true, lastSuccessfulSyncAt: null });
                 if (url.pathname === '/api/emotions') return reply({});
                 if (url.pathname === '/api/auth-status') return reply({ ok: true });
                 if (url.pathname === '/api/version')

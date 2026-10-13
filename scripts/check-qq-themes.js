@@ -4,9 +4,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const puppeteer = require('puppeteer');
+const {
+    launchTestBrowser,
+    newTestPage,
+    handleNonLocalRequest,
+    waitForLayout,
+} = require('./browser-test-utils');
 const { clickNavAction } = require('./browser-nav-test');
-const { resolveChromePath } = require('../lib/chrome-path');
 const { uniqueGroupKey, writeGroupMetadata } = require('../lib/group-storage');
 
 const artifacts = path.resolve(process.env.WEIBO_UI_ARTIFACTS || 'output/playwright/qq-themes');
@@ -48,21 +52,19 @@ const { createViewerServer } = require('./viewer-server');
 async function main() {
     const server = createViewerServer();
     let browser;
+    let page;
+    let scenario;
     const results = [];
     const errors = [];
     const external = [];
     try {
         await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-        browser = await puppeteer.launch({
-            executablePath: resolveChromePath(),
-            headless: true,
-            args: ['--no-sandbox'],
-        });
+        browser = await launchTestBrowser();
         for (const width of [1280, 360]) {
             for (const theme of ['qq2012', 'qqmodern']) {
                 const context = await browser.createBrowserContext();
-                const page = await context.newPage();
-                page.on('pageerror', (error) => errors.push(error.message));
+                page = await newTestPage(context, errors);
+                scenario = `${theme}-${width}`;
                 await page.setViewport({ width, height: width === 360 ? 800 : 900 });
                 await page.emulateMediaFeatures([
                     { name: 'prefers-reduced-motion', value: 'reduce' },
@@ -70,17 +72,13 @@ async function main() {
                 await page.setRequestInterception(true);
                 page.on('request', (request) => {
                     const url = new URL(request.url());
-                    if (!['http:', 'https:'].includes(url.protocol)) return request.continue();
                     if (url.hostname === 'example.invalid' && url.pathname.startsWith('/avatar-')) {
                         return request.respond({
                             contentType: 'image/svg+xml',
                             body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#d2e5f4"/><circle cx="32" cy="25" r="12" fill="#597b96"/><path d="M10 64v-7a22 22 0 0 1 44 0v7" fill="#597b96"/></svg>',
                         });
                     }
-                    if (url.hostname !== '127.0.0.1') {
-                        external.push(request.url());
-                        return request.abort();
-                    }
+                    if (handleNonLocalRequest(request, external)) return;
                     if (url.pathname === '/api/version')
                         return request.respond({
                             contentType: 'application/json',
@@ -110,14 +108,7 @@ async function main() {
                 await page.$eval('#messages', (element) => {
                     element.scrollTop = 0;
                 });
-                await page.evaluate(
-                    () =>
-                        new Promise((resolve) =>
-                            globalThis.requestAnimationFrame(() =>
-                                globalThis.requestAnimationFrame(resolve)
-                            )
-                        )
-                );
+                await waitForLayout(page);
                 const geometry = await page.evaluate(() => {
                     const rectangle = (selector) => {
                         const bounds = globalThis.document
@@ -143,9 +134,8 @@ async function main() {
                         bubbleBorder: globalThis.getComputedStyle(
                             globalThis.document.querySelector('.msg-content')
                         ).borderLeftWidth,
-                        duplicateTitle: globalThis.getComputedStyle(
-                            globalThis.document.querySelector('.nav-context')
-                        ).display,
+                        duplicateTitle:
+                            globalThis.document.querySelectorAll('#archiveTitle').length,
                         photos: globalThis.document.querySelectorAll('.msg-avatar img').length,
                     };
                 });
@@ -156,7 +146,7 @@ async function main() {
                 assert.ok(geometry.input.right <= geometry.outer.right);
                 assert.equal(geometry.border, '0px');
                 assert.equal(geometry.bubbleBorder, '1px');
-                assert.equal(geometry.duplicateTitle, 'none');
+                assert.equal(geometry.duplicateTitle, 0);
                 assert.equal(geometry.photos, messages.length);
                 assert.ok(
                     geometry.navHeight < (width === 360 ? 260 : 200),
@@ -226,79 +216,15 @@ async function main() {
                 await page.$eval('#messages', (element) => {
                     element.scrollTop = 0;
                 });
-                await page.evaluate(
-                    () =>
-                        new Promise((resolve) =>
-                            globalThis.requestAnimationFrame(() =>
-                                globalThis.requestAnimationFrame(resolve)
-                            )
-                        )
-                );
+                await waitForLayout(page);
                 assert.equal(await page.$eval('html', (element) => element.dataset.theme), theme);
                 if (width === 360) {
-                    await page.evaluate(() => {
-                        globalThis.__menuEvents = [];
-                        globalThis.document.addEventListener(
-                            'click',
-                            (event) =>
-                                globalThis.__menuEvents.push({
-                                    type: 'click',
-                                    target: event.target.outerHTML.slice(0, 200),
-                                }),
-                            true
-                        );
-                        globalThis.document
-                            .querySelector('#msg-qq-0 .msg-menu')
-                            .addEventListener('toggle', (event) =>
-                                globalThis.__menuEvents.push({
-                                    type: 'toggle',
-                                    open: event.target.open,
-                                })
-                            );
-                    });
                     await page.click('#msg-qq-0 .msg-menu > summary');
-                    await page.evaluate(
-                        () =>
-                            new Promise((resolve) =>
-                                globalThis.requestAnimationFrame(() =>
-                                    globalThis.requestAnimationFrame(resolve)
-                                )
-                            )
+                    await waitForLayout(page);
+                    assert.equal(
+                        await page.$eval('#msg-qq-0 .msg-menu', (element) => element.open),
+                        true
                     );
-                    fs.writeFileSync(
-                        path.join(artifacts, `${theme}-menu-hit.json`),
-                        JSON.stringify(
-                            await page.evaluate(() => {
-                                const menu =
-                                    globalThis.document.querySelector('#msg-qq-0 .msg-menu');
-                                const button = menu.querySelector('button');
-                                const box = button.getBoundingClientRect();
-                                return {
-                                    events: globalThis.__menuEvents,
-                                    open: menu.open,
-                                    menu: menu.outerHTML,
-                                    rect: {
-                                        x: box.x,
-                                        y: box.y,
-                                        width: box.width,
-                                        height: box.height,
-                                    },
-                                    hit: globalThis.document
-                                        .elementFromPoint(
-                                            box.x + box.width / 2,
-                                            box.y + box.height / 2
-                                        )
-                                        ?.outerHTML.slice(0, 500),
-                                    panelOpen: globalThis.document
-                                        .querySelector('#researchPanel')
-                                        .classList.contains('open'),
-                                };
-                            }),
-                            null,
-                            2
-                        )
-                    );
-                    await page.screenshot({ path: path.join(artifacts, `${theme}-menu-open.png`) });
                     assert.equal(
                         await page.$eval('#msg-qq-0 .msg-menu-body button', (button) => {
                             const box = button.getBoundingClientRect();
@@ -346,6 +272,38 @@ async function main() {
         console.log(
             `PASS ${results.length} QQ theme/viewport cases; persisted theme, avatars, single search border, no overflow, 3 combined hits, return to archive theme`
         );
+    } catch (error) {
+        try {
+            const menus =
+                page && !page.isClosed()
+                    ? await page.$$eval('.msg-menu[open]', (elements) =>
+                          elements.map((element) => {
+                              const button = element.querySelector('button');
+                              const rect = button.getBoundingClientRect();
+                              return {
+                                  html: element.outerHTML,
+                                  x: rect.x,
+                                  y: rect.y,
+                                  width: rect.width,
+                                  height: rect.height,
+                                  hit: globalThis.document.elementFromPoint(
+                                      rect.x + rect.width / 2,
+                                      rect.y + rect.height / 2
+                                  )?.outerHTML,
+                              };
+                          })
+                      )
+                    : [];
+            fs.writeFileSync(
+                path.join(artifacts, 'failure.json'),
+                JSON.stringify({ scenario, error: error.stack, menus }, null, 2)
+            );
+            if (page && !page.isClosed())
+                await page.screenshot({ path: path.join(artifacts, 'failure.png') });
+        } catch (artifactError) {
+            console.error('Failed to capture browser failure:', artifactError.message);
+        }
+        throw error;
     } finally {
         if (browser) await browser.close();
         await new Promise((resolve) => server.close(resolve));
