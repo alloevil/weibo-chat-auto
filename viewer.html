@@ -1365,6 +1365,25 @@ html .compact-nav .auth-banner { flex: 1 0 100%; margin: 0; }
     html .compact-nav .auth-banner { grid-column: 1 / -1; }
 }
 .group-bar .code-mode-toggle { margin-left: 0; }
+html .compact-nav #navQuickActions { display: flex; align-items: center; gap: 4px; flex: none; }
+html .compact-nav #navQuickActions > button { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 34px; height: 34px; margin: 0; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; box-shadow: none; color: inherit; cursor: pointer; }
+html .compact-nav #navQuickActions > button .ui-icon { display: block; width: 18px; height: 18px; }
+html .compact-nav #navQuickActions > button :is(.button-label,.tool-label) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+html .compact-nav #navQuickActions > button:is(:hover,.open,.filtered) { background: var(--primary-tint); color: var(--primary-hover); border-color: var(--primary-focus); }
+html[data-theme="archive"] .compact-nav #navQuickActions > button:is(:hover,.open,.filtered) { background: var(--chrome-hover); color: var(--chrome-accent); border-color: var(--chrome-line); }
+html .compact-nav #navQuickActions > button.needs-config { border-style: dashed; border-color: var(--hairline-strong); }
+html .compact-nav #navQuickActions > button:disabled { opacity: .6; cursor: wait; }
+html .compact-nav .nav-tooltip { display: none; }
+html .compact-nav #navQuickActions > button:not([data-tooltip-dismissed]):is(:hover,:focus) > .nav-tooltip { display: block; position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: max-content; max-width: min(280px, calc(100vw - 28px)); padding: 7px 10px; background: var(--surface-1); color: var(--ink); border: 1px solid var(--hairline-strong); border-radius: 6px; box-shadow: 0 4px 16px #00000018; font-family: inherit; font-size: 12px; line-height: 1.6; text-align: left; white-space: normal; pointer-events: none; }
+html .compact-nav #navMobileActions { border-bottom: 1px solid var(--hairline); margin-bottom: 4px; padding-bottom: 4px; }
+html .compact-nav #navMobileActions:empty { display: none; }
+html .compact-nav #navMobileActions #toolsToggle { width: 100%; height: auto; padding: 8px 10px; justify-content: flex-start; color: var(--ink); }
+html .compact-nav #navMobileActions .open, html .compact-nav #navMobileActions .filtered { background: var(--primary-tint); color: var(--primary-hover); }
+@media (max-width: 900px) {
+    html .compact-nav #navQuickActions { display: none; }
+    html .compact-nav #navSearch { grid-column: 1 / -1; }
+    html .compact-nav #navMobileActions #toolsToggle .ui-icon { display: block; }
+}
 .code-mode-view { display: none; }
 body.code-mode { background: #1e2229; }
 body.code-mode > :not(#codeModeView) { display: none !important; }
@@ -1477,15 +1496,18 @@ try { const t = localStorage.getItem('viewer-theme'); if (t !== null) document.d
                 </div>
             </div>
         </div>
-<button class="tools-toggle" id="toolsToggle" onclick="toggleTools()" title="阅读筛选：仅作用于当前日期的消息列表，不影响搜索结果" aria-label="阅读筛选"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">阅读筛选</span></button>
+        <div class="nav-quick-actions" id="navQuickActions" role="group" aria-label="快捷操作"></div>
     </div>
     <div class="nav-tools">
         <div class="reading-heading"><button class="archive-nav-toggle" id="archiveNavToggle" onclick="toggleArchive()" aria-label="选择日期" aria-controls="archiveNav" aria-expanded="false"><span id="readingDate">选择日期</span><span aria-hidden="true">▾</span></button><span class="nav-stats" id="stats"></span></div>
         <div class="nav-toolset">
             <details class="archive-more" id="archiveMore"><summary id="archiveMoreToggle" aria-label="更多档案操作">更多 ▾</summary><div class="archive-more-menu">
-            <button class="sync-btn" id="syncBtn" onclick="closeNavMore();syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="button-label">同步归档</span></button>
+            <div id="navMobileActions">
+            <button class="sync-btn" id="syncBtn" data-nav-shortcut aria-label="同步归档" aria-describedby="syncBtnTip" onclick="closeNavMore();syncNow()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sync"></use></svg><span class="button-label">同步归档</span><span class="nav-tooltip" id="syncBtnTip" role="tooltip">同步归档：手动获取最新消息，不会开启实时同步</span></button>
+<button class="tools-toggle" id="toolsToggle" aria-expanded="false" data-nav-shortcut aria-label="阅读筛选" aria-describedby="toolsToggleTip" onclick="closeNavMore();toggleTools()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-filter"></use></svg><span class="tool-label">阅读筛选</span><span class="nav-tooltip" id="toolsToggleTip" role="tooltip">阅读筛选：只影响当前阅读列表，不影响搜索</span></button>
+            <button class="tools-toggle" id="qaToggle" data-nav-shortcut aria-label="AI 助读" aria-describedby="qaToggleTip" onclick="closeNavMore();toggleQaComposer()" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">AI 助读</span><span class="nav-tooltip" id="qaToggleTip" role="tooltip">AI 助读：向 AI 查询群聊历史，需要配置模型</span></button>
+            </div>
             <button id="latestArchiveBtn" onclick="closeNavMore();jumpToLatestArchive()"><svg class="ui-icon" aria-hidden="true"><use href="#icon-clock"></use></svg>查看最新归档</button>
-            <button class="tools-toggle" id="qaToggle" onclick="closeNavMore();toggleQaComposer()" aria-expanded="false" title="向 AI 查询群聊历史"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"></use></svg><span class="tool-label">AI 助读</span></button>
             <button class="ai-btn" id="settingsBtn" onclick="closeNavMore();openSettings()" aria-label="设置"><svg class="ui-icon" aria-hidden="true"><use href="#icon-settings"></use></svg><span>设置与皮肤</span></button>
             <button class="ai-btn code-mode-toggle" id="codeModeToggle" onclick="closeNavMore();toggleCodeMode()" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-list"></use></svg><span>代码日志外观<small>仅改变显示，不会脱敏 · Alt+Shift+X</small></span></button>
             <button class="stats-toggle" id="statsToggle" onclick="toggleStats()" title="阅读/统计视图"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chart"></use></svg><span class="tool-label">查看统计</span></button>
@@ -1740,6 +1762,11 @@ function setButtonLabel(button, text) {
     const label = button?.querySelector('.button-label');
     if (label) label.textContent = text;
     else if (button) button.textContent = text;
+    if (button?.id === 'syncBtn') {
+        button.setAttribute('aria-label', text);
+        const tip = document.getElementById('syncBtnTip');
+        if (tip) tip.textContent = text === '同步归档' ? '同步归档：手动获取最新消息，不会开启实时同步' : text;
+    }
 }
 
 function setLastArchivedTime(text, fullText = text) {
@@ -2023,6 +2050,29 @@ function closeNavMore(restoreFocus = true) {
     if (!menu.open) return;
     menu.open = false;
     if (restoreFocus) document.getElementById('archiveMoreToggle').focus({ preventScroll: true });
+}
+
+function placeNavShortcuts() {
+    const narrow = !!window.matchMedia?.('(max-width: 900px)')?.matches;
+    const destination = document.getElementById(narrow ? 'navMobileActions' : 'navQuickActions');
+    const focused = document.activeElement;
+    for (const id of ['syncBtn', 'toolsToggle', 'qaToggle']) {
+        const button = document.getElementById(id);
+        if (button.parentElement === destination) continue;
+        destination.appendChild(button);
+        if (focused === button) {
+            if (narrow && !document.getElementById('archiveMore').open) focusNavTrigger(id);
+            else button.focus({ preventScroll: true });
+        }
+    }
+}
+
+placeNavShortcuts();
+window.addEventListener('resize', placeNavShortcuts);
+for (const id of ['syncBtn', 'toolsToggle', 'qaToggle']) {
+    const button = document.getElementById(id);
+    for (const event of ['pointerenter', 'focus']) button.addEventListener(event, () => button.removeAttribute('data-tooltip-dismissed'));
+    button.addEventListener('pointerdown', () => button.setAttribute('data-tooltip-dismissed', ''));
 }
 
 function focusNavTrigger(targetOrId) {
@@ -2353,6 +2403,11 @@ document.addEventListener('keydown', e => {
     if (codeMode) return;
     const messageMenu = document.querySelector('.msg-menu[open]');
     if (e.key === 'Escape' && (e.isComposing || e.keyCode === 229)) return;
+    if (e.key === 'Escape' && document.activeElement?.matches?.('#navQuickActions > button:not([data-tooltip-dismissed])')) {
+        document.activeElement.setAttribute('data-tooltip-dismissed', '');
+        e.preventDefault();
+        return;
+    }
     if (e.key === 'Escape' && document.getElementById('archiveMore').open) { e.preventDefault(); closeNavMore(); return; }
     if (e.key === 'Escape' && messageMenu) { e.preventDefault(); messageMenu.open = false; messageMenu.querySelector('summary').focus(); return; }
     if (document.getElementById('groupPickerOverlay').classList.contains('show')) {
@@ -3619,7 +3674,8 @@ function toggleSummary() {
 function updateQaBar() {
     const button = document.getElementById('qaToggle');
     button.classList.toggle('needs-config', !aiConfigured);
-    button.title = aiConfigured ? '向 AI 查询群聊历史' : '需要先配置 AI';
+    const tip = document.getElementById('qaToggleTip');
+    if (tip) tip.textContent = aiConfigured ? 'AI 助读：向 AI 查询群聊历史' : 'AI 助读：需要先配置模型';
 }
 
 function setQaComposer(open) {
@@ -5038,6 +5094,7 @@ function toggleTools() {
     const open = !panel.classList.contains('show');
     panel.classList.toggle('show', open);
     document.getElementById('toolsToggle').classList.toggle('open', open);
+    document.getElementById('toolsToggle').setAttribute('aria-expanded', String(open));
     try { open ? localStorage.setItem('viewer-tools-open', '1') : localStorage.removeItem('viewer-tools-open'); } catch { /* 隐私模式 */ }
     if (open) renderHours();   // 折叠期间可能换过日期，展开时重画
 }
@@ -5053,6 +5110,7 @@ function restoreToolsState() {
     if (!open) return;
     document.getElementById('toolsPanel').classList.add('show');
     document.getElementById('toolsToggle').classList.add('open');
+    document.getElementById('toolsToggle').setAttribute('aria-expanded', 'true');
 }
 
 // 成员栏开关。默认展开;状态存 localStorage,跨会话保持(与筛选面板同一套做法)。

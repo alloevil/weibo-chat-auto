@@ -506,8 +506,8 @@ async function main() {
                 ['#searchInput', '#navSearch'],
                 ['#searchInput', '#navSearch', '::placeholder'],
                 ['#searchScope', '#navSearch'],
-                ['#syncBtn', '.archive-more-menu'],
-                ['#qaToggle', '.archive-more-menu'],
+                ['#syncBtn', '#navQuickActions'],
+                ['#qaToggle', '#navQuickActions'],
                 ['#archiveFreshness', '.archive-freshness'],
                 ['#readingDate', '.compact-nav'],
             ];

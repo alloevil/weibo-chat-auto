@@ -33,6 +33,7 @@ async function main() {
     const results = [];
     const errors = [];
     let syncCalls = 0;
+    let completeSync;
     const external = [];
     try {
         await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -69,7 +70,8 @@ async function main() {
                 });
             if (url.pathname === '/api/sync') {
                 syncCalls++;
-                return reply({ ok: false, error: '合成错误：未实际同步' });
+                completeSync = () => reply({ ok: false, error: '合成错误：未实际同步' });
+                return;
             }
             return request.continue();
         });
@@ -109,16 +111,21 @@ async function main() {
                         more: box('#archiveMoreToggle'),
                         content: box('.content'),
                         overflow: globalThis.document.documentElement.scrollWidth,
-                        hiddenActions: [
-                            'syncBtn',
-                            'qaToggle',
-                            'settingsBtn',
-                            'codeModeToggle',
-                        ].every(
+                        hiddenActions: ['settingsBtn', 'codeModeToggle'].every(
                             (id) =>
                                 globalThis.document.getElementById(id).getBoundingClientRect()
                                     .height === 0
                         ),
+                        shortcuts: ['syncBtn', 'toolsToggle', 'qaToggle'].map((id) => {
+                            const button = globalThis.document.getElementById(id);
+                            return {
+                                id,
+                                parent: button.parentElement.id,
+                                width: button.getBoundingClientRect().width,
+                                label: button.getAttribute('aria-label'),
+                                description: button.getAttribute('aria-describedby'),
+                            };
+                        }),
                     };
                 });
                 assert.equal(geometry.overflow, width);
@@ -127,6 +134,14 @@ async function main() {
                     JSON.stringify({ theme, width, geometry })
                 );
                 assert.equal(geometry.hiddenActions, true);
+                for (const shortcut of geometry.shortcuts) {
+                    assert.equal(
+                        shortcut.parent,
+                        width > 900 ? 'navQuickActions' : 'navMobileActions'
+                    );
+                    assert.ok(shortcut.label && shortcut.description);
+                    if (width > 900) assert.equal(shortcut.width, 34);
+                }
                 assert.equal(geometry.content.left, 0);
                 assert.equal(geometry.content.width, width);
                 assert.ok(geometry.search.width <= (width > 900 ? 462 : width));
@@ -137,13 +152,49 @@ async function main() {
                     page.screenshot({
                         path: path.join(artifacts, `${theme || 'dark'}-${width}-${name}.png`),
                     });
+                if (width > 900) {
+                    for (const id of ['syncBtn', 'toolsToggle', 'qaToggle']) {
+                        await page.hover(`#${id}`);
+                        assert.equal(
+                            await page.$eval(
+                                `#${id}Tip`,
+                                (element) => globalThis.getComputedStyle(element).display !== 'none'
+                            ),
+                            true
+                        );
+                        await page.mouse.move(0, 0);
+                        await page.focus(`#${id}`);
+                        assert.equal(
+                            await page.$eval(
+                                `#${id}Tip`,
+                                (element) => globalThis.getComputedStyle(element).display !== 'none'
+                            ),
+                            true
+                        );
+                        const tip = await page.$eval(`#${id}Tip`, (element) => {
+                            const box = element.getBoundingClientRect();
+                            return { left: box.left, right: box.right, text: element.textContent };
+                        });
+                        assert.ok(tip.left >= 0 && tip.right <= width);
+                        assert.ok(tip.text.length > 4);
+                        if (theme === 'qqmodern' && id === 'toolsToggle') await shot('tooltip');
+                        await page.keyboard.press('Escape');
+                        assert.equal(
+                            await page.$eval(
+                                `#${id}Tip`,
+                                (element) => globalThis.getComputedStyle(element).display
+                            ),
+                            'none'
+                        );
+                    }
+                }
                 if (['archive', 'qqmodern', 'qq2012'].includes(theme)) await shot('reading');
                 await page.focus('#archiveMoreToggle');
                 await page.keyboard.press('Enter');
                 await page.keyboard.press('Tab');
                 assert.equal(
                     await page.evaluate(() => globalThis.document.activeElement.id),
-                    'syncBtn'
+                    width > 900 ? 'latestArchiveBtn' : 'syncBtn'
                 );
                 assert.match(
                     await page.$eval('#codeModeToggle', (element) => element.textContent),
@@ -193,14 +244,20 @@ async function main() {
                 const filterBefore = await page.$eval('#toolsPanel', (element) =>
                     element.classList.contains('show')
                 );
-                await page.click('#toolsToggle');
+                await clickNavAction(page, '#toolsToggle');
                 assert.equal(
                     await page.$eval('#toolsPanel', (element) =>
                         element.classList.contains('show')
                     ),
                     !filterBefore
                 );
-                await page.click('#toolsToggle');
+                assert.equal(
+                    await page.$eval('#toolsToggle', (element) =>
+                        element.getAttribute('aria-expanded')
+                    ),
+                    String(!filterBefore)
+                );
+                await clickNavAction(page, '#toolsToggle');
                 await clickNavAction(page, '#qaToggle');
                 await page.waitForFunction(
                     () =>
@@ -216,10 +273,20 @@ async function main() {
                     ),
                     true
                 );
+                assert.equal(
+                    await page.$eval('#qaToggle', (element) =>
+                        element.getAttribute('aria-expanded')
+                    ),
+                    'true'
+                );
+                assert.equal(
+                    await page.$eval('#qaToggle', (element) => element.classList.contains('open')),
+                    true
+                );
                 await page.click('#researchPanel > .research-header .ctx-close');
                 assert.equal(
                     await page.evaluate(() => globalThis.document.activeElement.id),
-                    'archiveMoreToggle'
+                    width > 900 ? 'qaToggle' : 'archiveMoreToggle'
                 );
                 results.push({ theme, width, ...geometry, status: 'PASS' });
             }
@@ -241,12 +308,82 @@ async function main() {
             );
         }
         assert.equal(syncCalls, 0, '默认导航操作不能触发同步');
+        await page.evaluate(() => {
+            globalThis.__shortcutNodes = ['syncBtn', 'toolsToggle', 'qaToggle'].map((id) =>
+                globalThis.document.getElementById(id)
+            );
+        });
+        await page.setViewport({ width: 1280, height: 900 });
+        await page.focus('#toolsToggle');
+        await page.setViewport({ width: 360, height: 800 });
+        await page.waitForFunction(
+            () => globalThis.document.activeElement.id === 'archiveMoreToggle'
+        );
+        await clickNavAction(page, '#toolsToggle');
+        await page.setViewport({ width: 1280, height: 900 });
+        await page.waitForFunction(
+            () =>
+                globalThis.document.querySelector('#toolsToggle').parentElement.id ===
+                'navQuickActions'
+        );
+        assert.equal(
+            await page.$eval('#toolsToggle', (element) => element.getAttribute('aria-expanded')),
+            'true'
+        );
+        assert.equal(
+            await page.evaluate(() =>
+                globalThis.__shortcutNodes.every(
+                    (button) =>
+                        button === globalThis.document.getElementById(button.id) &&
+                        globalThis.document.querySelectorAll(`#${button.id}`).length === 1
+                )
+            ),
+            true
+        );
+        await clickNavAction(page, '#toolsToggle');
+        await page.emulateMediaFeatures([
+            { name: 'prefers-reduced-motion', value: 'no-preference' },
+        ]);
         await Promise.all([
             page.waitForRequest((request) => new URL(request.url()).pathname === '/api/sync'),
             clickNavAction(page, '#syncBtn'),
         ]);
+        await page.waitForFunction(() => globalThis.document.querySelector('#syncBtn').disabled);
+        assert.equal(
+            await page.$eval('#syncBtn', (element) => element.getAttribute('aria-label')),
+            '同步中…'
+        );
+        assert.equal(await page.$eval('#syncBtnTip', (element) => element.textContent), '同步中…');
+        assert.equal(
+            await page.$eval(
+                '#syncBtn .ui-icon',
+                (element) => globalThis.getComputedStyle(element).animationName
+            ),
+            'iconSpin'
+        );
+        await page.click('#syncBtn');
+        assert.equal(syncCalls, 1);
+        await page.setViewport({ width: 360, height: 800 });
+        await page.click('#archiveMoreToggle');
+        assert.equal(
+            await page.$eval(
+                '#syncBtn',
+                (element) => element.disabled && element.parentElement.id === 'navMobileActions'
+            ),
+            true
+        );
+        await page.screenshot({ path: path.join(artifacts, 'mobile-sync-pending.png') });
+        await completeSync();
         await page.waitForFunction(() => !globalThis.document.querySelector('#syncBtn').disabled);
         assert.equal(syncCalls, 1, '仅明确点击发送一次模拟同步请求');
+        assert.equal(
+            await page.$eval('#syncBtn', (element) => element.getAttribute('aria-label')),
+            '同步归档'
+        );
+        assert.equal(
+            await page.$eval('#syncBtn', (element) => element.classList.contains('syncing')),
+            false
+        );
         assert.deepEqual(errors, []);
         assert.deepEqual(external, []);
         fs.writeFileSync(
@@ -254,7 +391,7 @@ async function main() {
             JSON.stringify({ results, errors, external, syncCalls }, null, 2)
         );
         console.log(
-            `PASS ${results.length} theme/viewport cases; compact header, visible text menu, focus/keyboard, date/filter/AI/code, long group; sync ${syncCalls} explicit / 0 automatic`
+            `PASS ${results.length} theme/viewport cases; hover/focus tooltips, responsive same-node shortcuts, active states and disabled syncing; sync ${syncCalls} explicit / 0 automatic`
         );
     } finally {
         if (browser) await browser.close();
