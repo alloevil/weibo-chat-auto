@@ -44,35 +44,39 @@ function render(message = reply, messages = [original, reply]) {
     return context.processForward(message.content, message);
 }
 
-test('引用正文顶部显示唯一原文候选的发送人，保留未确认说明', () => {
+test('唯一候选显示姓名，未确认说明收进问号和默认隐藏的文字', () => {
     const result = render();
-    assert.match(result, /class="quote-author"[^>]*>[^<]*合成原发送人/);
-    assert.match(result, /文本匹配.*未确认/);
+    assert.match(result, /class="quote-sender-name">合成原发送人：<\/span>/);
+    assert.match(result, /class="quote-sender-help"/);
+    assert.match(result, /class="quote-sender-note" hidden>根据原文文本匹配，发送人尚未确认/);
+    assert.doesNotMatch(result, /引用候选发送人|引用发送人：/);
     assert.ok(result.includes('查看引用候选（非确认来源）'));
     assert.doesNotMatch(result, /jumpToMessage/);
 });
 
-test('同文多来源列出发送人，不选第一条或合并同名不同ID', () => {
+test('同文多来源显示待确认，详情保留姓名和数量，不合并同名不同ID', () => {
     const result = render(reply, [
         original,
         { ...original, id: 'other', user: '另一位发送人', from_uid: 'other' },
         reply,
     ]);
     assert.match(result, /合成原发送人/);
+    assert.match(result, /quote-sender-name">发送人待确认/);
     assert.match(result, /另一位发送人/);
-    assert.match(result, /2 条候选/);
+    assert.match(result, /2 条同文候选/);
     const sameName = render(reply, [
         original,
         { ...original, id: 'other', from_uid: 'other' },
         reply,
     ]);
-    assert.match(sameName, /2 条候选/);
+    assert.match(sameName, /2 条同文候选/);
 });
 
 test('未找到引用来源时明确未定位，不能把回复人或@提及当原发送人', () => {
     const message = { ...reply, content: `「没有匹配原文」${separator}@另一位 收到。` };
     const result = render(message, [message]);
-    assert.match(result, /引用发送人：本日归档未定位/);
+    assert.match(result, /quote-sender-name">发送人待确认/);
+    assert.match(result, /本日归档未定位原文/);
     assert.doesNotMatch(result, /quote-author[^>]*>[^<]*(合成回复人|另一位)/);
 });
 
@@ -80,7 +84,10 @@ test('长引用默认折叠时，发送人线索仍在summary里，原文不截�
     const source = { ...original, content: '用于验证长引用完整保留。'.repeat(30) };
     const message = { ...reply, content: `「${source.content}」${separator}收到。` };
     const result = render(message, [source, message]);
-    assert.match(result, /<summary><span class="quote-author"[^>]*>[^<]*合成原发送人/);
+    assert.match(
+        result,
+        /<summary><span class="quote-author"><span class="quote-sender-name">合成原发送人：/
+    );
     assert.ok(result.includes(source.content));
 });
 
@@ -94,7 +101,8 @@ test('显式引用匹配日期ID时显示已核对，冲突不能回退猜作者
             group: 'synthetic',
         },
     };
-    assert.match(render(message), /合成原发送人.*日期\/ID已核对/);
+    assert.match(render(message), /class="quote-author">合成原发送人：<\/span>/);
+    assert.doesNotMatch(render(message), /quote-sender-help/);
     const conflict = { ...message, reply_to: { ...message.reply_to, from_uid: 'wrong' } };
     assert.doesNotMatch(render(conflict), /quote-author[^>]*>[^<]*合成原发送人/);
     assert.match(render(conflict), /未定位/);

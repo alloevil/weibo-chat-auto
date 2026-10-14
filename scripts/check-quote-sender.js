@@ -89,7 +89,21 @@ async function main() {
             if (before) assert.equal(label, '');
             else {
                 assert.match(label, /合成原发送人/);
-                assert.match(label, /未确认/);
+                assert.equal(
+                    await page.$eval(
+                        '#msg-reply .quote-sender-name',
+                        (element) => element.textContent
+                    ),
+                    '合成原发送人：'
+                );
+                assert.equal(
+                    await page.$eval('#msg-reply .quote-sender-note', (element) => element.hidden),
+                    true
+                );
+                assert.match(
+                    await page.$eval('#msg-reply .quote-sender-help', (element) => element.title),
+                    /尚未确认/
+                );
                 const missing = await page.$eval(
                     '#msg-missing .quote-author',
                     (element) => element.textContent
@@ -101,7 +115,14 @@ async function main() {
                 );
                 assert.match(ambiguous, /同文发送人甲/);
                 assert.match(ambiguous, /同文发送人乙/);
-                assert.match(ambiguous, /2 条候选/);
+                assert.match(ambiguous, /2 条同文候选/);
+                assert.equal(
+                    await page.$eval(
+                        '#msg-ambiguous .quote-sender-name',
+                        (element) => element.textContent
+                    ),
+                    '发送人待确认'
+                );
                 assert.equal(
                     await page.$eval('#msg-long-reply details', (element) => element.open),
                     false
@@ -113,6 +134,35 @@ async function main() {
             }
             await page.screenshot({ path: path.join(artifacts, `${width}-reading.png`) });
             if (!before) {
+                await page.locator('#msg-reply .quote-sender-help').click();
+                assert.equal(
+                    await page.$eval('#msg-reply .quote-sender-note', (element) => element.hidden),
+                    false
+                );
+                await page.screenshot({ path: path.join(artifacts, `${width}-sender-help.png`) });
+                await page.locator('#msg-reply .quote-sender-help').click();
+                await page.locator('#msg-long-reply .quote-sender-help').click();
+                assert.equal(
+                    await page.$eval('#msg-long-reply details', (element) => element.open),
+                    false
+                );
+                assert.equal(
+                    await page.$eval('#msg-long-reply .quote-sender-help', (element) =>
+                        element.getAttribute('aria-expanded')
+                    ),
+                    'true'
+                );
+                await page.keyboard.press('Enter');
+                assert.equal(
+                    await page.$eval('#msg-long-reply .quote-sender-help', (element) =>
+                        element.getAttribute('aria-expanded')
+                    ),
+                    'false'
+                );
+                assert.equal(
+                    await page.$eval('#msg-long-reply details', (element) => element.open),
+                    false
+                );
                 await page.locator('#msg-long-reply summary').click();
                 assert.equal(
                     await page.$eval(
