@@ -494,6 +494,7 @@ button, select, input { font-family: inherit; }
 .forward-quote { border-left: 3px solid var(--primary); margin: 4px 0 6px; padding: 8px 12px; background: var(--surface-2); border-radius: 0 6px 6px 0; font-size: 14px; color: var(--ink-muted); line-height: 1.45; }
 .forward-source { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--primary-tint); font-size: 12px; color: var(--primary-hover); }
 .quote-author { font-weight: 600; color: var(--primary-hover); }
+.messages .quote-author { display: block; margin-bottom: 5px; font-size: 11px; overflow-wrap: anywhere; }
 .forward-reply { margin-top: 2px; }
 
 @media (max-width: 760px) {
@@ -2948,6 +2949,22 @@ async function loadEmojiMap() {
 }
 loadEmojiMap();
 
+function renderQuoteSender(message) {
+    const session = { group: currentGroup, pending: new Set(), failed: new Set() };
+    const scope = { available: [selectedDate], messages: allMessages };
+    const result = loadedReferenceCandidates(message, session, scope);
+    const candidates = result?.candidates || [];
+    let label = '引用发送人：本日归档未定位';
+    if (candidates.length) {
+        const names = candidates.slice(0, 3).map(candidate => candidate.user || '未记录昵称').join('、');
+        label = result.verified
+            ? `引用发送人：${names}（日期/ID已核对）`
+            : `引用候选发送人：${names}${candidates.length > 3 ? '等' : ''}（${candidates.length} 条候选，文本匹配，未确认）`;
+        if (result.kind === 'explicit' && !result.verified) label = `引用候选发送人：${names}${candidates.length > 3 ? '等' : ''}（${candidates.length} 条候选，来源标识待核对）`;
+    }
+    return `<span class="quote-author">${escapeHtml(label)}</span>`;
+}
+
 function processForward(text, message) {
     const SEP = ' - - - - - - - - - - - - - - - ';
     // 统一处理流程：escape → urls → mentions → emoji
@@ -3008,7 +3025,7 @@ function processForward(text, message) {
 
     const replyHtml = pipe(reply || '');
 
-    const authorTag = '';
+    const authorTag = quoteLabel ? '' : renderQuoteSender(message || { content: text, date: selectedDate });
     const action = message ? escapeAttr(`showMessageContext(${JSON.stringify(String(message.id))})`) : '';
     const jump = message && !quoteLabel ? `<button class="quote-jump" onclick="${action}">查看引用候选（非确认来源）</button>` : '';
     const longQuote = quote.length > 180 || quote.split('\n').length > 3;
