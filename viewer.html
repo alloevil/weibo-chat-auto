@@ -494,7 +494,7 @@ button, select, input { font-family: inherit; }
 .forward-quote { border-left: 3px solid var(--primary); margin: 4px 0 6px; padding: 8px 12px; background: var(--surface-2); border-radius: 0 6px 6px 0; font-size: 14px; color: var(--ink-muted); line-height: 1.45; }
 .forward-source { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--primary-tint); font-size: 12px; color: var(--primary-hover); }
 .quote-author { font-weight: 600; color: var(--primary-hover); }
-.messages .quote-author { display: block; margin-bottom: 5px; font-size: 11px; overflow-wrap: anywhere; }
+.messages .quote-author { display: block; margin-bottom: 5px; font-size: 12px; color: var(--ink-muted); font-weight: 500; overflow-wrap: anywhere; }
 .quote-sender-help { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 4px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: 50%; background: var(--surface-1); color: var(--ink-subtle); font: inherit; cursor: pointer; vertical-align: middle; }
 .quote-sender-note { display: block; margin-top: 4px; color: var(--ink-subtle); font-weight: 400; line-height: 1.6; }
 .forward-reply { margin-top: 2px; }
@@ -966,7 +966,7 @@ button { cursor: pointer; }
 .messages .msg-item .msg-time { font-size: 10px; color: var(--ink-subtle); }
 .messages .msg-item .msg-avatar { display: flex; width: 30px; height: 30px; left: 9px; top: 8px; font-size: 12px; border-radius: 9px; background: color-mix(in srgb, var(--user-accent) 13%, var(--surface-1)); color: color-mix(in srgb, var(--user-accent) 55%, var(--ink)); }
 .messages .msg-body { min-width: 0; max-width: 880px; }
-.messages .msg-content { display: block; padding: 0; width: auto; min-width: 0; max-width: none; background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 14px; line-height: 1.7; color: var(--ink-muted); overflow-wrap: anywhere; }
+.messages .msg-content { display: block; padding: 0; width: auto; min-width: 0; max-width: min(100%, 52em); background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 14px; line-height: 1.7; color: var(--ink); overflow-wrap: anywhere; }
 .messages .msg-item:hover .msg-content { background: transparent; border: 0; }
 .messages .msg-item-continuation { padding-top: 0; padding-bottom: 3px; min-height: 27px; margin-top: -3px; margin-bottom: 3px; }
 .messages .msg-item-continuation .continuation-time { position: absolute; left: 4px; top: 4px; width: 40px; color: var(--ink-subtle); font-size: 9px; opacity: 0; }
@@ -974,7 +974,7 @@ button { cursor: pointer; }
 .messages .msg-attach { margin-top: 5px; max-width: 100%; overflow-wrap: anywhere; }
 .messages .msg-pics { gap: 6px; }
 .messages .msg-pics img { max-width: min(100%, 280px); max-height: 220px; border-radius: 8px; }
-.messages .forward-quote { margin: 4px 0 7px; padding: 7px 10px; border-left-width: 2px; font-size: 12px; line-height: 1.65; }
+.messages .forward-quote { margin: 4px 0 7px; padding: 7px 10px; border-left-width: 2px; border-left-color: var(--hairline-strong); font-size: 12px; line-height: 1.65; }
 .messages .forward-quote summary { cursor: pointer; overflow-wrap: anywhere; }
 .messages .quote-preview { color: var(--ink-subtle); }
 .messages .forward-quote[open] .quote-preview { display: none; }
@@ -1163,10 +1163,10 @@ html[data-theme="archive"] .research-panel .ctx-msg.same-user { border-left-colo
 html[data-theme="archive"] .messages .msg-item .msg-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--surface-2); color: var(--ink-muted); border: 1px solid var(--hairline); }
 html[data-theme="archive"] .messages .msg-item { border-radius: 6px; }
 html[data-theme="archive"] .messages .msg-item.ctx-focused { background: var(--primary-tint); box-shadow: inset 2px 0 var(--primary); }
-html[data-theme="archive"] .messages .msg-content { font-size: 14px; line-height: 1.75; color: var(--ink-muted); }
+html[data-theme="archive"] .messages .msg-content { font-size: 14px; line-height: 1.75; color: var(--ink); }
 html[data-theme="archive"] .messages .msg-time { font-size: 11px; }
 html[data-theme="archive"] .messages .forward-quote { background: var(--surface-4); border-left-color: var(--hairline-strong); }
-html[data-theme="archive"] .messages .quote-author { color: var(--ink); }
+html[data-theme="archive"] .messages .quote-author { color: var(--ink-muted); }
 html[data-theme="archive"] .msg-menu > summary { font-family: Arial, sans-serif; letter-spacing: 0; }
 html[data-theme="archive"] .reading-actions #newArchiveBtn { color: var(--on-primary); background: var(--primary-hover); }
 html[data-theme="archive"] .reading-footer { background: var(--surface-1); }
@@ -1223,12 +1223,12 @@ html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages { padding: 14p
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item { padding: 5px 38px 5px 50px; margin-bottom: 8px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item .msg-avatar { width: 36px; height: 36px; left: 0; top: 5px; border-radius: var(--qq-radius); }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-header { gap: 10px; margin-bottom: 4px; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-user { color: var(--primary); font-size: 12px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-user { color: var(--ink-muted); font-size: 12px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-body { max-width: 1050px; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-content { width: fit-content; max-width: 100%; padding: 8px 13px; border: 1px solid var(--qq-bubble-border); border-radius: var(--qq-radius); background: var(--qq-bubble); box-shadow: var(--qq-shadow); color: var(--ink); font-size: 14px; line-height: 1.65; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-content { width: fit-content; max-width: min(100%, 52em); padding: 8px 13px; border: 1px solid var(--qq-bubble-border); border-radius: var(--qq-radius); background: var(--qq-bubble); box-shadow: var(--qq-shadow); color: var(--ink); font-size: 14px; line-height: 1.65; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item:hover .msg-content { border: 1px solid var(--qq-bubble-border); background: var(--qq-bubble); }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .msg-item-continuation { margin-top: -6px; padding-top: 0; }
-html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .forward-quote { background: var(--primary-tint); border-left-color: var(--primary); border-radius: 3px; }
+html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .forward-quote { background: color-mix(in srgb, var(--ink) 4%, var(--surface-1)); border-left-color: var(--hairline-strong); border-radius: 3px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .time-divider { margin: 6px 0 18px; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .messages .time-divider span { background: transparent; }
 html:is([data-theme="qq2012"], [data-theme="qqmodern"]) .research-panel { background: var(--surface-4); box-shadow: none; }
@@ -3028,7 +3028,7 @@ function processForward(text, message) {
 
     const authorTag = quoteLabel ? '' : renderQuoteSender(message || { content: text, date: selectedDate });
     const action = message ? escapeAttr(`showMessageContext(${JSON.stringify(String(message.id))})`) : '';
-    const jump = message && !quoteLabel ? `<button class="quote-jump" onclick="${action}">查看引用候选（非确认来源）</button>` : '';
+    const jump = message && !quoteLabel ? `<button class="quote-jump" onclick="${action}" title="查看可能的原文，文本匹配不确认来源">核对原文</button>` : '';
     const longQuote = quote.length > 180 || quote.split('\n').length > 3;
     const quoted = longQuote
         ? `<details class="forward-quote"><summary>${authorTag}<span class="quote-preview">${escapeHtml(quote.slice(0, 72))}… </span><span>引用原文</span></summary><div class="quote-full">${quoteHtml}</div>${jump}</details>`

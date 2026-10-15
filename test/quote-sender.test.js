@@ -50,7 +50,8 @@ test('唯一候选显示姓名，未确认说明收进问号和默认隐藏的�
     assert.match(result, /class="quote-sender-help"/);
     assert.match(result, /class="quote-sender-note" hidden>根据原文文本匹配，发送人尚未确认/);
     assert.doesNotMatch(result, /引用候选发送人|引用发送人：/);
-    assert.ok(result.includes('查看引用候选（非确认来源）'));
+    assert.ok(result.includes('>核对原文</button>'));
+    assert.ok(result.includes('文本匹配不确认来源'));
     assert.doesNotMatch(result, /jumpToMessage/);
 });
 

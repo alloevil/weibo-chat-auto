@@ -90,6 +90,10 @@ async function main() {
             else {
                 assert.match(label, /合成原发送人/);
                 assert.equal(
+                    await page.$eval('#msg-reply .quote-jump', (element) => element.textContent),
+                    '核对原文'
+                );
+                assert.equal(
                     await page.$eval(
                         '#msg-reply .quote-sender-name',
                         (element) => element.textContent
