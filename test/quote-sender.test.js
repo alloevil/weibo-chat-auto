@@ -44,40 +44,39 @@ function render(message = reply, messages = [original, reply]) {
     return context.processForward(message.content, message);
 }
 
-test('唯一候选显示姓名，未确认说明收进问号和默认隐藏的文字', () => {
+test('唯一候选只显示正常姓名，不展示问号或技术免责声明', () => {
     const result = render();
     assert.match(result, /class="quote-sender-name" style="[^"]+">合成原发送人：<\/span>/);
-    assert.match(result, /class="quote-sender-help"/);
-    assert.match(result, /class="quote-sender-note" hidden>根据原文文本匹配，发送人尚未确认/);
+    assert.doesNotMatch(result, /quote-sender-help|quote-sender-note|引用关系尚未核实/);
+    assert.doesNotMatch(result, /发送人尚未确认|发送人待确认/);
     assert.doesNotMatch(result, /引用候选发送人|引用发送人：/);
     assert.ok(result.includes('>核对原文</button>'));
     assert.ok(result.includes('文本匹配不确认来源'));
     assert.doesNotMatch(result, /jumpToMessage/);
 });
 
-test('同文多来源显示待确认，详情保留姓名和数量，不合并同名不同ID', () => {
+test('不同发送人的同文候选保留中性占位，通过原文入口核对', () => {
     const result = render(reply, [
         original,
         { ...original, id: 'other', user: '另一位发送人', from_uid: 'other' },
         reply,
     ]);
-    assert.match(result, /合成原发送人/);
     assert.match(result, /quote-sender-name">发送人待确认/);
-    assert.match(result, /另一位发送人/);
-    assert.match(result, /2 条同文候选/);
+    assert.doesNotMatch(result, /合成原发送人|另一位发送人|quote-sender-help/);
+    assert.ok(result.includes('>核对原文</button>'));
     const sameName = render(reply, [
         original,
         { ...original, id: 'other', from_uid: 'other' },
         reply,
     ]);
-    assert.match(sameName, /2 条同文候选/);
+    assert.match(sameName, /quote-sender-name">发送人待确认/);
 });
 
 test('未找到引用来源时明确未定位，不能把回复人或@提及当原发送人', () => {
     const message = { ...reply, content: `「没有匹配原文」${separator}@另一位 收到。` };
     const result = render(message, [message]);
     assert.match(result, /quote-sender-name">发送人待确认/);
-    assert.match(result, /本日归档未定位原文/);
+    assert.ok(result.includes('>核对原文</button>'));
     assert.doesNotMatch(result, /quote-author[^>]*>[^<]*(合成回复人|另一位)/);
 });
 
@@ -120,7 +119,7 @@ test('显式引用匹配日期ID时显示已核对，冲突不能回退猜作者
     assert.doesNotMatch(render(message), /quote-sender-help/);
     const conflict = { ...message, reply_to: { ...message.reply_to, from_uid: 'wrong' } };
     assert.doesNotMatch(render(conflict), /quote-author[^>]*>[^<]*合成原发送人/);
-    assert.match(render(conflict), /未定位/);
+    assert.match(render(conflict), /发送人待确认/);
 });
 
 test('姓名必须转义，微博来源标签和普通正文不伪造引用作者', () => {
@@ -176,13 +175,12 @@ test('多来源、缺来源和无昵称保持中性色，已核对来源沿用�
     assert.doesNotMatch(verified, /quote-sender-help/);
 });
 
-test('同一稳定发送人的多条同文消息仍显示姓名和固定颜色，原文关系保持未确认', () => {
+test('同一稳定发送人的多条同文消息显示姓名和固定颜色，不附加诊断提示', () => {
     const result = render(reply, [original, { ...original, id: 'repeated' }, reply]);
     assert.match(result, /quote-sender-name" style="[^"]+">合成原发送人：/);
     assert.doesNotMatch(result, /发送人待确认/);
-    assert.match(result, /2 条同文候选/);
-    assert.match(result, /原文尚未确认/);
-    assert.match(result, /quote-sender-help/);
+    assert.doesNotMatch(result, /quote-sender-help|尚未确认/);
+    assert.ok(result.includes('>核对原文</button>'));
     assert.equal(result.match(/style="([^"]+)"/)[1], render().match(/style="([^"]+)"/)[1]);
 });
 
@@ -197,7 +195,7 @@ test('重复归档记录不应使唯一发送人变成待确认，同ID改名仍
         reply,
     ]);
     assert.doesNotMatch(renamed, /发送人待确认/);
-    assert.match(renamed, /原文尚未确认/);
+    assert.doesNotMatch(renamed, /quote-sender-help|尚未确认/);
 });
 
 test('同名但无稳定ID的多条记录仍不能推断为同一个人', () => {

@@ -173,12 +173,13 @@ async function main() {
                 await shot('reading');
                 await page.locator('#msg-file').scroll();
                 await shot('attachment');
-                await page.locator('#msg-reply .quote-sender-help').click();
                 assert.equal(
-                    await page.$eval('#msg-reply .quote-sender-note', (element) => element.hidden),
-                    false
+                    await page.$$eval(
+                        '#msg-reply .quote-sender-help',
+                        (elements) => elements.length
+                    ),
+                    0
                 );
-                await page.locator('#msg-reply .quote-sender-help').click();
                 await page.locator('#msg-reply .quote-jump').click();
                 await page.waitForSelector('#contextReferences');
                 assert.match(

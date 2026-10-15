@@ -102,29 +102,19 @@ async function main() {
                     '合成原发送人：'
                 );
                 assert.equal(
-                    await page.$eval('#msg-reply .quote-sender-note', (element) => element.hidden),
-                    true
+                    await page.$$eval(
+                        '.quote-sender-help, .quote-sender-note',
+                        (elements) => elements.length
+                    ),
+                    0
                 );
-                assert.match(
-                    await page.$eval('#msg-reply .quote-sender-help', (element) => element.title),
-                    /尚未确认/
+                assert.equal(
+                    await page.$eval(
+                        '#msg-missing .quote-sender-name',
+                        (element) => element.textContent
+                    ),
+                    '发送人待确认'
                 );
-                assert.match(
-                    await page.$eval('#msg-reply .quote-sender-help', (element) => element.title),
-                    /2 条同文候选.*发送人ID一致.*具体原文尚未确认/
-                );
-                const missing = await page.$eval(
-                    '#msg-missing .quote-author',
-                    (element) => element.textContent
-                );
-                assert.match(missing, /本日归档未定位/);
-                const ambiguous = await page.$eval(
-                    '#msg-ambiguous .quote-author',
-                    (element) => element.textContent
-                );
-                assert.match(ambiguous, /同文发送人甲/);
-                assert.match(ambiguous, /同文发送人乙/);
-                assert.match(ambiguous, /2 条同文候选/);
                 assert.equal(
                     await page.$eval(
                         '#msg-ambiguous .quote-sender-name',
@@ -157,35 +147,6 @@ async function main() {
             }
             await page.screenshot({ path: path.join(artifacts, `${width}-reading.png`) });
             if (!before) {
-                await page.locator('#msg-reply .quote-sender-help').click();
-                assert.equal(
-                    await page.$eval('#msg-reply .quote-sender-note', (element) => element.hidden),
-                    false
-                );
-                await page.screenshot({ path: path.join(artifacts, `${width}-sender-help.png`) });
-                await page.locator('#msg-reply .quote-sender-help').click();
-                await page.locator('#msg-long-reply .quote-sender-help').click();
-                assert.equal(
-                    await page.$eval('#msg-long-reply details', (element) => element.open),
-                    true
-                );
-                assert.equal(
-                    await page.$eval('#msg-long-reply .quote-sender-help', (element) =>
-                        element.getAttribute('aria-expanded')
-                    ),
-                    'true'
-                );
-                await page.keyboard.press('Enter');
-                assert.equal(
-                    await page.$eval('#msg-long-reply .quote-sender-help', (element) =>
-                        element.getAttribute('aria-expanded')
-                    ),
-                    'false'
-                );
-                assert.equal(
-                    await page.$eval('#msg-long-reply details', (element) => element.open),
-                    true
-                );
                 await page.locator('#msg-long-reply summary').click();
                 assert.equal(
                     await page.$eval('#msg-long-reply details', (element) => element.open),
@@ -300,6 +261,25 @@ async function main() {
                     requestsBefore,
                     '同日全文展示与来源往返不增加归档请求'
                 );
+            }
+            if (!before) {
+                for (const id of ['ambiguous', 'missing']) {
+                    await page.locator('#researchPanel > .research-header .ctx-close').click();
+                    await page.locator(`#msg-${id} .quote-jump`).click();
+                    await page.waitForSelector('#contextReferences');
+                    const details = await page.$eval(
+                        '#contextReferences',
+                        (element) => element.textContent
+                    );
+                    if (id === 'ambiguous') {
+                        assert.match(details, /同文发送人甲/);
+                        assert.match(details, /同文发送人乙/);
+                        assert.match(details, /存在歧义/);
+                    } else assert.match(details, /本次已加载范围内未定位/);
+                    await page.screenshot({
+                        path: path.join(artifacts, `${width}-${id}-details.png`),
+                    });
+                }
             }
             assert.equal(
                 await page.evaluate(() => globalThis.document.documentElement.scrollWidth),
