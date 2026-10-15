@@ -978,6 +978,10 @@ button { cursor: pointer; }
 .messages .forward-quote summary { cursor: pointer; overflow-wrap: anywhere; }
 .messages .quote-preview { color: var(--ink-subtle); }
 .messages .forward-quote[open] .quote-preview { display: none; }
+.quote-expand-label { display: inline; }
+.quote-collapse-label { display: none; }
+details[open] > summary > .quote-expand-label { display: none; }
+details[open] > summary > .quote-collapse-label { display: inline; }
 .messages .quote-full { margin-top: 6px; }
 .quote-jump { display: block; margin-top: 5px; padding: 0; border: 0; background: none; color: var(--primary-hover); font-size: 11px; }
 .msg-menu { display: none; position: absolute; right: 0; top: 1px; z-index: 3; }
@@ -2758,8 +2762,7 @@ function renderContextReference(focus, session) {
     const heading = result.kind === 'explicit' ? result.verified ? '显式来源日期/ID已在本次加载范围核对' : '显式来源标识待核对' : '本次已加载范围内的文本匹配候选（不确认来源）';
     const status = result.candidates.length > 1 ? `有 ${result.candidates.length} 条候选，存在歧义；请选择要核对的原文，不默认选首条。` : result.candidates.length === 1 ? '1 条候选；只有明确选择才打开原文。' : '本次已加载范围内未定位；不代表全历史不存在。';
     const clues = result.explicit ? Object.entries(result.explicit).filter(([key]) => ['id', 'date', 'user', 'from_uid', 'group'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · ') : '';
-    const longQuote = result.quote !== null && (result.quote.length > 180 || result.quote.split('\n').length > 3);
-    const quote = result.quote !== null ? `<details${longQuote ? '' : ' open'}><summary>引用原文（完整保留${longQuote ? '，展开查看' : ''}）</summary><blockquote>${escapeHtml(result.quote)}</blockquote></details>` : '';
+    const quote = result.quote !== null ? `<details open><summary><span class="quote-collapse-label">收起原文</span><span class="quote-expand-label">展开原文</span></summary><blockquote>${escapeHtml(result.quote)}</blockquote></details>` : '';
     const candidates = result.candidates.map((message, index) => `<button type="button" class="ctx-reference-candidate" data-id="${escapeAttr(String(message.id))}" data-date="${escapeAttr(message.date)}" data-uid="${escapeAttr(String(message.from_uid ?? ''))}" onclick="jumpReferenceCandidate(${index})">${escapeHtml(message.date)} · ${escapeHtml((message.time || '').split(' ')[1] || '')} · ${escapeHtml(message.user || '未记录昵称')}<small>消息 ID ${escapeHtml(String(message.id))} · 成员 ID ${escapeHtml(String(message.from_uid ?? '未记录'))}</small><small>打开此候选原文 ↗</small></button>`).join('');
     return `<section class="ctx-reference" id="contextReferences" aria-label="引用定位"><strong>${heading}</strong>${quote}${clues ? `<p>归档携带的来源线索：${escapeHtml(clues)}</p>` : ''}<p>${status}</p><small>已加载日期：${result.available.map(escapeHtml).join('、')}${result.incomplete ? session.failed.size ? '；邻日加载失败，候选范围尚不完整。' : '；邻日尚未完成读取，候选范围尚不完整。' : ''}</small>${candidates}</section>`;
 }
@@ -2794,7 +2797,7 @@ function renderReverseReferences(focus, session) {
         const label = reference.kind === 'text' ? '文本匹配反向线索（不确认回复关系）' : reference.verified ? '显式来源日期/ID及已提供身份线索已核对' : '显式来源标识待核对（不确认回复关系）';
         const ambiguity = reference.candidates.length > 1 ? `存在歧义：${reference.candidates.length} 条可能原文，不默认确认当前这一条。` : reference.kind === 'text' ? '本次范围只有1条文本匹配原文，仍不确认回复关系。' : '';
         const candidates = reference.candidates.map(candidate => `${candidate.date} · 消息 ID ${String(candidate.id)} · ${candidate.user || '未记录昵称'} · 成员 ID ${String(candidate.from_uid ?? '未记录')}`).join('；');
-        const quote = reference.quote === null ? '' : `<details${reference.quote.length > 180 || reference.quote.split('\n').length > 3 ? '' : ' open'}><summary>线索中的引用原文（完整保留）</summary><blockquote class="ctx-reverse-quote">${escapeHtml(reference.quote)}</blockquote></details>`;
+        const quote = reference.quote === null ? '' : `<details open><summary><span class="quote-collapse-label">收起原文</span><span class="quote-expand-label">展开原文</span></summary><blockquote class="ctx-reverse-quote">${escapeHtml(reference.quote)}</blockquote></details>`;
         const explicit = reference.explicit ? `<p>显式线索：${escapeHtml(Object.entries(reference.explicit).filter(([key]) => ['id', 'date', 'from_uid', 'user', 'group'].includes(key)).map(([key, value]) => `${key}: ${String(value)}`).join(' · '))}</p>` : '';
         return `<div class="ctx-reverse-item"><strong>${label}</strong>${quote}${explicit}${ambiguity ? `<p>${ambiguity}</p>` : ''}<small>可能原文：${escapeHtml(candidates)}</small><button type="button" class="ctx-reverse-candidate" data-id="${escapeAttr(String(message.id))}" data-date="${escapeAttr(message.date)}" data-uid="${escapeAttr(String(message.from_uid ?? ''))}" data-kind="${reference.kind}" onclick="jumpReverseReference(${index})">${escapeHtml(message.date)} · ${escapeHtml((message.time || '').split(' ')[1] || '')} · ${escapeHtml(message.user || '未记录昵称')}<small>线索消息 ID ${escapeHtml(String(message.id))} · 成员 ID ${escapeHtml(String(message.from_uid ?? '未记录'))}</small><small>打开此反向线索原文 ↗</small></button></div>`;
     }).join('');
@@ -3031,7 +3034,7 @@ function processForward(text, message) {
     const jump = message && !quoteLabel ? `<button class="quote-jump" onclick="${action}" title="查看可能的原文，文本匹配不确认来源">核对原文</button>` : '';
     const longQuote = quote.length > 180 || quote.split('\n').length > 3;
     const quoted = longQuote
-        ? `<details class="forward-quote"><summary>${authorTag}<span class="quote-preview">${escapeHtml(quote.slice(0, 72))}… </span><span>引用原文</span></summary><div class="quote-full">${quoteHtml}</div>${jump}</details>`
+        ? `<details class="forward-quote" open><summary>${authorTag}<span class="quote-preview">${escapeHtml(quote.slice(0, 72))}… </span><span class="quote-collapse-label">收起原文</span><span class="quote-expand-label">展开原文</span></summary><div class="quote-full">${quoteHtml}</div>${jump}</details>`
         : `<div class="forward-quote">${authorTag}${quoteHtml}${jump}</div>`;
     return `${quoted}<div class="forward-reply">${replyHtml}</div>`;
 }

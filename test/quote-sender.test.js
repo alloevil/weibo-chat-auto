@@ -81,15 +81,26 @@ test('未找到引用来源时明确未定位，不能把回复人或@提及当�
     assert.doesNotMatch(result, /quote-author[^>]*>[^<]*(合成回复人|另一位)/);
 });
 
-test('长引用默认折叠时，发送人线索仍在summary里，原文不截断', () => {
+test('长引用默认完整展开，发送人线索和原文保留，仍可主动收起', () => {
     const source = { ...original, content: '用于验证长引用完整保留。'.repeat(30) };
     const message = { ...reply, content: `「${source.content}」${separator}收到。` };
     const result = render(message, [source, message]);
+    assert.match(result, /<details class="forward-quote" open>/);
     assert.match(
         result,
         /<summary><span class="quote-author"><span class="quote-sender-name">合成原发送人：/
     );
     assert.ok(result.includes(source.content));
+    const multiline = { ...source, content: '第一行\n第二行\n第三行\n第四行' };
+    const multilineReply = { ...reply, content: `「${multiline.content}」${separator}收到` };
+    assert.match(
+        render(multilineReply, [multiline, multilineReply]),
+        /<details class="forward-quote" open>/
+    );
+    const nested = { ...reply, content: `「${message.content}」${separator}继续回复` };
+    const nestedHtml = render(nested, [source, message, nested]);
+    assert.equal((nestedHtml.match(/<details class="forward-quote" open>/g) || []).length, 2);
+    assert.ok(nestedHtml.includes(source.content));
 });
 
 test('显式引用匹配日期ID时显示已核对，冲突不能回退猜作者', () => {

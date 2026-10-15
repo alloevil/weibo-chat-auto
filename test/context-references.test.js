@@ -140,6 +140,14 @@ test('引用展示转义原文/元数据，已加载跳转不访问网络且校�
     assert.ok(output.includes('&lt;img'));
     assert.ok(!output.includes('<img'));
     assert.match(output, /不确认来源/);
+    const longQuote = '完整长引用。'.repeat(50);
+    const longOutput = render.renderContextReference(
+        { ...focus, content: `「${longQuote}」${separator}收到` },
+        current
+    );
+    assert.match(longOutput, /<details open>/);
+    assert.ok(longOutput.includes(longQuote));
+    render.renderContextReference(quoted, current);
     render.jumpReferenceCandidate(0);
     assert.equal(jumps.length, 1);
     assert.equal(jumps[0][0], '2026-09-20');

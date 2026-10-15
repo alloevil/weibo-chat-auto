@@ -137,6 +137,14 @@ test('缓存反向跳转仅明确调用时发生，校验群与revision，保留
     const rendered = api.renderReverseReferences(original, current);
     assert.ok(rendered.includes('&lt;img&gt;'));
     assert.ok(!rendered.includes('<img>'));
+    const longQuote = '反向线索完整长原文。'.repeat(40);
+    const longSession = session([
+        original,
+        quote('long', longQuote, { reply_to: { id: original.id, date: original.date } }),
+    ]);
+    const longRendered = api.renderReverseReferences(original, longSession);
+    assert.match(longRendered, /<details open>/);
+    assert.ok(longRendered.includes(longQuote));
     assert.equal(calls.length, 0);
     api.jumpReverseReference(0);
     assert.equal(calls.length, 1);

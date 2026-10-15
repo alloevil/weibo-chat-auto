@@ -1510,12 +1510,15 @@ async function main() {
         await shot('compact-desktop.png');
         await shot('graphite-production-messages-desktop.png');
         const quote = '#msg-compact-5 .forward-quote';
-        assert.equal(await page.$eval(quote, (element) => element.open), false);
+        assert.equal(await page.$eval(quote, (element) => element.open), true);
         assert.match(
             await page.$eval(`${quote} summary`, (element) => element.textContent),
-            /引用原文/
+            /收起原文/
         );
         await page.click(`${quote} summary`);
+        assert.equal(await page.$eval(quote, (element) => element.open), false);
+        await page.click(`${quote} summary`);
+        assert.equal(await page.$eval(quote, (element) => element.open), true);
         assert.match(
             await page.$eval(`${quote} .quote-full`, (element) => element.textContent),
             /本地归档/

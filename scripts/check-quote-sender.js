@@ -129,12 +129,26 @@ async function main() {
                 );
                 assert.equal(
                     await page.$eval('#msg-long-reply details', (element) => element.open),
-                    false
+                    true
                 );
                 assert.match(
                     await page.$eval('#msg-long-reply summary', (element) => element.textContent),
                     /长文原发送人/
                 );
+                assert.equal(
+                    await page.$eval(
+                        '#msg-long-reply .quote-full',
+                        (element) => element.textContent
+                    ),
+                    longQuote
+                );
+                await page.locator('#msg-long-reply').scroll();
+                await page.screenshot({
+                    path: path.join(artifacts, `${width}-long-default-open.png`),
+                });
+                await page.$eval('#messages', (element) => {
+                    element.scrollTop = 0;
+                });
             }
             await page.screenshot({ path: path.join(artifacts, `${width}-reading.png`) });
             if (!before) {
@@ -148,7 +162,7 @@ async function main() {
                 await page.locator('#msg-long-reply .quote-sender-help').click();
                 assert.equal(
                     await page.$eval('#msg-long-reply details', (element) => element.open),
-                    false
+                    true
                 );
                 assert.equal(
                     await page.$eval('#msg-long-reply .quote-sender-help', (element) =>
@@ -165,9 +179,18 @@ async function main() {
                 );
                 assert.equal(
                     await page.$eval('#msg-long-reply details', (element) => element.open),
+                    true
+                );
+                await page.locator('#msg-long-reply summary').click();
+                assert.equal(
+                    await page.$eval('#msg-long-reply details', (element) => element.open),
                     false
                 );
                 await page.locator('#msg-long-reply summary').click();
+                assert.equal(
+                    await page.$eval('#msg-long-reply details', (element) => element.open),
+                    true
+                );
                 assert.equal(
                     await page.$eval(
                         '#msg-long-reply .quote-full',
@@ -189,6 +212,82 @@ async function main() {
                 );
                 assert.equal(archiveRequests, requestsBefore);
                 await page.screenshot({ path: path.join(artifacts, `${width}-candidates.png`) });
+                await page.click('#researchPanel > .research-header .ctx-close');
+                await page.locator('#msg-long-reply summary').click();
+                await page.locator('#msg-long-reply .quote-jump').click();
+                await page.waitForSelector('#contextReferences details[open]');
+                assert.equal(
+                    await page.$eval(
+                        '#contextReferences blockquote',
+                        (element) => element.textContent
+                    ),
+                    longQuote
+                );
+                await page.screenshot({
+                    path: path.join(artifacts, `${width}-context-default-open.png`),
+                });
+                await page.locator('#contextReferences details > summary').click();
+                assert.equal(
+                    await page.$eval('#contextReferences details', (element) => element.open),
+                    false
+                );
+                await page.locator('.ctx-reference-candidate[data-id="long-source"]').click();
+                await page.locator('#contextReturnButton').click();
+                await page.waitForSelector('#contextReferences');
+                assert.equal(
+                    await page.$eval('#contextReferences details', (element) => element.open),
+                    false,
+                    '主动收起状态在原文往返后保持'
+                );
+                await page.locator('#contextReferences details > summary').click();
+                assert.equal(
+                    await page.$eval('#contextReferences details', (element) => element.open),
+                    true
+                );
+                await page.click('#researchPanel > .research-header .ctx-close');
+                await page.$eval('#msg-long-source', (element) =>
+                    element.scrollIntoView({ block: 'center' })
+                );
+                if (width === 360) {
+                    await page.locator('#msg-long-source .msg-menu > summary').click();
+                    await page.locator('#msg-long-source .msg-menu-body button').click();
+                } else {
+                    await page.locator('#msg-long-source').hover();
+                    await page.locator('#msg-long-source .msg-ctx-btn').click();
+                }
+                await page.waitForSelector('#contextReverseReferences details[open]');
+                assert.equal(
+                    await page.$eval(
+                        '#contextReverseReferences .ctx-reverse-quote',
+                        (element) => element.textContent
+                    ),
+                    longQuote
+                );
+                await page.locator('#contextReverseReferences details').scroll();
+                await page.screenshot({
+                    path: path.join(artifacts, `${width}-reverse-default-open.png`),
+                });
+                await page.locator('#contextReverseReferences details > summary').click();
+                assert.equal(
+                    await page.$eval(
+                        '#contextReverseReferences details',
+                        (element) => element.open
+                    ),
+                    false
+                );
+                await page.locator('#contextReverseReferences details > summary').click();
+                assert.equal(
+                    await page.$eval(
+                        '#contextReverseReferences details',
+                        (element) => element.open
+                    ),
+                    true
+                );
+                assert.equal(
+                    archiveRequests,
+                    requestsBefore,
+                    '同日全文展示与来源往返不增加归档请求'
+                );
             }
             assert.equal(
                 await page.evaluate(() => globalThis.document.documentElement.scrollWidth),
