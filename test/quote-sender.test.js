@@ -175,3 +175,36 @@ test('多来源、缺来源和无昵称保持中性色，已核对来源沿用�
     assert.equal(verified.match(/style="([^"]+)"/)[1], render().match(/style="([^"]+)"/)[1]);
     assert.doesNotMatch(verified, /quote-sender-help/);
 });
+
+test('同一稳定发送人的多条同文消息仍显示姓名和固定颜色，原文关系保持未确认', () => {
+    const result = render(reply, [original, { ...original, id: 'repeated' }, reply]);
+    assert.match(result, /quote-sender-name" style="[^"]+">合成原发送人：/);
+    assert.doesNotMatch(result, /发送人待确认/);
+    assert.match(result, /2 条同文候选/);
+    assert.match(result, /原文尚未确认/);
+    assert.match(result, /quote-sender-help/);
+    assert.equal(result.match(/style="([^"]+)"/)[1], render().match(/style="([^"]+)"/)[1]);
+});
+
+test('重复归档记录不应使唯一发送人变成待确认，同ID改名仍按身份合并', () => {
+    assert.match(
+        render(reply, [original, { ...original }, reply]),
+        /quote-sender-name" style="[^"]+">合成原发送人：/
+    );
+    const renamed = render(reply, [
+        original,
+        { ...original, id: 'renamed', user: '该用户的新昵称' },
+        reply,
+    ]);
+    assert.doesNotMatch(renamed, /发送人待确认/);
+    assert.match(renamed, /原文尚未确认/);
+});
+
+test('同名但无稳定ID的多条记录仍不能推断为同一个人', () => {
+    const noId = { ...original, from_uid: null };
+    const result = render(reply, [noId, { ...noId, id: 'other' }, reply]);
+    assert.match(result, /quote-sender-name">发送人待确认/);
+    assert.doesNotMatch(result, /--quote-sender-/);
+    const mixed = render(reply, [original, { ...noId, id: 'unknown-id' }, reply]);
+    assert.match(mixed, /quote-sender-name">发送人待确认/);
+});

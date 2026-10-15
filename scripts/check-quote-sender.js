@@ -23,6 +23,7 @@ const rows = [
     ['same-two', '同文发送人乙', '同文来源内容'],
     ['ambiguous', '合成回复人', `「同文来源内容」${separator}需要核对原文。`],
     ['missing', '合成回复人', `「本日不存在的原文」${separator}仅保留引用内容。`],
+    ['repeated-original', '合成原发送人', quote],
 ];
 const messages = rows.map(([id, user, content], index) => ({
     id,
@@ -107,6 +108,10 @@ async function main() {
                 assert.match(
                     await page.$eval('#msg-reply .quote-sender-help', (element) => element.title),
                     /尚未确认/
+                );
+                assert.match(
+                    await page.$eval('#msg-reply .quote-sender-help', (element) => element.title),
+                    /2 条同文候选.*发送人ID一致.*具体原文尚未确认/
                 );
                 const missing = await page.$eval(
                     '#msg-missing .quote-author',
@@ -209,6 +214,13 @@ async function main() {
                 assert.match(
                     await page.$eval('#contextReferences', (element) => element.textContent),
                     /不确认来源/
+                );
+                assert.equal(
+                    await page.$$eval(
+                        '#contextReferences .ctx-reference-candidate',
+                        (elements) => elements.length
+                    ),
+                    2
                 );
                 assert.equal(archiveRequests, requestsBefore);
                 await page.screenshot({ path: path.join(artifacts, `${width}-candidates.png`) });

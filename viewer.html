@@ -2961,13 +2961,17 @@ function renderQuoteSender(message) {
     const scope = { available: [selectedDate], messages: allMessages };
     const result = loadedReferenceCandidates(message, session, scope);
     const candidates = result?.candidates || [];
-    const label = candidates.length === 1 ? `${candidates[0].user || '未记录昵称'}：` : '发送人待确认';
-    const colors = candidates.length === 1 && candidates[0].user ? quoteSenderColors(candidates[0]) : null;
+    const first = candidates[0];
+    const uid = String(first?.from_uid ?? '').trim();
+    const sender = first && (candidates.length === 1 || (uid && candidates.every(candidate => String(candidate.from_uid ?? '').trim() === uid))) ? first : null;
+    const label = sender ? `${sender.user || '未记录昵称'}：` : '发送人待确认';
+    const colors = sender?.user ? quoteSenderColors(sender) : null;
     const colorStyle = colors ? ` style="--quote-sender-light:${colors[0]};--quote-sender-dark:${colors[1]}"` : '';
     const name = `<span class="quote-sender-name"${colorStyle}>${escapeHtml(label)}</span>`;
     if (result?.verified) return `<span class="quote-author">${name}</span>`;
     const names = candidates.slice(0, 3).map(candidate => candidate.user || '未记录昵称').join('、');
     const explanation = !candidates.length ? '本日归档未定位原文，可打开候选入口继续核对。'
+        : sender && candidates.length > 1 ? `有 ${candidates.length} 条${result.kind === 'explicit' ? '来源标识' : '同文'}候选，归档中的发送人ID一致，具体原文尚未确认。`
         : result.kind === 'explicit' ? `有 ${candidates.length} 条候选，来源标识尚未确认：${names}。`
         : candidates.length === 1 ? '根据原文文本匹配，发送人尚未确认。'
         : `有 ${candidates.length} 条同文候选，发送人尚未确认：${names}${candidates.length > 3 ? '等' : ''}。`;
