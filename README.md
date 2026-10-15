@@ -34,9 +34,23 @@ Turn Weibo group chats into a searchable local archive — as a **native desktop
 
 ![Demo](docs/demo.gif?v=20260923-refined)
 
-> Usernames, group names, and avatars in the demo are anonymized samples. This demo shows an earlier version; v1.29.0 interactions are described below.
+> Usernames, group names, and avatars in the demo are anonymized samples. This demo shows an earlier version, not the current v1.31.0 interface.
 
-## 🆕 v1.29.0: Find a message, check its source, come back
+## 🆕 v1.31.0: Clearer reading and source checks
+
+- **Compact navigation**: group, search, date, and More share a compact header. Desktop shortcuts for syncing, reading filters, and AI assistance have hover and keyboard-focus descriptions; on mobile they appear as labeled items in More. Settings, themes, and the code-log appearance also live in More.
+- **Last successful sync**: shown in the desktop sync tooltip and below the mobile menu item. The completion time is saved across refreshes and restarts; failures do not update it. It records this installation's manual “同步归档” action, not archive-file modification times, scheduled archiving, or live polling.
+- **Full quotes by default**: quoted originals in messages, context, and reverse-reference clues are expanded initially. Long quotes can still be collapsed and expanded manually; context source-return navigation preserves the user's collapsed state.
+- **Natural sender labels**: when matches identify one sender, quotes show a colored “Name:” without a question mark or verification disclaimer. Multiple candidate messages sharing a stable sender ID can also display that name. Colors are ID-based where available, with light/dark variants; palette collisions are possible, so color is not an identity guarantee.
+- **Reading hierarchy**: subdued quote backgrounds and a concise “核对原文” action keep source checks available. Long message text has a bounded line length; short bubbles keep their natural width, messages remain left-aligned, and attachments retain their own sizing.
+
+**Try it after upgrading**: hover the desktop sync icon to see the last successful sync time, or open More on mobile. Choose **More → Settings and themes → Theme** (“更多 → 设置与皮肤 → 皮肤”) for “QQ 2012 · 经典精修” or “现代 QQ · 简洁蓝白”. The default archive reader and other themes remain available.
+
+> **Source boundaries**: displayed names come from matching loaded archives, not necessarily a verified Weibo reply relationship. The main message list uses the current loaded day. Cross-day originals, missing records, text differences, or different senders can still show “发送人待确认”; open “核对原文” to inspect candidates and reasons. The app does not infer an author from the replier or an @mention.
+>
+> **Known limitation**: rapidly shrinking a desktop window to mobile width can lose keyboard focus from a shortcut; this version does not fix that issue. Browser checks use synthetic data, not native macOS, physical-phone, or real-model validation. See the [v1.31.0 release notes](https://github.com/alloevil/weibo-chat-auto/releases/tag/v1.31.0).
+
+### Combined search and source-return navigation
 
 - **Combined search**: combine a sender, an inclusive archive-date range, and multiple words in the message body within the current group. All words must match, case-insensitively, in any order or distance. Results are deduplicated by archive date and message ID, with pagination.
 - **Find a member before choosing one**: filter candidates by a nickname fragment, then explicitly select a member. Stable IDs distinguish identical names; editing the candidate filter does not select someone or search messages.
@@ -59,13 +73,13 @@ Turn Weibo group chats into a searchable local archive — as a **native desktop
 | --- | --- |
 | 🗂 Multi-group support (configured in `config.json`) | ⚡ Live sync (opt-in, off by default): new messages appear automatically |
 | 🖥 Native desktop app (in-app QR-code login) | 💬 **Send messages to the group**: text / emoticons / images |
-| 🍪 Automatic cookie persistence + session keep-alive | 🎨 Graphite toolbar with a white reading area; dark / QQ themes retained |
+| 🍪 Automatic cookie persistence + session keep-alive | 🎨 Archive / dark / refined classic QQ / modern QQ themes and more |
 | 📡 Full history via paginated API fetch | 🔀 Searchable group picker + 📅 date navigation + per-group reading memory |
 | ➕ Incremental archiving (resumable; interrupted paginations persist a resume cursor and exit non-zero instead of silently "succeeding") | 🔍 Current-day / all-date search + combined sender, date, and body search |
 | 📆 Per-day JSON export | 📊 Statistics panel (daily activity / rankings / hours / word frequency) |
 | ⏰ Scheduled jobs + manual Sync Now | 🧹 Red-packet / noise message filtering |
 | | 🎯 Cross-day time neighborhoods; return to search / AI / original context |
-| | 💬 Forward and reverse reference candidates with ambiguity labels; @mention highlighting |
+| | 💬 Full quotes by default, stable sender colors, on-demand source checks; @mention highlighting |
 | | 🤖 AI daily summaries + agentic Q&A |
 | | 🖼 Image proxy (bypasses hotlink protection), video links, share cards |
 | | 🔔 Desktop notifications (mentions / keywords) + `@me` filter |
@@ -78,7 +92,7 @@ Turn Weibo group chats into a searchable local archive — as a **native desktop
 
 1. Download `weibo-chat_*_aarch64.app.zip` from the [**latest release**](https://github.com/alloevil/weibo-chat-auto/releases/latest) and unzip it.
 2. First launch: the app is not code-signed yet, so macOS Gatekeeper will block a normal double-click. **Right-click the .app → Open → Open** (only needed once).
-3. Click 🔑 Login, scan the QR code with the Weibo app, then pick your groups under ⚙️ Settings → 归档群聊 — done.
+3. Open More → Settings and themes (“更多 → 设置与皮肤”), click Login, scan with the Weibo app, then choose the groups to archive under “归档群聊”.
 
 **Upgrading an existing installation**: quit the old app, download and unzip the new package, replace the old `.app`, and reopen it. Keep your local archives and configuration. For the web version, resolve local changes before running `git pull --ff-only && npm ci`, then restart the viewer and refresh the page.
 
@@ -170,13 +184,13 @@ Just keep the viewer running:
 npm run view
 ```
 
-Open http://localhost:3456 → click **Sync Now** to fetch the latest messages (the page auto-refreshes every 60s).
+Open http://localhost:3456 and click the desktop **Sync archive** icon, or More → “同步归档” on mobile. The page checks local archive changes every 60 seconds; this is not a Weibo sync every 60 seconds.
 
 <details>
 <summary><b>Tips for reading history</b></summary>
 
 - **🎯 Context**: open a message's context to read its time neighborhood. Near midnight, adjacent archive days are loaded as needed, with actual dates and range limits visible; nearby messages are not assumed to share a topic.
-- **Check references**: expand a quote and inspect candidates, then explicitly choose one to open its original date. Even a unique text match is not a confirmed source. Use “返回原上下文” to resume reading after checking.
+- **Check references**: quotes are fully visible by default, with manual collapse for long originals. Choose “核对原文” to inspect possible sources and explicitly select a record. Use “返回原上下文” to resume reading after checking.
 - **Search**: ordinary search matches a complete fragment; combined search supports sender, archive dates, and multiple body words. Open a result's source, then return to the loaded results and position and continue loading more.
 - **Reading progress**: each group's reading position is saved in this browser. Temporary source checks from search/AI do not replace your original reading progress; new-archive notices move you only when explicitly selected.
 - **@me**: the `@me` filter in the nav bar keeps only messages that mention you. The check-in bot @-mentions every member (93% of hits in practice) and is excluded unconditionally
@@ -222,11 +236,11 @@ node -e 'const f=global.fetch;global.fetch=(u,i)=>{console.log("→",String(u.ur
 <details>
 <summary><b>Live sync & sending messages</b></summary>
 
-Live sync is **off by default**; enable it via the "Live" dropdown in the nav bar. When on, a green **Live** indicator appears: the server polls for new messages every 20 seconds, merges them into the day files, and pushes them to the page over SSE — new messages just show up, no need to click Sync Now (which remains the full "backfill history" archive). The input box at the bottom of the message area lets you post directly (Enter to send, Shift+Enter for a newline).
+Live sync is **off by default**; enable it in More → Settings and themes. While enabled and a page is subscribed, the server polls for new messages every 20 seconds, merges them into day files, and notifies the page over SSE. Manual “同步归档” remains the history-backfill action. Expand “向群里发消息” at the bottom of the reading area to compose a message (Enter to send, Shift+Enter for a newline).
 
 **Why off by default**: polling calls `query_messages` to read group messages, and whether reading advances Weibo's read cursor cannot be falsified from the outside — the endpoint's response carries `last_read_mid`, and the only way to observe it is through the same endpoint. If it did advance, the native Weibo client's unread badges would silently get eaten. Evidence suggests it does not (the webim client has a separate `clear_unread.json`, called only when you open a conversation), but that risk must be a choice you make explicitly.
 
-The guarantee when off is **not a single request is sent**: no timers, the page doesn't even establish the SSE connection, and even the "nudge one sync round" after a successful send is skipped (your own message then appears with the next archive run). The toggle lives on the server (`live-config.json`), shared between the browser and desktop versions, takes effect immediately, no restart needed.
+When disabled, **live polling starts no further group-message requests**: its timer stops, late responses from old rounds do not paginate, write, or notify, and post-send polling is skipped. Requests already sent cannot be recalled. Independent scheduled archiving, manual sync, and login keep-alive are not stopped by this toggle; an SSE connection may remain for enabled daily-summary notifications. The setting is stored in server-side `live-config.json` and shared by pages using that same service.
 
 Both live sync and sending depend on the **group conversation id**. When you select groups from the Weibo conversation list in Settings, the viewer stores the id returned by the API after positively verifying `user.type === 2`. The archiver later cross-checks and refreshes it from actual conversation requests. A newly selected group can therefore send immediately without a preliminary Chrome archive; live sync remains off by default.
 
@@ -256,7 +270,7 @@ The viewer ships two AI features: **daily summaries** and **agentic Q&A**. Both 
 
 ### Configuration
 
-Open **Settings** in the top-right corner of the page, then fill in:
+Open **More → Settings and themes** (“更多 → 设置与皮肤”) in the top-right corner, then fill in:
 
 | Field | Description |
 |------|------|
@@ -270,7 +284,7 @@ If the configuration is missing or incomplete, AI actions stay visible and open 
 
 ### Q&A
 
-Open **Ask chat history** from the toolbar to ask questions; natural-language time ("recently", "yesterday", "last week") and person filters are supported.
+Open the desktop **AI assistance** shortcut or More → “AI 助读” on mobile; natural-language time ("recently", "yesterday", "last week") and person filters are supported.
 
 **Agent mode** (default): the LLM searches iteratively, choosing keywords and scope on its own, running multiple rounds until it has enough information.
 
@@ -314,7 +328,7 @@ For current numbers, run `node scripts/benchmark-qa.js --group <group>` against 
 <details>
 <summary><b>Click to expand</b></summary>
 
-These are screenshots of an earlier version, kept for reference; they do not show v1.29.0 combined conditions or reference candidates.
+These are screenshots of an earlier version, kept for reference; they do not show v1.31.0 compact navigation or quote presentation.
 
 **Message view** — hourly heatmap, quote bubbles, @mention highlighting, per-message 🎯 context entry
 
