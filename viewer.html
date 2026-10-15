@@ -495,6 +495,8 @@ button, select, input { font-family: inherit; }
 .forward-source { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--primary-tint); font-size: 12px; color: var(--primary-hover); }
 .quote-author { font-weight: 600; color: var(--primary-hover); }
 .messages .quote-author { display: block; margin-bottom: 5px; font-size: 12px; color: var(--ink-muted); font-weight: 500; overflow-wrap: anywhere; }
+.messages .quote-sender-name { color: var(--quote-sender-dark, inherit); }
+html:is([data-theme="archive"], [data-theme="qq2000"], [data-theme="qq2008"], [data-theme="qq2012"], [data-theme="qqmodern"]) .messages .quote-sender-name { color: var(--quote-sender-light, inherit); }
 .quote-sender-help { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 4px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: 50%; background: var(--surface-1); color: var(--ink-subtle); font: inherit; cursor: pointer; vertical-align: middle; }
 .quote-sender-note { display: block; margin-top: 4px; color: var(--ink-subtle); font-weight: 400; line-height: 1.6; }
 .forward-reply { margin-top: 2px; }
@@ -2960,13 +2962,30 @@ function renderQuoteSender(message) {
     const result = loadedReferenceCandidates(message, session, scope);
     const candidates = result?.candidates || [];
     const label = candidates.length === 1 ? `${candidates[0].user || '未记录昵称'}：` : '发送人待确认';
-    if (result?.verified) return `<span class="quote-author">${escapeHtml(label)}</span>`;
+    const colors = candidates.length === 1 && candidates[0].user ? quoteSenderColors(candidates[0]) : null;
+    const colorStyle = colors ? ` style="--quote-sender-light:${colors[0]};--quote-sender-dark:${colors[1]}"` : '';
+    const name = `<span class="quote-sender-name"${colorStyle}>${escapeHtml(label)}</span>`;
+    if (result?.verified) return `<span class="quote-author">${name}</span>`;
     const names = candidates.slice(0, 3).map(candidate => candidate.user || '未记录昵称').join('、');
     const explanation = !candidates.length ? '本日归档未定位原文，可打开候选入口继续核对。'
         : result.kind === 'explicit' ? `有 ${candidates.length} 条候选，来源标识尚未确认：${names}。`
         : candidates.length === 1 ? '根据原文文本匹配，发送人尚未确认。'
         : `有 ${candidates.length} 条同文候选，发送人尚未确认：${names}${candidates.length > 3 ? '等' : ''}。`;
-    return `<span class="quote-author"><span class="quote-sender-name">${escapeHtml(label)}</span><button type="button" class="quote-sender-help" title="${escapeAttr(explanation)}" aria-label="发送人说明" aria-expanded="false" onclick="event.preventDefault();event.stopPropagation();const note=this.nextElementSibling;note.hidden=!note.hidden;this.setAttribute('aria-expanded',String(!note.hidden))">?</button><span class="quote-sender-note" hidden>${escapeHtml(explanation)}</span></span>`;
+    return `<span class="quote-author">${name}<button type="button" class="quote-sender-help" title="${escapeAttr(explanation)}" aria-label="发送人说明" aria-expanded="false" onclick="event.preventDefault();event.stopPropagation();const note=this.nextElementSibling;note.hidden=!note.hidden;this.setAttribute('aria-expanded',String(!note.hidden))">?</button><span class="quote-sender-note" hidden>${escapeHtml(explanation)}</span></span>`;
+}
+
+function quoteSenderColors(sender) {
+    const palette = [
+        ['#1d4ed8', '#93c5fd'], ['#065f46', '#6ee7b7'],
+        ['#7e22ce', '#d8b4fe'], ['#be185d', '#f9a8d4'],
+        ['#9a3412', '#fdba74'], ['#155e75', '#67e8f9'],
+        ['#4338ca', '#a5b4fc'], ['#3f6212', '#bef264'],
+    ];
+    const uid = String(sender.from_uid ?? '').trim();
+    const identity = uid ? `uid:${uid}` : `name:${String(sender.user || '')}`;
+    let hash = 2166136261;
+    for (const character of identity) hash = Math.imul(hash ^ character.codePointAt(0), 16777619);
+    return palette[(hash >>> 0) % palette.length];
 }
 
 function processForward(text, message) {

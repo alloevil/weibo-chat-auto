@@ -6,7 +6,7 @@
         {
             "id": "tests-green",
             "claim": "The test suite passes on a clean checkout.",
-            "value": "512",
+            "value": "515",
             "metric": "passing node:test cases (# fail 0)",
             "method": "node --test over the repo's test files (package.json scripts.test -> scripts/run-tests.js).",
             "repro": "npm test -- --test-reporter=tap 2>&1 | grep -E '^# (pass|fail)'",
@@ -14,7 +14,7 @@
             "as_of": "2026-10-12",
             "check": {
                 "cmd": "npm test -- --test-reporter=tap 2>&1 | grep -E '^# (pass|fail)'",
-                "expect": { "contains": ["# pass 512", "# fail 0"] },
+                "expect": { "contains": ["# pass 515", "# fail 0"] },
                 "timeout": 60
             }
         },

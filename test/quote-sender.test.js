@@ -46,7 +46,7 @@ function render(message = reply, messages = [original, reply]) {
 
 test('唯一候选显示姓名，未确认说明收进问号和默认隐藏的文字', () => {
     const result = render();
-    assert.match(result, /class="quote-sender-name">合成原发送人：<\/span>/);
+    assert.match(result, /class="quote-sender-name" style="[^"]+">合成原发送人：<\/span>/);
     assert.match(result, /class="quote-sender-help"/);
     assert.match(result, /class="quote-sender-note" hidden>根据原文文本匹配，发送人尚未确认/);
     assert.doesNotMatch(result, /引用候选发送人|引用发送人：/);
@@ -88,7 +88,7 @@ test('长引用默认完整展开，发送人线索和原文保留，仍可主�
     assert.match(result, /<details class="forward-quote" open>/);
     assert.match(
         result,
-        /<summary><span class="quote-author"><span class="quote-sender-name">合成原发送人：/
+        /<summary><span class="quote-author"><span class="quote-sender-name" style="[^"]+">合成原发送人：/
     );
     assert.ok(result.includes(source.content));
     const multiline = { ...source, content: '第一行\n第二行\n第三行\n第四行' };
@@ -113,7 +113,10 @@ test('显式引用匹配日期ID时显示已核对，冲突不能回退猜作者
             group: 'synthetic',
         },
     };
-    assert.match(render(message), /class="quote-author">合成原发送人：<\/span>/);
+    assert.match(
+        render(message),
+        /class="quote-author"><span class="quote-sender-name" style="[^"]+">合成原发送人：<\/span>/
+    );
     assert.doesNotMatch(render(message), /quote-sender-help/);
     const conflict = { ...message, reply_to: { ...message.reply_to, from_uid: 'wrong' } };
     assert.doesNotMatch(render(conflict), /quote-author[^>]*>[^<]*合成原发送人/);
@@ -126,4 +129,49 @@ test('姓名必须转义，微博来源标签和普通正文不伪造引用作�
     assert.doesNotMatch(result, /<img src=x/);
     assert.doesNotMatch(render({ ...reply, content: `「微博」${separator}分享` }), /quote-author/);
     assert.doesNotMatch(render({ ...reply, content: '普通正文' }), /quote-author/);
+});
+
+test('引用姓名色号按稳定ID分配，不随改名、消息顺序或重复渲染变化', () => {
+    const style = (output) => output.match(/class="quote-sender-name" style="([^"]+)"/)[1];
+    const expected = style(render());
+    assert.equal(style(render(reply, [reply, original])), expected);
+    assert.equal(style(render(reply, [{ ...original, user: '改名后的发送人' }, reply])), expected);
+    assert.equal(style(render()), expected);
+    assert.notEqual(
+        style(render(reply, [{ ...original, from_uid: 'another-id' }, reply])),
+        expected
+    );
+});
+
+test('无稳定ID时按昵称回退，数字和字符串ID映射一致', () => {
+    const style = (source) =>
+        render(reply, [source, reply]).match(/class="quote-sender-name" style="([^"]+)"/)[1];
+    assert.equal(style({ ...original, from_uid: null }), style({ ...original, from_uid: '' }));
+    assert.equal(style({ ...original, from_uid: 123 }), style({ ...original, from_uid: '123' }));
+    assert.notEqual(
+        style({ ...original, from_uid: null }),
+        style({ ...original, from_uid: null, user: '另一个昵称' })
+    );
+});
+
+test('多来源、缺来源和无昵称保持中性色，已核对来源沿用同一用户色', () => {
+    const ambiguous = render(reply, [
+        original,
+        { ...original, id: 'duplicate', from_uid: 'another' },
+        reply,
+    ]);
+    assert.doesNotMatch(ambiguous, /--quote-sender-/);
+    assert.doesNotMatch(render(reply, [reply]), /--quote-sender-/);
+    assert.doesNotMatch(render(reply, [{ ...original, user: '' }, reply]), /--quote-sender-/);
+    const verified = render({
+        ...reply,
+        reply_to: {
+            id: original.id,
+            date: original.date,
+            from_uid: original.from_uid,
+            group: 'synthetic',
+        },
+    });
+    assert.equal(verified.match(/style="([^"]+)"/)[1], render().match(/style="([^"]+)"/)[1]);
+    assert.doesNotMatch(verified, /quote-sender-help/);
 });
