@@ -4,7 +4,10 @@ import runtimePaths from '../lib/runtime-paths.js';
 // 编排(工具循环 / 迭代预算 / 重试 / 超时 / provider 适配)交给 pi-agent-core,
 // 本仓只保留检索层与提示词。原先手写的 IterationBudget / AgentState /
 // withRetry / withTimeout / callLLM 共约 230 行由 runAgentLoop 替代。
-import { runAgentLoop } from '@mariozechner/pi-agent-core';
+import { runAgentLoop } from '@earendil-works/pi-agent-core';
+// 1.x 起低层 loop 必须显式传 streamFn;只引 openai-completions 这一个 API 实现,
+// 不走 pi-ai/compat(会把全部 provider 打进 sidecar)。
+import { streamSimple } from '@earendil-works/pi-ai/api/openai-completions';
 // lib/ 是 CJS,这里用静态 ESM import(Node 的 CJS interop 支持解构)。
 // 不要换成 createRequire:bundler(Bun sidecar 编译)无法静态分析 createRequire,
 // 会导致 lib 模块不进 bundle,桌面版运行时报 Cannot find module。
@@ -1113,15 +1116,20 @@ dateFrom/dateTo,工具会自己算好并在 dateRange 字段回报实际用的�
             maxRetries: LLM_MAX_RETRIES,
             // 检索工具共享 ledger 的 citations 数组,串行执行避免并发写入交错
             toolExecution: 'sequential',
-            shouldStopAfterTurn: () => {
+            // 0.87 起 shouldStopAfterTurn 被 finishTurn 取代;finishTurn 对 error/aborted
+            // 也会触发,按上游迁移说明加守卫,保持"只数正常轮次"的旧语义。
+            finishTurn: (turn) => {
+                const sr = turn.message.stopReason;
+                if (sr === 'error' || sr === 'aborted') return undefined;
                 llmCalls++;
-                return llmCalls >= MAX_LLM_CALLS;
+                return llmCalls >= MAX_LLM_CALLS ? { action: 'end' } : undefined;
             },
         },
         () => {},
         // 墙钟上限:单轮 60s×3 次尝试 × 7 轮最坏 21 分钟,请求会把 HTTP 连接
         // 挂死。超时映射为 stopReason:'aborted',走下面的失败分支。
-        AbortSignal.timeout(QA_GLOBAL_TIMEOUT_MS)
+        AbortSignal.timeout(QA_GLOBAL_TIMEOUT_MS),
+        streamSimple
     );
 
     // 流式失败(网络/鉴权/provider 报错)在消息上以 stopReason 表达而非抛出,
@@ -1161,10 +1169,11 @@ dateFrom/dateTo,工具会自己算好并在 dateRange 字段回报实际用的�
                 timeoutMs: LLM_TIMEOUT_MS,
                 maxRetries: LLM_MAX_RETRIES,
                 toolExecution: 'sequential',
-                shouldStopAfterTurn: () => true, // 一轮即停
+                finishTurn: () => ({ action: 'end' }), // 一轮即停
             },
             () => {},
-            AbortSignal.timeout(QA_GLOBAL_TIMEOUT_MS)
+            AbortSignal.timeout(QA_GLOBAL_TIMEOUT_MS),
+            streamSimple
         );
         llmCalls++;
         const finFailed = finalMessages.find(

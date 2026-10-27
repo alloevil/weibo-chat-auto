@@ -31,7 +31,7 @@
     "license": "MIT",
     "type": "commonjs",
     "engines": {
-        "node": "^22.13.0 || >=24.0.0"
+        "node": "^22.19.0 || >=24.0.0"
     },
     "puppeteer": {
         "skipDownload": true
@@ -45,7 +45,8 @@
     },
     "homepage": "https://github.com/alloevil/weibo-chat-auto#readme",
     "dependencies": {
-        "@mariozechner/pi-agent-core": "^0.73.1",
+        "@earendil-works/pi-agent-core": "^1.4.0",
+        "@earendil-works/pi-ai": "^1.4.0",
         "@opentelemetry/api": "^1.9.1",
         "puppeteer": "^25.10.0"
     },

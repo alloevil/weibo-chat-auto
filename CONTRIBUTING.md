@@ -5,7 +5,7 @@
 ## 开发环境
 
 - macOS（定时任务依赖 launchd）
-- Node.js 22.13+ LTS 或 24+
+- Node.js 22.19+ LTS 或 24+
 - Google Chrome
 
 ```bash
