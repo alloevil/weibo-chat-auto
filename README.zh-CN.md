@@ -4,7 +4,7 @@
 
 <p align="center">
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white">
-  <img alt="Node" src="https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white">
+  <img alt="Node" src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white">
   <img alt="Puppeteer" src="https://img.shields.io/badge/Puppeteer-25-40B5A4?logo=puppeteer&logoColor=white">
   <a href="https://github.com/alloevil/weibo-chat-auto/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/alloevil/weibo-chat-auto/ci.yml?logo=githubactions&logoColor=white&label=CI"></a>
   <a href="https://github.com/alloevil/weibo-chat-auto/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/alloevil/weibo-chat-auto?logo=github&color=blue"></a>
@@ -284,7 +284,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 <details>
 <summary><b>技术方案</b></summary>
 
-采用 Agentic Search 模式。工具循环由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层、提示词与预算闸门（≤7 轮检索；预算耗尽且停在工具调用上时追加一次无工具收尾轮；LLM 精排单独封顶 4 次；整个请求 150 秒墙钟上限）。结构化状态累积参考 LedgerAgent 论文。
+采用 Agentic Search 模式。工具循环由 [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earendil-works/pi-agent-core) 的 `runAgentLoop` 提供（工具分发 + 参数校验 + 重试 + 超时 + provider 适配），本仓只保留检索层、提示词与预算闸门（≤7 轮检索；预算耗尽且停在工具调用上时追加一次无工具收尾轮；LLM 精排单独封顶 4 次；整个请求 150 秒墙钟上限）。结构化状态累积参考 LedgerAgent 论文。
 
 检索层：话题块切分（30 分钟断层）→ 原问题与已有关键词的最多 4 路 bigram BM25 → RRF 融合、重复候选限制与精确线索保护 → 仅明确近期问题启用时间权重 → 命中附近原文精排 → 块内多命中窗口。日期/人物过滤仍优先，精确线索保护不绕过精排剔除；不增加在线改写调用。噪音剔除、别名和相对日期解析保留，可选离线标注可补充摘要与同义改写。方法、固定合成对照与已知失败见 [检索评测说明](docs/retrieval-evaluation.md)。
 
@@ -341,7 +341,7 @@ grep -c "Cookie 已失效" logs/archive.log   # 非 0 说明该重新扫码了
 | 必需 | 说明 |
 | --- | --- |
 | 🖥 **macOS / Linux / WSL / Windows Git Bash** | 归档与查看器可运行；Windows 原生目前为实验性支持，桌面壳仍仅发布 macOS 版 |
-| 🟢 **Node.js 22.13+ LTS 或 24+** | 推荐 `nvm install 24`，或从 [nodejs.org](https://nodejs.org) 安装受支持的 LTS 版本 |
+| 🟢 **Node.js 22.19+ LTS 或 24+** | 推荐 `nvm install 24`，或从 [nodejs.org](https://nodejs.org) 安装受支持的 LTS 版本 |
 | 🌐 **Google Chrome** | 归档器用它登录并抓取消息；路径自动探测（也可在 `config.json` 的 `chromePath` 指定）。项目只用系统已装的 Chrome，因此 `package.json` 里设了 `puppeteer.skipDownload`，`npm install` 不会再下载一份 ~650 MB 的 Chromium；确实想用自带 Chromium 的话，用 `PUPPETEER_SKIP_DOWNLOAD=0 npm install` 装回来 |
 | 📱 **微博账号 + 手机 App** | 首次需用 App 扫码登录网页版 |
 | 🦀 **Rust + Bun** | 仅桌面应用需要；`npm run desktop` 会自动安装 |

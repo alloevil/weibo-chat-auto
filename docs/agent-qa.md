@@ -4,7 +4,7 @@
 
 Q&A 功能采用 **Agentic Search** 模式：LLM 在迭代循环中自主决定搜索策略、执行工具、评估结果充分性，直到可以生成最终回答。
 
-循环体本身不自研：由 [`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core) 的 `runAgentLoop` 提供（工具调用分发、参数 schema 校验、重试、超时、SSE 解析、各家 provider 适配）。本仓只保留**检索层**与**提示词**。
+循环体本身不自研：由 [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earendil-works/pi-agent-core) 的 `runAgentLoop` 提供（工具调用分发、参数 schema 校验、重试、超时、SSE 解析、各家 provider 适配）。本仓只保留**检索层**与**提示词**。
 
 ```
 用户提问
@@ -340,4 +340,4 @@ output/<群>/aliases.json    # 发言人别名表（手写，可选）
 output/<群>/qa-index/       # 离线标注（可选，缺失自动降级）
 ```
 
-依赖：`@mariozechner/pi-agent-core`（+ 传递依赖 `@mariozechner/pi-ai`）。`@opentelemetry/api` 是显式直接依赖，因为传递依赖 `@mistralai/mistralai` 会 import 它，缺失时 `bun build --compile`（sidecar 打包）解析失败。
+依赖：`@earendil-works/pi-agent-core`（+ 传递依赖 `@earendil-works/pi-ai`）。`@opentelemetry/api` 是显式直接依赖，因为传递依赖 `@mistralai/mistralai` 会 import 它，缺失时 `bun build --compile`（sidecar 打包）解析失败。

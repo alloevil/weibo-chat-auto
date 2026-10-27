@@ -4,7 +4,7 @@
 
 <p align="center">
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white">
-  <img alt="Node" src="https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white">
+  <img alt="Node" src="https://img.shields.io/badge/Node-22.19%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white">
   <img alt="Puppeteer" src="https://img.shields.io/badge/Puppeteer-25-40B5A4?logo=puppeteer&logoColor=white">
   <a href="https://github.com/alloevil/weibo-chat-auto/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/alloevil/weibo-chat-auto/ci.yml?logo=githubactions&logoColor=white&label=CI"></a>
   <a href="https://github.com/alloevil/weibo-chat-auto/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/alloevil/weibo-chat-auto?logo=github&color=blue"></a>
@@ -297,7 +297,7 @@ Indexing is **automatic**: after each archive run, a background pass annotates t
 <details>
 <summary><b>Technical design</b></summary>
 
-Uses the Agentic Search pattern. The tool loop comes from \[`@mariozechner/pi-agent-core`](https://www.npmjs.com/package/@mariozechner/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 retrieval turns + one no-tools summarization turn when the budget runs out mid-tool-call; LLM rerank capped at 4 calls; 150s wall-clock ceiling over the whole request). Structured state accumulation follows the LedgerAgent paper.
+Uses the Agentic Search pattern. The tool loop comes from \[`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earendil-works/pi-agent-core)'s `runAgentLoop` (tool dispatch + argument validation + retry + timeout + provider adaptation); this repo keeps only the retrieval layer, the prompts, and the budget gate (≤7 retrieval turns + one no-tools summarization turn when the budget runs out mid-tool-call; LLM rerank capped at 4 calls; 150s wall-clock ceiling over the whole request). Structured state accumulation follows the LedgerAgent paper.
 
 Retrieval layer: topic-chunk splitting (30-minute gaps) → up to 4 bigram BM25 queries from the original question and existing keywords → RRF fusion, identical-text candidate limits, and exact-clue protection → time weighting only for explicitly recent questions → reranking excerpts near actual hits → multiple in-chunk hit windows. Date/person filters still apply first, and exact-clue protection does not override reranker rejection; no online query-rewrite calls are added. Noise removal, aliases, relative-date parsing, and optional offline summaries/rewordings remain available. See the [retrieval evaluation](docs/retrieval-evaluation.md) for methods, fixed synthetic comparisons, and known failures.
 
@@ -354,7 +354,7 @@ These are screenshots of an earlier version, kept for reference; they do not sho
 | Required | Notes |
 | --- | --- |
 | 🖥 **macOS / Linux / WSL / Windows Git Bash** | Archiver and viewer are supported; native Windows is currently experimental, while the desktop shell is still released only for macOS |
-| 🟢 **Node.js 22.13+ LTS or 24+** | Use `nvm install 24`, or install a supported LTS release from [nodejs.org](https://nodejs.org) |
+| 🟢 **Node.js 22.19+ LTS or 24+** | Use `nvm install 24`, or install a supported LTS release from [nodejs.org](https://nodejs.org) |
 | 🌐 **Google Chrome** | The archiver drives it for login and scraping; path is auto-detected (or set `chromePath` in `config.json`). The project only ever uses your installed Chrome, so `package.json` sets `puppeteer.skipDownload` and `npm install` no longer pulls a ~650 MB bundled Chromium; if you do want the bundled one, install with `PUPPETEER_SKIP_DOWNLOAD=0 npm install` |
 | 📱 **Weibo account + mobile app** | First-time login to the web version requires scanning a QR code with the app |
 | 🦀 **Rust + Bun** | Desktop app only; `npm run desktop` installs them automatically |

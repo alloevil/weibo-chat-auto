@@ -20,7 +20,7 @@ jobs:
         strategy:
             matrix:
                 # 同时验证 engines 的最低 LTS patch 与当前 LTS。
-                node: ['22.13.0', 24]
+                node: ['22.19.0', 24]
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
             - name: Setup Node.js
